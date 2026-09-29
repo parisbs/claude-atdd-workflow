@@ -1,0 +1,6 @@
+# Personal preferences are local; only the examples are versioned.
+personal/*
+!personal/*.example.*
+
+.DS_Store
+node_modules/
