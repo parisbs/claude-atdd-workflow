@@ -9,3 +9,4 @@ Short MADR form. Create new records from `template.md`.
 - [0005. Use Conventional Commits and release from tags](0005-conventional-commits-and-releases-from-tags.md)
 - [0006. Make AGENTS.md the canonical instructions file of a repository](0006-agents-md-is-the-canonical-repository-file.md)
 - [0007. User skill names never shadow project skills](0007-user-skill-names-never-shadow-project-skills.md)
+- [0008. Let the administrator bypass rulesets, only through pull requests](0008-administrator-bypasses-rulesets-through-pull-requests.md)

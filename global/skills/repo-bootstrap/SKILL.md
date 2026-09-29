@@ -75,11 +75,14 @@ and prepare the pull request with `/pr-prep`.
 
 ## 4. GitHub settings (ask before each)
 
-1. Merge settings: squash only, delete branches on merge:
-   `gh repo edit --enable-squash-merge --enable-merge-commit=false --enable-rebase-merge=false --delete-branch-on-merge`.
+1. Merge settings: squash only, delete branches on merge, through the REST API
+   and read back, because `gh repo edit` has been seen to exit 0 without
+   applying them:
+   `gh api repos/{owner}/{repo} --method PATCH -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false -F delete_branch_on_merge=true`.
 2. Labels from `common/github/labels.json` (`gh label create --force`).
 3. Rulesets, after the pull request title check has run at least once so its
-   name exists:
+   name exists. Both templates let the administrator role bypass (ADR 0008):
+   on main only through pull requests, on tags always.
    - Fill `common/github/rulesets/main.json` with the real check names, show it,
      and create it with
      `gh api repos/{owner}/{repo}/rulesets --method POST --input <file>`.

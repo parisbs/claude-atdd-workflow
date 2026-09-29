@@ -45,12 +45,13 @@ Compare with the templates in `~/.claude/skills/repo-bootstrap/templates/`:
 - Issue and pull request templates carry acceptance criteria and the
   criterion-to-test map.
 - Rulesets (`gh api repos/{owner}/{repo}/rulesets` and each ruleset by id):
-  main requires pull requests with zero approvals, required checks, linear
-  history, no force push or deletion, and has no bypass actors; `v*` tags cannot
-  be updated or deleted. Legacy branch protection or release-branch rulesets
+  main requires pull requests with zero approvals, squash merges, required
+  checks, linear history, no force push or deletion, and only the administrator
+  role as bypass actor in `pull_request` mode; `v*` tags cannot be updated or
+  deleted except by the administrator. Legacy branch protection or release-branch rulesets
   left over.
 - Repository settings: squash merge only, branches deleted on merge
-  (`gh repo view --json squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,deleteBranchOnMerge`).
+  (`gh api repos/{owner}/{repo} --jq '{allow_squash_merge,allow_merge_commit,allow_rebase_merge,delete_branch_on_merge}'`).
 - Recent commit subjects on `main` follow Conventional Commits.
 - Stale branches: merged branches still present locally or on the remote, and
   release branches that outlived their tag.

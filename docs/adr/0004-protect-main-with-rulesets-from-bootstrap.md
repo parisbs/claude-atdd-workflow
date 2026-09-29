@@ -1,6 +1,6 @@
 # 0004. Protect main with rulesets applied by repo-bootstrap
 
-- Status: accepted
+- Status: accepted, amended by [0008](0008-administrator-bypasses-rulesets-through-pull-requests.md)
 - Date: 2026-09-29
 
 ## Context
