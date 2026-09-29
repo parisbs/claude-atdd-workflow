@@ -1,0 +1,39 @@
+# {{Project name}}
+
+{{One or two sentences: what this is and who it is for. Nothing an agent can
+read from the code.}}
+
+## Commands
+
+- Verify: `{{the one command that mirrors CI, for example ./gradlew check}}`
+- {{Other commands only when they are not obvious from the build files.}}
+
+## Invariants
+
+{{Rules the design rests on, each with its reason and the ADR that records it.
+Breaking one is a regression even if the build passes. Delete this section if
+there are none yet.}}
+
+## Stack rules
+
+{{Pasted from the stack template, then adapted to what this repository actually
+uses.}}
+
+## Conventions
+
+- Git: gitflow branch names (`feature/`, `fix/`, `hotfix/`, `release/`,
+  `chore/`, `docs/`, `refactor/`, `test/`), squash merge to `main`, releases are
+  annotated `vX.Y.Z` tags; a `release/X.Y.Z` branch only prepares one and is
+  deleted after merging.
+- Commits and pull request titles: Conventional Commits in English, one line,
+  imperative mood. CI checks the pull request title.
+- Code, comments and documentation are in English.
+- Documentation diagrams use Mermaid and carry a short prose description.
+- The changelog changes only when preparing a release.
+- Decisions that close an alternative are recorded in `{{docs/adr}}/`.
+
+## Workflow
+
+- Issues carry acceptance criteria as `WHEN ... THEN ...`, numbered `AC-n`.
+  Tests that prove a criterion carry its identifier in their name.
+- Review: {{none | codex}}

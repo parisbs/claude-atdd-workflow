@@ -1,0 +1,26 @@
+name: Bug
+description: Behaviour that differs from what it should be.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behaviour
+      description: What happens, with the exact steps, version and environment.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: The regression test that must fail before the fix and pass after it, as WHEN ... THEN ..., numbered AC-n.
+      placeholder: |
+        - AC-1 (unit): WHEN ... THEN ...
+    validations:
+      required: true

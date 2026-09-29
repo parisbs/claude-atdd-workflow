@@ -1,0 +1,7 @@
+@AGENTS.md
+
+## Claude Code
+
+{{Only what is specific to Claude Code: project skills, hooks and path-scoped
+rules under `.claude/`, and when to use them. Delete this section if there is
+nothing.}}
