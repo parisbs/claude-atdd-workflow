@@ -62,6 +62,10 @@ action on GitHub.
   acceptance criteria and verification sections merged in. Remove duplicate
   templates that differ only in file name case.
 - `.github/workflows/pr-title.yml` from the template.
+- `.github/dependabot.yml`, when present: set each ecosystem's
+  `commit-message` to `prefix: "build"` (dependencies) or `prefix: "ci"`
+  (GitHub Actions) with `include: "scope"`, so Dependabot titles its pull
+  requests `build(deps): ...` and passes the title check.
 - Documentation diagrams: convert ASCII diagrams to Mermaid with a prose
   description when touched; do not rewrite untouched documents.
 

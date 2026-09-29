@@ -33,7 +33,24 @@ function hasFlag(args, ...flags) {
   return args.some((a) => flags.includes(a) || flags.some((f) => f.startsWith('--') && a.startsWith(`${f}=`)));
 }
 
-function checkGit(args, cwd, verdict) {
+// A chain such as `git checkout -b feature/x && git commit ...` is evaluated
+// before any of it runs, so a branch switch earlier in the chain is recorded
+// here and used for the commands after it.
+function trackSwitch(sub, rest, dir, branches) {
+  if (sub !== 'checkout' && sub !== 'switch') return;
+  const create = rest.findIndex((a) => ['-b', '-B', '-c', '-C'].includes(a));
+  if (create >= 0 && rest[create + 1]) {
+    branches.set(dir, rest[create + 1]);
+    return;
+  }
+  if (rest.includes('--')) return; // restoring files, not switching
+  const target = rest.find((a) => !a.startsWith('-'));
+  if (target && git(dir, ['rev-parse', '--verify', '-q', `refs/heads/${target}`]) !== undefined) {
+    branches.set(dir, target);
+  }
+}
+
+function checkGit(args, cwd, verdict, branches) {
   // git [-C dir] <subcommand> ...
   let dir = cwd;
   let i = 0;
@@ -47,7 +64,8 @@ function checkGit(args, cwd, verdict) {
   }
   const sub = args[i];
   const rest = args.slice(i + 1);
-  const branch = git(dir, ['branch', '--show-current']);
+  trackSwitch(sub, rest, dir, branches);
+  const branch = branches.get(dir) ?? git(dir, ['branch', '--show-current']);
   const hasCommits = git(dir, ['rev-parse', '--verify', '-q', 'HEAD']) !== undefined;
 
   if (sub === 'commit') {
@@ -127,6 +145,7 @@ try {
 
   const verdict = new Verdict();
   let cwd = event.cwd ?? process.cwd();
+  const branches = new Map();
   for (const segment of segments(command)) {
     const w = words(segment);
     // Skip leading environment assignments such as FOO=1 git push.
@@ -134,7 +153,7 @@ try {
     if (w[0] === 'cd' && w[1]) {
       cwd = isAbsolute(w[1]) ? w[1] : resolve(cwd, w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
     } else if (w[0] === 'git') {
-      checkGit(w.slice(1), cwd, verdict);
+      checkGit(w.slice(1), cwd, verdict, branches);
     } else if (w[0] === 'gh') {
       checkGh(w.slice(1), verdict);
     } else if (w[0] === 'supabase' || (w[0] === 'npx' && w[1] === 'supabase')) {

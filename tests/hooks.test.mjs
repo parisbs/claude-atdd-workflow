@@ -64,6 +64,17 @@ describe('guard-git', () => {
     rmSync(empty, { recursive: true, force: true });
   });
 
+  test('follows a branch switch earlier in the same chain', () => {
+    assert.equal(bash(dir, 'git checkout -b feature/chain && git add . && git commit -m "feat: x"').decision, 'allow');
+    assert.equal(bash(dir, 'git switch -c feature/chain2 && git commit -m "feat: x"').decision, 'allow');
+    sh(dir, 'branch', 'feature/existing');
+    assert.equal(bash(dir, 'git checkout feature/existing && git commit -m "feat: x"').decision, 'allow');
+    assert.equal(bash(dir, 'git checkout -- README.md && git commit -m "feat: x"').decision, 'deny');
+    sh(dir, 'checkout', '-q', 'feature/existing');
+    assert.equal(bash(dir, 'git checkout main && git commit -m "feat: x"').decision, 'deny');
+    sh(dir, 'checkout', '-q', 'main');
+  });
+
   test('denies --no-verify', () => {
     sh(dir, 'checkout', '-q', '-b', 'feature/nv');
     assert.equal(bash(dir, 'git commit --no-verify -m "feat: x"').decision, 'deny');

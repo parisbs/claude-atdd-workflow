@@ -40,6 +40,8 @@ the result.
 Compare with the templates in `~/.claude/skills/repo-bootstrap/templates/`:
 
 - Pull request title check workflow present and equivalent.
+- Dependabot, when configured, uses conventional commit prefixes, or its pull
+  requests fail the title check.
 - Issue and pull request templates carry acceptance criteria and the
   criterion-to-test map.
 - Rulesets (`gh api repos/{owner}/{repo}/rulesets` and each ruleset by id):
