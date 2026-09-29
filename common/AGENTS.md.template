@@ -31,6 +31,8 @@ uses.}}
 - Documentation diagrams use Mermaid and carry a short prose description.
 - The changelog changes only when preparing a release.
 - Decisions that close an alternative are recorded in `{{docs/adr}}/`.
+  Records are immutable once merged to `main`: a changed decision is a new
+  record that supersedes the old one, which changes only in its status line.
 
 ## Workflow
 

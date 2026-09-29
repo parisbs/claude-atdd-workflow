@@ -1,6 +1,8 @@
 # Architecture decision records
 
-Short MADR form. Create new records from `template.md`.
+Short MADR form. Create new records from `template.md`. Records are immutable
+once merged to `main`: a changed decision is a new record that supersedes the
+old one, which changes only in its status line.
 
 - [0001. Separate generic, personal and repository configuration](0001-separate-generic-personal-and-repository-configuration.md)
 - [0002. Enforce with hooks, permissions and CI, and guide with prose](0002-enforce-with-hooks-permissions-and-ci.md)
@@ -10,3 +12,4 @@ Short MADR form. Create new records from `template.md`.
 - [0006. Make AGENTS.md the canonical instructions file of a repository](0006-agents-md-is-the-canonical-repository-file.md)
 - [0007. User skill names never shadow project skills](0007-user-skill-names-never-shadow-project-skills.md)
 - [0008. Let the administrator bypass rulesets, only through pull requests](0008-administrator-bypasses-rulesets-through-pull-requests.md)
+- [0009. ADRs are immutable once merged](0009-adrs-are-immutable-once-merged.md)

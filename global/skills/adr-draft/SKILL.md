@@ -23,8 +23,12 @@ repository, never a default, when it has a convention.
    alternatives section is mandatory whatever the template calls it: name each
    rejected option and the concrete reason it was rejected. Status is
    `proposed`, the date is today.
-5. When the decision reverses or narrows an earlier record, amend or supersede
-   that record explicitly instead of contradicting it silently.
+5. Records merged to `main` are immutable. When the decision reverses or
+   narrows an earlier record, the new record supersedes it, and the old record
+   changes only in its status line (`superseded by NNNN`, or a note naming the
+   part that is superseded). Never edit a merged record's body, not even to fix
+   a stale reference: note it in the new record's consequences instead. A
+   record still in an open pull request is a draft and can be edited.
 6. Add the record to the index in numeric order when the repository keeps one.
 7. Diagrams use Mermaid and carry a short prose description.
 

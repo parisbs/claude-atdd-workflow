@@ -46,6 +46,15 @@ action on GitHub.
 - Paste the stack rules, adapted to what the repository actually uses. Critical
   rules always stay in the repository, even when another repository repeats
   them.
+- Repoint every living reference to the old file (skills, agents, rules,
+  README, contributing guide, design notes, code comments) at `AGENTS.md`.
+  Merged ADRs are immutable: record the move in a new ADR instead of editing
+  them, and state the policy in the ADR index when the repository does not. When a
+  comment changes under a path coupled to generated output, prove the output
+  did not change.
+- Keep every repository rule at least as strong as it was. Where a repository
+  rule is stricter than the template (for example, all diagram content also in
+  text), keep the repository's.
 - `CLAUDE.md` becomes `@AGENTS.md` plus a Claude Code section listing the
   project's skills, hooks and rules. Project skills, commands, agents, hooks and
   rules stay where they are; flag any whose name a user-level skill shadows.

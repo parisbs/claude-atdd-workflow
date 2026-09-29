@@ -29,6 +29,9 @@ the result.
 
 - ADR index matches the files; numbering has no gaps or duplicates; each record
   has a status; superseded records name their successor.
+- No merged ADR had its body edited after merging: for each record,
+  `git log --follow --format=%h -- <file>` on `main` should show one content
+  commit plus, at most, status-line changes (check each later diff).
 - `docs/ROADMAP.md` against GitHub: items marked done have merged pull requests
   or closed issues; open milestones and `next` issues appear in the roadmap
   (`gh issue list --state all`, `gh api repos/{owner}/{repo}/milestones`).

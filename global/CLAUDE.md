@@ -62,6 +62,11 @@ silent. Personal preferences live in `~/.claude/rules/personal.md`.
   unless the repository says otherwise.
 - Documentation diagrams use Mermaid and always carry a short prose
   description of what they show.
+- ADRs are immutable once merged to `main`. A changed decision is a new record
+  that supersedes the old one; the old record changes only in its status line.
+  A stale reference inside an accepted record stays as written, and the new
+  record notes it. While a record is still in an open pull request it is a
+  draft and can be edited.
 - Instruction files (`AGENTS.md`, `CLAUDE.md`) hold only what cannot be derived
   from the code: pitfalls, rationale, invariants and conventions that differ
   from tool defaults.
