@@ -4,19 +4,21 @@
 //
 // The default is stack independent plus the test-configuration paths of the
 // oracle (one list for both guards), plus database migrations. A repository adds
-// its own paths with a line `Human merge:` in AGENTS.md.
+// its own paths with a line `Human merge:` in CLAUDE.md (ADR 0012).
 import { TEST_CONFIG, globToRegExp } from './oracle.mjs';
 
 export const CONTROL_PLANE = [
   /(^|\/)\.github\/workflows\//,
   /(^|\/)docs\/(adr|adrs|decisions)\//,
+  // AGENTS.md is listed too: a repository should not have one (ADR 0012), and a stray or edited
+  // one must still reach the human.
   /(^|\/)(AGENTS|CLAUDE)\.md$/,
   /(^|\/)\.claude\//,
   /(^|\/)supabase\/migrations\//,
   ...TEST_CONFIG,
 ];
 
-// Reads `Human merge: a, b/**, c` from the text of an AGENTS.md. `none`, or no
+// Reads `Human merge: a, b/**, c` from the text of a CLAUDE.md. `none`, or no
 // such line, adds nothing. A trailing slash means a whole directory.
 export function humanMergeMatchers(agentsMd) {
   const line = /^\s*(?:[-*]\s*)?Human merge:[ \t]*(.+?)[ \t]*$/im.exec(agentsMd ?? '');

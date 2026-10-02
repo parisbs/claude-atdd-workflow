@@ -267,16 +267,16 @@ function mergeReasons(args, cwd) {
   let extra = [];
   const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
   if (!where) {
-    reasons.push('Could not read AGENTS.md of the base branch: the pull request URL has an unexpected shape.');
+    reasons.push('Could not read CLAUDE.md of the base branch: the pull request URL has an unexpected shape.');
   } else {
     const [, host, owner, name] = where;
     const file = gh([
       'api', ...(host === 'github.com' ? [] : ['--hostname', host]),
       '-H', 'Accept: application/vnd.github.raw+json',
-      `repos/${owner}/${name}/contents/AGENTS.md?ref=${encodeURIComponent(pr.baseRefName)}`,
+      `repos/${owner}/${name}/contents/CLAUDE.md?ref=${encodeURIComponent(pr.baseRefName)}`,
     ], cwd);
     if (file.stdout !== undefined) extra = humanMergeMatchers(file.stdout);
-    else if (!/HTTP 404/.test(file.stderr ?? '')) reasons.push(`Could not read AGENTS.md of the base branch: ${file.failure}.`);
+    else if (!/HTTP 404/.test(file.stderr ?? '')) reasons.push(`Could not read CLAUDE.md of the base branch: ${file.failure}.`);
   }
   const sensitive = controlPlaneFiles(paths, extra);
   if (sensitive.length > 0) reasons.push(`Control-plane files changed: ${sensitive.join(', ')}.`);

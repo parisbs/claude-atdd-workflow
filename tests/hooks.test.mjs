@@ -227,7 +227,12 @@ const fs = require('node:fs');
 const scenario = JSON.parse(fs.readFileSync(process.env.FAKE_GH, 'utf8'));
 fs.appendFileSync(process.env.FAKE_GH + '.calls', JSON.stringify(process.argv.slice(2)) + '\n');
 const kind = process.argv[2] === 'pr' ? 'view' : process.argv[2] === 'api' ? 'api' : 'other';
-const step = scenario[kind] || { exit: 1, stderr: 'fake gh: unexpected call' };
+let step = scenario[kind] || { exit: 1, stderr: 'fake gh: unexpected call' };
+if (kind === 'api' && step.routes) {
+  const line = process.argv.slice(2).join(' ');
+  const key = Object.keys(step.routes).find((k) => line.includes(k));
+  step = key ? step.routes[key] : { exit: 1, stderr: 'fake gh: unexpected call' };
+}
 const finish = () => {
   if (step.stderr) process.stderr.write(step.stderr);
   if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'string' ? step.stdout : JSON.stringify(step.stdout));
@@ -402,6 +407,7 @@ describe('guard-git merge decision', () => {
       'AGENTS.md',
       'CLAUDE.md',
       'app/AGENTS.md',
+      'app/CLAUDE.md',
       '.claude/settings.json',
       'package.json',
       'packages/a/package.json',
@@ -438,31 +444,45 @@ describe('guard-git merge decision', () => {
     }), 'ordinary files');
   });
 
-  test('AC-4 reads Human merge: from the base branch of the pull request with gh api', () => {
-    const agents = { stdout: '# Repo\n\n## Workflow\n\n- Review: none\n- Human merge: src/codex/args.ts, server.json\n' };
-    const outcome = (file, base = 'main') => merge(SQUASH, { pr: green({ files: [file], baseRefName: base }), api: agents });
+  test('AC-1 (#17) reads Human merge: from the CLAUDE.md of the base branch with gh api', () => {
+    const claudeMd = { stdout: '# Repo\n\n## Workflow\n\n- Review: none\n- Human merge: src/codex/args.ts, server.json\n' };
+    const api = { routes: { 'contents/CLAUDE.md': claudeMd } };
+    const outcome = (file, base = 'main') => merge(SQUASH, { pr: green({ files: [file], baseRefName: base }), api });
     asks(outcome('src/codex/args.ts'), 'listed file', /src\/codex\/args\.ts/);
     asks(outcome('server.json'), 'second listed file', /server\.json/);
     allowed(outcome('src/other.ts'), 'unlisted file');
     const call = outcome('src/other.ts', 'develop').calls.find((c) => c[0] === 'api');
-    assert.ok(call, 'gh api was not called to read AGENTS.md');
+    assert.ok(call, 'gh api was not called to read CLAUDE.md');
     const line = call.join(' ');
-    assert.match(line, /repos\/o\/r\/contents\/AGENTS\.md/);
+    assert.match(line, /repos\/o\/r\/contents\/CLAUDE\.md/);
     assert.match(line, /ref=develop/);
   });
 
   test('AC-4 accepts globs in Human merge:, and none adds nothing', () => {
-    const globs = { stdout: '- Human merge: src/codex/**, **/*.sql\n' };
+    const globs = { routes: { 'contents/CLAUDE.md': { stdout: '- Human merge: src/codex/**, **/*.sql\n' } } };
     asks(merge(SQUASH, { pr: green({ files: ['src/codex/deep/x.ts'] }), api: globs }), 'glob directory');
     asks(merge(SQUASH, { pr: green({ files: ['db/seed.sql'] }), api: globs }), 'glob extension');
-    const none = { stdout: '- Human merge: none\n' };
+    const none = { routes: { 'contents/CLAUDE.md': { stdout: '- Human merge: none\n' } } };
     allowed(merge(SQUASH, { pr: green({ files: ['src/codex/x.ts'] }), api: none }), 'none, ordinary file');
     asks(merge(SQUASH, { pr: green({ files: ['AGENTS.md'] }), api: none }), 'none, default path');
   });
 
-  test('AC-4 applies only the defaults when the base has no AGENTS.md', () => {
-    allowed(merge(SQUASH, { pr: green({ files: ['src/x.ts'] }), api: NOT_FOUND }), 'no AGENTS.md, ordinary file');
-    asks(merge(SQUASH, { pr: green({ files: ['.github/workflows/ci.yml'] }), api: NOT_FOUND }), 'no AGENTS.md, default path');
+  test('AC-2 (#17) applies only the defaults when the base has no CLAUDE.md', () => {
+    const api = { routes: { 'contents/CLAUDE.md': NOT_FOUND } };
+    allowed(merge(SQUASH, { pr: green({ files: ['src/x.ts'] }), api }), 'no CLAUDE.md, ordinary file');
+    asks(merge(SQUASH, { pr: green({ files: ['.github/workflows/ci.yml'] }), api }), 'no CLAUDE.md, default path');
+  });
+
+  test('AC-4 (#17) ignores a Human merge: line that only AGENTS.md carries and never requests that file', () => {
+    const api = {
+      routes: {
+        'contents/CLAUDE.md': NOT_FOUND,
+        'contents/AGENTS.md': { stdout: '- Human merge: src/x.ts\n' },
+      },
+    };
+    const result = merge(SQUASH, { pr: green({ files: ['src/x.ts'] }), api });
+    allowed(result, 'line only in AGENTS.md');
+    assert.ok(!result.calls.some((c) => c.join(' ').includes('AGENTS.md')), 'AGENTS.md must not be requested');
   });
 
   test('AC-5 asks when the pull request carries needs-human, in any capitalisation', () => {
@@ -508,9 +528,10 @@ describe('guard-git merge decision', () => {
     asks(merge(SQUASH, { pr: green({ files, changedFiles: 143 }) }), 'truncated file list', /files/i);
   });
 
-  test('AC-6 asks when AGENTS.md cannot be read for a reason other than not found', () => {
-    asks(merge(SQUASH, { api: { exit: 1, stderr: 'gh: Internal Server Error (HTTP 500)' } }), 'server error', /AGENTS\.md/);
-    asks(merge(SQUASH, { api: { exit: 1, stderr: 'dial tcp: lookup api.github.com: no such host' } }), 'network', /AGENTS\.md/);
+  test('AC-3 (#17) asks, naming CLAUDE.md, when it cannot be read for a reason other than not found', () => {
+    const fails = (stderr) => ({ routes: { 'contents/CLAUDE.md': { exit: 1, stderr } } });
+    asks(merge(SQUASH, { api: fails('gh: Internal Server Error (HTTP 500)') }), 'server error', /CLAUDE\.md/);
+    asks(merge(SQUASH, { api: fails('dial tcp: lookup api.github.com: no such host') }), 'network', /CLAUDE\.md/);
   });
 });
 
