@@ -7,7 +7,8 @@
 // - a force push asks, and is denied when it targets main;
 // - `gh pr merge` must squash and must never use --admin;
 // - deploys to a linked Supabase project ask first;
-// - an ATDD oracle tag cannot be deleted or moved by the agent.
+// - an ATDD oracle tag cannot be deleted or moved by the agent, and creating one
+//   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010).
 //
 // Parsing is deliberately simple: the command is split into segments on
 // shell operators, and each segment is read as words. It recognises the common
@@ -27,6 +28,61 @@ function words(segment) {
 // extra segments that match nothing.
 function segments(command) {
   return command.split(/&&|\|\||;|\||\n/).map((s) => s.trim()).filter(Boolean);
+}
+
+// Reads the options of a git subcommand into the flags that were given and the
+// positional words, knowing which options consume the next word. Short options
+// can be combined (-df, -am "msg"), and an option that takes a value ends the
+// cluster: the rest of the cluster is the value, or the next word when nothing
+// follows it.
+function parseOptions(args, { longWithValue = [], shortWithValue = [], shortOptionalValue = [] }) {
+  const flags = new Set();
+  const positional = [];
+  let onlyPositional = false;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (onlyPositional || !arg.startsWith('-') || arg === '-') {
+      positional.push(arg);
+    } else if (arg === '--') {
+      onlyPositional = true;
+    } else if (arg.startsWith('--')) {
+      const [name] = arg.split('=');
+      flags.add(name);
+      if (longWithValue.includes(name) && !arg.includes('=')) i += 1;
+    } else {
+      for (let k = 1; k < arg.length; k += 1) {
+        flags.add(`-${arg[k]}`);
+        if (shortWithValue.includes(arg[k])) {
+          if (k === arg.length - 1) i += 1;
+          break;
+        }
+        if (shortOptionalValue.includes(arg[k])) break;
+      }
+    }
+  }
+  return { flags, positional };
+}
+
+const isOracleTag = (name) => name.startsWith('oracle/');
+
+// What `git tag` is asked to do, and to which tag names. Without a creation,
+// deletion, move or verification flag a bare name creates a tag; with a listing
+// flag, or with no name at all, the command only reads.
+function classifyTag(args) {
+  const { flags, positional } = parseOptions(args, {
+    longWithValue: ['--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains',
+      '--no-contains', '--points-at', '--merged', '--no-merged', '--column'],
+    shortWithValue: ['m', 'F', 'u'],
+    shortOptionalValue: ['n'],
+  });
+  const has = (...names) => names.some((name) => flags.has(name));
+  if (has('-d', '--delete')) return { mode: 'delete', names: positional };
+  if (has('-v', '--verify')) return { mode: 'read', names: positional };
+  if (has('-l', '--list', '-n', '--contains', '--no-contains', '--points-at', '--merged', '--no-merged',
+    '--sort', '--format', '--column') || positional.length === 0) {
+    return { mode: 'read', names: positional };
+  }
+  return { mode: has('-f', '--force') ? 'move' : 'create', names: positional.slice(0, 1) };
 }
 
 function hasFlag(args, ...flags) {
@@ -112,9 +168,27 @@ function checkGit(args, cwd, verdict, branches) {
   }
 
   if (sub === 'tag') {
-    const oracle = rest.some((a) => a.startsWith('oracle/'));
-    if (oracle && hasFlag(rest, '-d', '--delete', '-f', '--force')) {
-      verdict.add('deny', 'ATDD oracle tags are removed or moved by the human, not the agent.');
+    const { mode, names } = classifyTag(rest);
+    if (names.some(isOracleTag)) {
+      if (mode === 'delete' || mode === 'move') {
+        verdict.add('deny', 'ATDD oracle tags are removed or moved by the human, not the agent.');
+      } else if (mode === 'create') {
+        verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
+      }
+    }
+  }
+
+  if (sub === 'update-ref') {
+    // update-ref writes the same refs as git tag, so it gets the same rules.
+    const { flags, positional } = parseOptions(rest, { shortWithValue: ['m'] });
+    const ref = positional[0];
+    if (ref?.startsWith('refs/tags/') && isOracleTag(ref.slice('refs/tags/'.length))) {
+      const exists = git(dir, ['rev-parse', '--verify', '-q', ref]) !== undefined;
+      if (flags.has('-d') || exists) {
+        verdict.add('deny', 'ATDD oracle tags are removed or moved by the human, not the agent.');
+      } else {
+        verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
+      }
     }
   }
 }

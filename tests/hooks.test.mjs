@@ -120,11 +120,103 @@ describe('guard-git', () => {
   test('protects oracle tags from the agent', () => {
     assert.equal(bash(dir, 'git tag -d oracle/feature/x').decision, 'deny');
     assert.equal(bash(dir, 'git tag -f oracle/feature/x HEAD').decision, 'deny');
-    assert.equal(bash(dir, 'git tag oracle/feature/x').decision, 'allow');
+    assert.equal(bash(dir, 'git tag oracle/feature/x').decision, 'ask');
   });
 
   test('ignores commands it does not govern', () => {
     assert.equal(bash(dir, 'ls -la && echo "git push origin main"').decision, 'allow');
+  });
+});
+
+// Issue #8: creating an oracle tag is the human's approval of the oracle, so it asks;
+// moving or deleting one is denied through every route the guard can read.
+describe('guard-git oracle tags', () => {
+  let dir;
+  before(() => { dir = repo(); });
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const expectAll = (commands, decision) => {
+    for (const command of commands) {
+      assert.equal(bash(dir, command).decision, decision, command);
+    }
+  };
+
+  test('AC-1 asks before git tag creates an oracle tag in any flag form', () => {
+    expectAll([
+      'git tag oracle/x',
+      'git tag oracle/feature/a-b abc1234',
+      'git tag -a oracle/x -m "msg"',
+      'git tag -m "msg" oracle/x',
+      'git tag --annotate oracle/x --message=msg',
+      'git tag -am "msg" oracle/x',
+      'git tag -s oracle/x -m m',
+      'git tag -u KEYID oracle/x -m m',
+      'git tag -F notes.txt oracle/x HEAD~1',
+      `git -C ${dir} tag oracle/x`,
+      `cd ${dir} && git tag oracle/x`,
+      'git add . && git tag oracle/x',
+    ], 'ask');
+  });
+
+  test('AC-2 gives no verdict when tags are only listed or read', () => {
+    expectAll([
+      'git tag',
+      "git tag -l 'oracle/*'",
+      'git tag --list oracle/*',
+      'git tag -l --sort=-v:refname',
+      'git tag -n oracle/x',
+      'git tag -v oracle/x',
+      'git tag --contains HEAD',
+      'git tag --points-at HEAD',
+    ], 'allow');
+  });
+
+  test('AC-3 denies deleting or moving an oracle tag with git tag, combined flags included', () => {
+    expectAll([
+      'git tag -d oracle/x',
+      'git tag --delete oracle/x',
+      'git tag -df oracle/x',
+      'git tag -fd oracle/x',
+      'git tag -f oracle/x HEAD',
+      'git tag --force oracle/x HEAD',
+      'git tag -d v1.0.0 oracle/x',
+      'git tag -d oracle/x v1.0.0',
+    ], 'deny');
+  });
+
+  test('AC-4 denies git update-ref on an oracle tag that exists', () => {
+    sh(dir, 'tag', 'oracle/feature/x');
+    expectAll([
+      'git update-ref refs/tags/oracle/feature/x HEAD',
+      'git update-ref -d refs/tags/oracle/feature/x',
+      'git update-ref --no-deref refs/tags/oracle/feature/x HEAD',
+      'git update-ref -m "retag" refs/tags/oracle/feature/x HEAD',
+      'git update-ref -m retag -d refs/tags/oracle/feature/x',
+    ], 'deny');
+  });
+
+  test('AC-4 asks when git update-ref would create an oracle tag that does not exist', () => {
+    expectAll([
+      'git update-ref refs/tags/oracle/feature/new HEAD',
+      'git update-ref -m "approved" refs/tags/oracle/feature/new HEAD',
+    ], 'ask');
+  });
+
+  test('AC-4 allows git update-ref on refs that are not oracle tags', () => {
+    expectAll([
+      'git update-ref refs/heads/feature/x HEAD',
+      'git update-ref refs/tags/v1.0.0 HEAD',
+      'git update-ref refs/heads/oracle/x HEAD',
+    ], 'allow');
+  });
+
+  test('AC-5 gives no verdict when oracle/ appears only in a message or in another tag', () => {
+    expectAll([
+      'git tag -a v1.2.3 -m "oracle/x was removed"',
+      'git tag -m "oracle/x fix" v1.2.3',
+      'git tag -f -m "oracle/x fix" v1.2.3',
+      'git tag v1.0.0 -m "see oracle/x"',
+    ], 'allow');
   });
 });
 
