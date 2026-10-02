@@ -26,7 +26,7 @@ instructions, through `repo-bootstrap` integrate mode, piloted on one
 repository first. The list of repositories is tracked in this repository's
 issues, not here. For each one:
 
-- `AGENTS.md` in English as the canonical file, `CLAUDE.md` importing it.
+- `CLAUDE.md` in English as the only instruction file (ADR 0012).
 - Remove content that can be derived from the code.
 - Declare conventions and one verify command.
 - Copy the critical rules of the stack (for example the Supabase security rules
@@ -98,7 +98,8 @@ Measure on real repositories instead of relying on Python benchmarks.
 - Pitest support for Kotlin, and whether it needs the commercial Arcmutate
   plugin.
 - Kotest property testing: current version and Gradle integration.
-- That Codex reads `AGENTS.md` and `~/.codex/AGENTS.md`.
+- How Codex loads project documents beyond the cases ADR 0012 checked: the size cap, nested
+  directories, a global instruction file in `~/.codex`, and `codex exec resume`.
 - The `codex-subagent-mcp` README still said Node 20 when the minimum became 22.
 - The behaviour of an `@path` import whose target does not exist.
 - Whether `axScreenReader` has any effect in the desktop app.

@@ -27,7 +27,7 @@ acceptance tests.
   versioned. `preferences.md` becomes `~/.claude/rules/personal.md`;
   `settings.json` is merged over the generic settings.
 - `common/`: templates every repository receives through `repo-bootstrap`:
-  `AGENTS.md` and `CLAUDE.md` skeletons, issue and pull request templates, the
+  a `CLAUDE.md` skeleton, issue and pull request templates, the
   pull request title check, labels and GitHub rulesets.
 - `android/`, `flutter/`, `node-mcp/`, `supabase/`: per-stack verify
   commands, test paths and the rules a repository of that stack should carry.
@@ -55,7 +55,7 @@ at any time to detect drift.
 
 ## Workflow in short
 
-Every repository stays self-sufficient: its `AGENTS.md` carries its
+Every repository stays self-sufficient: its `CLAUDE.md` carries its
 conventions, verify command and critical rules, and its CI and rulesets
 enforce them. The user level only adds generic defaults, personal preferences,
 a safety net of hooks, and skills.

@@ -13,7 +13,7 @@ Run this in a fresh session. Read only:
 
 - the issue and its criterion-to-test comment (`gh issue view <n> --comments`);
 - the oracle: `git show --stat oracle/<branch>` and the tests it contains;
-- the repository's `AGENTS.md`.
+- the repository's `CLAUDE.md`.
 
 Do not read the transcript of the session that wrote the tests.
 

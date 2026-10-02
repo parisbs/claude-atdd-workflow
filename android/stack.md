@@ -15,7 +15,7 @@ a module with `:<module>:<task>`. Instrumented tests
 `src/test/`, `src/androidTest/` and Kotlin Multiplatform source sets such as
 `src/commonTest/` and `src/androidHostTest/`. The guard covers them by default.
 
-## Rules for AGENTS.md
+## Rules for CLAUDE.md
 
 Adapt each line to what the repository actually uses; delete what does not
 apply.

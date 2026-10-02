@@ -13,7 +13,7 @@ When the project uses code generation, run
 `test/` and `integration_test/`, and files ending in `_test.dart`. The guard
 covers them by default.
 
-## Rules for AGENTS.md
+## Rules for CLAUDE.md
 
 Adapt each line to what the repository actually uses; delete what does not
 apply.

@@ -14,7 +14,7 @@ so their quality matters more than their speed.
 ## 1. Understand before writing
 
 - If an issue number was given, read it with `gh issue view <n> --comments`.
-- Read the repository's `AGENTS.md`, the ADRs its instructions point to, and
+- Read the repository's `CLAUDE.md`, the ADRs its instructions point to, and
   only the code the request touches. Do not survey the whole codebase.
 - Read the repository's issue templates under `.github/ISSUE_TEMPLATE/` and
   use the one that fits. Without a template, use the structure below.

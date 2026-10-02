@@ -1,8 +1,8 @@
 # Workflow defaults
 
-Generic defaults for every repository. A repository's own `AGENTS.md` or
-`CLAUDE.md` wins wherever it defines a convention; these apply only where it is
-silent. Personal preferences live in `~/.claude/rules/personal.md`.
+Generic defaults for every repository. A repository's own `CLAUDE.md` wins
+wherever it defines a convention; these apply only where it is silent. Personal
+preferences live in `~/.claude/rules/personal.md`.
 
 ## Before starting work
 
@@ -72,7 +72,7 @@ silent. Personal preferences live in `~/.claude/rules/personal.md`.
   A stale reference inside an accepted record stays as written, and the new
   record notes it. While a record is still in an open pull request it is a
   draft and can be edited.
-- Instruction files (`AGENTS.md`, `CLAUDE.md`) hold only what cannot be derived
+- The instruction file (`CLAUDE.md`) holds only what cannot be derived
   from the code: pitfalls, rationale, invariants and conventions that differ
   from tool defaults.
 

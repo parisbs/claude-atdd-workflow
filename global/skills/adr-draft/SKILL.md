@@ -11,7 +11,7 @@ Repositories differ in where they keep ADRs and how they write them. Follow the
 repository, never a default, when it has a convention.
 
 1. Find the ADR directory: `docs/adr/`, `docs/adrs/`, `docs/decisions/` or
-   whatever the repository's `AGENTS.md` names. If none exists, propose
+   whatever the repository's `CLAUDE.md` names. If none exists, propose
    `docs/adr/` with a `template.md` and a `README.md` index, and ask first.
 2. Learn the local format from the template (`template.md`,
    `0000-template.md`) or, without one, from the two most recent records:

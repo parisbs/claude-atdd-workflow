@@ -12,7 +12,11 @@ the result.
 
 ## 1. Instruction files
 
-- `AGENTS.md` exists and `CLAUDE.md` imports it with `@AGENTS.md`.
+- `CLAUDE.md` holds the repository's instructions and nothing else does (ADR 0012).
+  A stray `AGENTS.md` is reported, and so is a `CLAUDE.md` that only imports it with
+  `@AGENTS.md`: either calls for the migration, which moves the content into
+  `CLAUDE.md` and deletes `AGENTS.md`, and which `repo-bootstrap` proposes and the
+  human approves.
 - Every command they name exists: npm scripts in `package.json`, make targets,
   Gradle tasks (`./gradlew tasks --all` only if cheap), Flutter or Supabase
   commands. A `Verify:` line is present.
@@ -20,7 +24,7 @@ the result.
 - Content an agent can derive from the code (directory layouts, dependency and
   version lists, architecture overviews, generic command lists) is flagged for
   removal. Pitfalls, rationale, invariants and non-default conventions stay.
-- Contradictions between `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, skills and
+- Contradictions between `CLAUDE.md`, `.claude/rules/`, skills and
   the user-level `~/.claude/CLAUDE.md`.
 - `CLAUDE.local.md` or auto-memory entries that duplicate user-level personal
   preferences.

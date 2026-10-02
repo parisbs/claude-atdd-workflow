@@ -13,7 +13,7 @@ the verification for phase 2, and nothing about them may be guessed.
 
 - Read the issue with `gh issue view <n> --comments`. Without `AC-n` criteria
   in `WHEN ... THEN ...` form, stop and propose `/issue-draft`.
-- Read the repository's `AGENTS.md`: its verify command, its conventions, and
+- Read the repository's `CLAUDE.md`: its verify command, its conventions, and
   the files the issue names. Work on the issue's branch, created from an
   updated `main`.
 

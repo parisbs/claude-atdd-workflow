@@ -13,7 +13,7 @@ and any contract generation it checks for drift.
 `supabase/tests/` (pgTAP) and the repository's integration test directory. The
 guard covers `supabase/tests/` and `tests/` by default.
 
-## Rules for AGENTS.md
+## Rules for CLAUDE.md
 
 These protect production data; keep them unless the repository has a stronger
 rule.
