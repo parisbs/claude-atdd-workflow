@@ -9,12 +9,16 @@ acceptance tests.
 - `global/`: generic configuration installed into `~/.claude`. Nothing in it
   is specific to one person or one project.
   - `CLAUDE.md`: workflow defaults (git, pull requests, reviews, task levels).
-  - `settings.json`: read-only permissions, `gh pr merge` behind a
-    confirmation, built-in git instructions off, hook wiring.
+  - `settings.json`: read-only permissions, built-in git instructions off, hook
+    wiring. `retired-permissions.json` lists rules that no longer ship and that
+    the installer removes from an installed `settings.json`.
   - `hooks/`: `guard-git.mjs` (no commit or push on main, no `--no-verify`,
-    squash-only merges without `--admin`, confirmation before remote Supabase
-    actions, oracle tags protected), `guard-tests.mjs` (frozen acceptance tests
-    while an `oracle/<branch>` tag exists) and `oracle-check.mjs` (the
+    confirmation before remote Supabase actions, oracle tags created with
+    confirmation and never moved or deleted, and the merge decision: squash
+    only, never `--admin`, and a pull request is merged without a prompt only
+    when its checks passed and it touches no control-plane path),
+    `controlplane.mjs` (those paths), `guard-tests.mjs` (frozen acceptance
+    tests while an `oracle/<branch>` tag exists) and `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle).
   - `skills/`: `issue-draft`, `atdd-oracle`, `atdd-implement`, `adr-draft`,
     `pr-prep`, `drift-audit`, `release-prep` and `repo-bootstrap`. Their names
@@ -28,6 +32,7 @@ acceptance tests.
 - `android/`, `flutter/`, `node-mcp/`, `supabase/`: per-stack verify
   commands, test paths and the rules a repository of that stack should carry.
 - `scripts/install.mjs`: the installer.
+- `CLAUDE.md`: this repository's own instructions, the only instruction file it has (ADR 0012).
 - `docs/`: the decisions (`adr/`), the roadmap and the research behind them.
 
 ## Install
