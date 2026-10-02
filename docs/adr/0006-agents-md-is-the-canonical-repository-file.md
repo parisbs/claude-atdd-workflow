@@ -1,6 +1,6 @@
 # 0006. Make AGENTS.md the canonical instructions file of a repository
 
-- Status: accepted
+- Status: superseded by [0012](0012-keep-repository-instructions-in-claude-md-alone.md)
 - Date: 2026-09-29
 
 ## Context
