@@ -1,6 +1,6 @@
 # 0008. Let the administrator bypass rulesets, only through pull requests
 
-- Status: accepted
+- Status: accepted, amended by [0010](0010-move-human-control-to-the-specification-and-gate-merges.md)
 - Date: 2026-09-29
 - Amends: [0004](0004-protect-main-with-rulesets-from-bootstrap.md)
 

@@ -13,3 +13,5 @@ old one, which changes only in its status line.
 - [0007. User skill names never shadow project skills](0007-user-skill-names-never-shadow-project-skills.md)
 - [0008. Let the administrator bypass rulesets, only through pull requests](0008-administrator-bypasses-rulesets-through-pull-requests.md)
 - [0009. ADRs are immutable once merged](0009-adrs-are-immutable-once-merged.md)
+- [0010. Move human control to the specification and gate merges by verified conditions](0010-move-human-control-to-the-specification-and-gate-merges.md)
+- [0011. Delegate through Claude Code subagents, interchangeable with Codex](0011-delegate-through-subagents-interchangeable-with-codex.md)
