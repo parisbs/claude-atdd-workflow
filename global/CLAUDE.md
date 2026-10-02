@@ -39,6 +39,11 @@ silent. Personal preferences live in `~/.claude/rules/personal.md`.
 - Before pushing or asking to merge, confirm the branch holds only what is
   intended: `git log <base>..HEAD` and `git diff <base> --stat`.
 - After merging, delete the local and remote branches that are no longer used.
+  If the branch has an `oracle/<branch>` tag, it is no longer needed either,
+  but the human removes it (the guard denies the agent). In the message that
+  reports the merge, give them both commands with the branch filled in:
+  `git push origin :refs/tags/oracle/<branch>` and
+  `git tag -d oracle/<branch>`.
 
 ## Pull requests
 
