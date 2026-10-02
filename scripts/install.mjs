@@ -13,7 +13,10 @@
 // - settings: the existing settings.json, then global/settings.json, then
 //   personal/settings.json, merged in that order. Permission lists are unions,
 //   hooks installed by this repository are replaced, anything else already in
-//   the file is kept.
+//   the file is kept. The one exception is global/retired-permissions.json: the
+//   rules listed there ({"ask": [...], "allow": [...], "deny": [...]}) were
+//   installed once and no longer ship, so they are removed from the existing
+//   settings before the merge, because a union alone never lets a rule leave.
 //
 // Files it installed before and no longer ships are removed, using the manifest
 // it writes. Everything it overwrites or removes is first copied to
@@ -104,8 +107,30 @@ function mergeHooks(current, managed) {
   return out;
 }
 
+const retiredRules = () => readJson(join(repo, 'global', 'retired-permissions.json'));
+
+// The retired rules still present in a settings object, as "<list> <rule>".
+function retiredPresent(settings) {
+  const present = [];
+  for (const [list, rules] of Object.entries(retiredRules())) {
+    for (const rule of rules) {
+      if (Array.isArray(settings.permissions?.[list]) && settings.permissions[list].includes(rule)) present.push(`${list} ${rule}`);
+    }
+  }
+  return present;
+}
+
+function withoutRetired(settings) {
+  if (!isObject(settings.permissions)) return settings;
+  const permissions = { ...settings.permissions };
+  for (const [list, rules] of Object.entries(retiredRules())) {
+    if (Array.isArray(permissions[list])) permissions[list] = permissions[list].filter((rule) => !rules.includes(rule));
+  }
+  return { ...settings, permissions };
+}
+
 function desiredSettings(target) {
-  const existing = readJson(join(target, 'settings.json'));
+  const existing = withoutRetired(readJson(join(target, 'settings.json')));
   const generic = readJson(join(repo, 'global', 'settings.json'));
   const personal = readJson(join(repo, 'personal', 'settings.json'));
   return mergeSettings(mergeSettings(existing, generic), personal);
@@ -132,6 +157,7 @@ function main() {
     const drift = [
       ...changed.map((f) => `differs or missing: ${f}`),
       ...orphans.map((f) => `no longer shipped: ${f}`),
+      ...retiredPresent(readJson(settingsPath)).map((rule) => `retired permission rule still installed: ${rule}`),
       ...(settingsChanged ? ['settings.json differs from the merged settings'] : []),
     ];
     if (drift.length === 0) {

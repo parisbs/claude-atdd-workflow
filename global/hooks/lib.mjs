@@ -30,6 +30,13 @@ export class Verdict {
   constructor() {
     this.decision = 'allow';
     this.reasons = [];
+    this.explicitAllow = undefined;
+  }
+
+  // An allow that is printed, as opposed to staying silent, lifts the permission
+  // prompt for the whole command. Only for decisions that were actually verified.
+  allowExplicitly(reason) {
+    this.explicitAllow = reason;
   }
 
   add(decision, reason) {
@@ -38,7 +45,19 @@ export class Verdict {
   }
 
   emit() {
-    if (this.decision === 'allow') process.exit(0);
+    if (this.decision === 'allow' && this.explicitAllow === undefined) process.exit(0);
+    if (this.decision === 'allow') {
+      process.stdout.write(
+        JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'allow',
+            permissionDecisionReason: this.explicitAllow,
+          },
+        }),
+      );
+      process.exit(0);
+    }
     process.stdout.write(
       JSON.stringify({
         hookSpecificOutput: {

@@ -5,7 +5,9 @@
 // - no commit on main or master, and no push to them;
 // - no --no-verify on commit or push;
 // - a force push asks, and is denied when it targets main;
-// - `gh pr merge` must squash and must never use --admin;
+// - `gh pr merge` must squash and must never use --admin, and is decided from what
+//   GitHub shows about the pull request: checks, control-plane files, the label
+//   needs-human, draft state (ADR 0010). Anything that cannot be read asks;
 // - deploys to a linked Supabase project ask first;
 // - an ATDD oracle tag cannot be deleted or moved by the agent, and creating one
 //   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010).
@@ -14,7 +16,9 @@
 // shell operators, and each segment is read as words. It recognises the common
 // forms; an unusual form it cannot read is allowed, because the repository's
 // rulesets remain the real guarantee.
+import { spawnSync } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
+import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git, readEvent } from './lib.mjs';
 
 const PROTECTED = new Set(['main', 'master']);
@@ -193,15 +197,111 @@ function checkGit(args, cwd, verdict, branches) {
   }
 }
 
-function checkGh(args, verdict) {
-  if (args[0] === 'pr' && args[1] === 'merge') {
-    if (hasFlag(args, '--admin')) {
-      verdict.add('deny', 'Never merge with --admin: it bypasses every rule of the ruleset, required checks included.');
-    }
-    if (!hasFlag(args, '--squash', '-s')) {
-      verdict.add('deny', 'Merge with --squash: main keeps a linear history.');
-    }
+const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
+const PR_FIELDS = 'baseRefName,changedFiles,files,isDraft,labels,statusCheckRollup,url';
+const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
+const brief = (text) => (text ?? '').trim().split('\n')[0].slice(0, 200);
+
+// Runs gh without a shell and says why when it could not give an answer.
+function gh(args, cwd) {
+  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: ghLimit() });
+  if (run.error?.code === 'ENOENT') return { failure: 'gh is not installed or not on PATH' };
+  if (run.error?.code === 'ETIMEDOUT') return { failure: `gh timed out after ${ghLimit()} ms` };
+  if (run.error) return { failure: `gh could not run (${run.error.message})` };
+  if (run.status !== 0) return { failure: brief(run.stderr) || `gh exited with ${run.status}`, stderr: run.stderr ?? '' };
+  return { stdout: run.stdout };
+}
+
+function optionValue(args, names) {
+  const at = args.findIndex((a) => names.includes(a));
+  if (at >= 0) return args[at + 1];
+  const joined = args.find((a) => names.some((n) => n.startsWith('--') && a.startsWith(`${n}=`)));
+  return joined?.slice(joined.indexOf('=') + 1);
+}
+
+function checkIssue(check) {
+  const name = check.name ?? check.context ?? 'unnamed check';
+  if (check.__typename === 'StatusContext') return check.state === 'SUCCESS' ? undefined : `${name} (${check.state})`;
+  if (check.status === 'COMPLETED' && PASSED_CONCLUSIONS.has(check.conclusion)) return undefined;
+  return `${name} (${check.conclusion || check.status})`;
+}
+
+// What the hook may say about a merge: reasons to ask, or none when every
+// condition of ADR 0010 holds. Never throws: a merge cannot be undone.
+function mergeReasons(args, cwd) {
+  const rest = args.slice(2);
+  const { positional } = parseOptions(rest, {
+    shortWithValue: ['R', 't', 'b', 'F', 'A'],
+    longWithValue: ['--repo', '--subject', '--body', '--body-file', '--author-email', '--match-head-commit'],
+  });
+  const repoFlag = optionValue(rest, ['-R', '--repo']);
+  const view = gh(['pr', 'view', ...(positional[0] ? [positional[0]] : []), ...(repoFlag ? ['-R', repoFlag] : []), '--json', PR_FIELDS], cwd);
+  if (view.failure) return [`Could not read the pull request: ${view.failure}.`];
+
+  let pr;
+  try {
+    pr = JSON.parse(view.stdout);
+  } catch {
+    return ['Could not read the pull request: gh did not return JSON.'];
   }
+  const complete = pr && typeof pr.baseRefName === 'string' && typeof pr.url === 'string' && typeof pr.isDraft === 'boolean'
+    && typeof pr.changedFiles === 'number' && Array.isArray(pr.files) && Array.isArray(pr.labels) && Array.isArray(pr.statusCheckRollup);
+  if (!complete) return ['Could not read the pull request: gh returned incomplete data.'];
+
+  const reasons = [];
+  if (pr.isDraft) reasons.push('The pull request is a draft.');
+  if (pr.labels.some((label) => String(label.name).toLowerCase() === 'needs-human')) {
+    reasons.push('The pull request carries needs-human.');
+  }
+  if (pr.statusCheckRollup.length === 0) reasons.push('The pull request has no checks.');
+  const notPassed = pr.statusCheckRollup.map(checkIssue).filter(Boolean);
+  if (notPassed.length > 0) reasons.push(`Checks that have not passed: ${notPassed.join(', ')}.`);
+
+  const paths = pr.files.map((file) => file.path);
+  if (paths.length < pr.changedFiles) {
+    reasons.push(`GitHub lists only ${paths.length} of ${pr.changedFiles} changed files, so the control plane cannot be checked.`);
+  }
+
+  // The list a pull request is judged by comes from its base branch, never from its own copy.
+  let extra = [];
+  const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
+  if (!where) {
+    reasons.push('Could not read AGENTS.md of the base branch: the pull request URL has an unexpected shape.');
+  } else {
+    const [, host, owner, name] = where;
+    const file = gh([
+      'api', ...(host === 'github.com' ? [] : ['--hostname', host]),
+      '-H', 'Accept: application/vnd.github.raw+json',
+      `repos/${owner}/${name}/contents/AGENTS.md?ref=${encodeURIComponent(pr.baseRefName)}`,
+    ], cwd);
+    if (file.stdout !== undefined) extra = humanMergeMatchers(file.stdout);
+    else if (!/HTTP 404/.test(file.stderr ?? '')) reasons.push(`Could not read AGENTS.md of the base branch: ${file.failure}.`);
+  }
+  const sensitive = controlPlaneFiles(paths, extra);
+  if (sensitive.length > 0) reasons.push(`Control-plane files changed: ${sensitive.join(', ')}.`);
+  return reasons;
+}
+
+// Returns true when a merge was verified end to end.
+function checkGh(args, verdict, cwd) {
+  if (args[0] !== 'pr' || args[1] !== 'merge') return false;
+  if (hasFlag(args, '--admin')) {
+    verdict.add('deny', 'Never merge with --admin: it bypasses every rule of the ruleset, required checks included.');
+  }
+  if (!hasFlag(args, '--squash', '-s')) {
+    verdict.add('deny', 'Merge with --squash: main keeps a linear history.');
+  }
+  if (verdict.decision === 'deny') return false;
+  let reasons;
+  try {
+    reasons = mergeReasons(args, cwd);
+  } catch (error) {
+    reasons = [`Could not decide this merge (${error.message}).`];
+  }
+  if (reasons.length === 0) return true;
+  verdict.add('ask', `${reasons.join(' ')} The human decides this merge (ADR 0010).`);
+  return false;
 }
 
 function checkSupabase(args, verdict) {
@@ -220,7 +320,9 @@ try {
   const verdict = new Verdict();
   let cwd = event.cwd ?? process.cwd();
   const branches = new Map();
-  for (const segment of segments(command)) {
+  const parts = segments(command);
+  let merged = false;
+  for (const segment of parts) {
     const w = words(segment);
     // Skip leading environment assignments such as FOO=1 git push.
     while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
@@ -229,10 +331,15 @@ try {
     } else if (w[0] === 'git') {
       checkGit(w.slice(1), cwd, verdict, branches);
     } else if (w[0] === 'gh') {
-      checkGh(w.slice(1), verdict);
+      merged = checkGh(w.slice(1), verdict, cwd) || merged;
     } else if (w[0] === 'supabase' || (w[0] === 'npx' && w[1] === 'supabase')) {
       checkSupabase(w.slice(w[0] === 'npx' ? 2 : 1), verdict);
     }
+  }
+  // An explicit allow lifts the prompt for the whole command, so it is only given to a
+  // command that is nothing but one plain merge, with no quotes, chains or redirections.
+  if (merged && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
+    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label (ADR 0010).');
   }
   verdict.emit();
 } catch (error) {

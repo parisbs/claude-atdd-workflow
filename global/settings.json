@@ -32,9 +32,6 @@
       "Bash(gh run watch:*)",
       "Bash(gh label list:*)",
       "Bash(gh repo view:*)"
-    ],
-    "ask": [
-      "Bash(gh pr merge:*)"
     ]
   },
   "hooks": {

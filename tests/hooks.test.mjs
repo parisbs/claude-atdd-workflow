@@ -2,23 +2,24 @@
 // a JSON event on stdin, the decision on stdout.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const hooks = join(dirname(fileURLToPath(import.meta.url)), '..', 'global', 'hooks');
 
-function run(hook, event) {
+function run(hook, event, env = {}) {
   const result = spawnSync(process.execPath, [join(hooks, hook)], {
     input: JSON.stringify(event),
     encoding: 'utf8',
+    env: { ...process.env, ...env },
   });
   assert.equal(result.status, 0, result.stderr);
-  if (result.stdout.trim() === '') return { decision: 'allow' };
+  if (result.stdout.trim() === '') return { decision: 'allow', explicit: false };
   const out = JSON.parse(result.stdout).hookSpecificOutput;
-  return { decision: out.permissionDecision, reason: out.permissionDecisionReason };
+  return { decision: out.permissionDecision, reason: out.permissionDecisionReason, explicit: true };
 }
 
 function sh(cwd, ...args) {
@@ -39,7 +40,7 @@ function repo() {
   return dir;
 }
 
-const bash = (cwd, command) => run('guard-git.mjs', { cwd, tool_name: 'Bash', tool_input: { command } });
+const bash = (cwd, command, env) => run('guard-git.mjs', { cwd, tool_name: 'Bash', tool_input: { command } }, env);
 const edit = (cwd, file_path) => run('guard-tests.mjs', { cwd, tool_name: 'Edit', tool_input: { file_path } });
 
 describe('guard-git', () => {
@@ -106,7 +107,6 @@ describe('guard-git', () => {
   });
 
   test('requires squash and forbids --admin on gh pr merge', () => {
-    assert.equal(bash(dir, 'gh pr merge 12 --squash --delete-branch').decision, 'allow');
     assert.equal(bash(dir, 'gh pr merge 12 --merge').decision, 'deny');
     assert.equal(bash(dir, 'gh pr merge 12 --squash --admin').decision, 'deny');
   });
@@ -217,6 +217,300 @@ describe('guard-git oracle tags', () => {
       'git tag -f -m "oracle/x fix" v1.2.3',
       'git tag v1.0.0 -m "see oracle/x"',
     ], 'allow');
+  });
+});
+
+// Issue #7 (ADR 0010): `gh pr merge` is decided from what GitHub shows about the pull request.
+// A fake `gh` first on PATH stands in for GitHub; it records its calls and answers from a scenario.
+const FAKE_GH = String.raw`#!/usr/bin/env node
+const fs = require('node:fs');
+const scenario = JSON.parse(fs.readFileSync(process.env.FAKE_GH, 'utf8'));
+fs.appendFileSync(process.env.FAKE_GH + '.calls', JSON.stringify(process.argv.slice(2)) + '\n');
+const kind = process.argv[2] === 'pr' ? 'view' : process.argv[2] === 'api' ? 'api' : 'other';
+const step = scenario[kind] || { exit: 1, stderr: 'fake gh: unexpected call' };
+const finish = () => {
+  if (step.stderr) process.stderr.write(step.stderr);
+  if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'string' ? step.stdout : JSON.stringify(step.stdout));
+  process.exit(step.exit === undefined ? 0 : step.exit);
+};
+if (step.delayMs) setTimeout(finish, step.delayMs); else finish();
+`;
+
+const NOT_FOUND = { exit: 1, stderr: 'gh: Not Found (HTTP 404)' };
+const PASSED = { __typename: 'CheckRun', name: 'Test', status: 'COMPLETED', conclusion: 'SUCCESS' };
+
+function green({ files = ['src/app.ts'], ...rest } = {}) {
+  return {
+    number: 12,
+    state: 'OPEN',
+    isDraft: false,
+    labels: [],
+    baseRefName: 'main',
+    url: 'https://github.com/o/r/pull/12',
+    files: files.map((path) => ({ path })),
+    changedFiles: files.length,
+    statusCheckRollup: [PASSED],
+    ...rest,
+  };
+}
+
+describe('guard-git merge decision', () => {
+  let dir;
+  let root;
+  let bin;
+  before(() => {
+    dir = repo();
+    root = mkdtempSync(join(tmpdir(), 'cw-gh-'));
+    bin = join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+  });
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const withoutGh = () => process.env.PATH.split(delimiter).filter((d) => !existsSync(join(d, 'gh'))).join(delimiter);
+
+  function merge(command, { pr = green(), view = { stdout: pr }, api = NOT_FOUND, env = {} } = {}) {
+    const scenario = join(root, 'scenario.json');
+    writeFileSync(scenario, JSON.stringify({ view, api }));
+    rmSync(`${scenario}.calls`, { force: true });
+    const result = bash(dir, command, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...env });
+    const calls = existsSync(`${scenario}.calls`)
+      ? readFileSync(`${scenario}.calls`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      : [];
+    return { ...result, calls };
+  }
+
+  const SQUASH = 'gh pr merge 12 --squash --delete-branch';
+  const allowed = (result, label) => {
+    assert.equal(result.decision, 'allow', `${label}: ${result.reason}`);
+    assert.equal(result.explicit, true, `${label}: an explicit allow was expected`);
+  };
+  const asks = (result, label, pattern) => {
+    assert.equal(result.decision, 'ask', label);
+    if (pattern) assert.match(result.reason, pattern, label);
+  };
+
+  test('AC-1 denies --admin and any merge that does not squash, even when gh is missing', () => {
+    const env = { PATH: withoutGh() };
+    for (const command of [
+      'gh pr merge 12 --admin --squash',
+      'gh pr merge 12 -s --admin',
+      'gh pr merge 12 --merge',
+      'gh pr merge 12 --rebase',
+      'gh pr merge 12',
+    ]) {
+      assert.equal(bash(dir, command, env).decision, 'deny', command);
+    }
+  });
+
+  test('AC-2 prints an explicit allow for a green pull request, whatever the selector form', () => {
+    for (const command of [
+      SQUASH,
+      'gh pr merge 12 -s -d',
+      'gh pr merge https://github.com/o/r/pull/12 --squash',
+      'gh pr merge feature/x --squash',
+      'gh pr merge --squash',
+      'gh pr merge 12 --squash -R o/r',
+    ]) {
+      allowed(merge(command), command);
+    }
+  });
+
+  test('AC-2 passes the selector and the repository on to gh pr view', () => {
+    const view = (command) => {
+      const call = merge(command).calls.find((c) => c[0] === 'pr' && c[1] === 'view');
+      assert.ok(call, `gh pr view was not called for: ${command}`);
+      return call;
+    };
+    assert.ok(view(SQUASH).includes('12'));
+    assert.ok(view('gh pr merge feature/x --squash').includes('feature/x'));
+    const remote = view('gh pr merge 12 --squash -R o/r');
+    assert.ok(remote.includes('-R') && remote.includes('o/r'));
+  });
+
+  test('AC-2 asks gh for every field the decision needs', () => {
+    const call = merge(SQUASH).calls.find((c) => c[0] === 'pr' && c[1] === 'view');
+    assert.ok(call, 'gh pr view was not called');
+    const fields = call[call.indexOf('--json') + 1].split(',');
+    for (const field of ['baseRefName', 'changedFiles', 'files', 'isDraft', 'labels', 'statusCheckRollup', 'url']) {
+      assert.ok(fields.includes(field), `missing ${field}`);
+    }
+  });
+
+  test('AC-2 counts SUCCESS, SKIPPED, NEUTRAL and successful statuses as passed', () => {
+    allowed(merge(SQUASH, {
+      pr: green({
+        statusCheckRollup: [
+          PASSED,
+          { __typename: 'CheckRun', name: 'Optional', status: 'COMPLETED', conclusion: 'SKIPPED' },
+          { __typename: 'CheckRun', name: 'Lint', status: 'COMPLETED', conclusion: 'NEUTRAL' },
+          { __typename: 'StatusContext', context: 'ci/legacy', state: 'SUCCESS' },
+        ],
+      }),
+    }), 'mixed passing checks');
+  });
+
+  test('AC-2 gives no verdict when the command is more than a plain merge', () => {
+    for (const command of [
+      `${SQUASH} && echo done`,
+      `echo start; ${SQUASH}`,
+      `${SQUASH} > out.txt`,
+      `${SQUASH} | cat`,
+      'gh pr merge 12 --squash --body "$(id)"',
+      'gh pr merge 12 --squash --body `id`',
+    ]) {
+      const result = merge(command);
+      assert.equal(result.decision, 'allow', command);
+      assert.equal(result.explicit, false, `${command}: an explicit allow would cover the whole command`);
+    }
+  });
+
+  test('AC-3 asks when a check did not pass, and names it', () => {
+    const run = (check) => ({ __typename: 'CheckRun', name: 'Build', status: 'COMPLETED', ...check });
+    const rollups = [
+      [run({ conclusion: 'FAILURE' })],
+      [run({ conclusion: 'CANCELLED' })],
+      [run({ conclusion: 'TIMED_OUT' })],
+      [run({ conclusion: 'ACTION_REQUIRED' })],
+      [run({ conclusion: 'STARTUP_FAILURE' })],
+      [run({ status: 'IN_PROGRESS', conclusion: '' })],
+      [run({ status: 'QUEUED', conclusion: '' })],
+      [PASSED, run({ conclusion: 'FAILURE' })],
+    ];
+    for (const statusCheckRollup of rollups) {
+      asks(merge(SQUASH, { pr: green({ statusCheckRollup }) }), JSON.stringify(statusCheckRollup), /Build/);
+    }
+    for (const state of ['PENDING', 'FAILURE', 'ERROR']) {
+      asks(merge(SQUASH, { pr: green({ statusCheckRollup: [{ __typename: 'StatusContext', context: 'ci/legacy', state }] }) }),
+        state, /ci\/legacy/);
+    }
+  });
+
+  test('AC-3 asks when the pull request has no checks at all', () => {
+    asks(merge(SQUASH, { pr: green({ statusCheckRollup: [] }) }), 'no checks', /checks/i);
+  });
+
+  test('AC-4 asks for every default control-plane path, in every stack and at any depth', () => {
+    for (const path of [
+      '.github/workflows/ci.yml',
+      'docs/adr/0012-x.md',
+      'docs/adrs/0001-x.md',
+      'docs/decisions/001-x.md',
+      'AGENTS.md',
+      'CLAUDE.md',
+      'app/AGENTS.md',
+      '.claude/settings.json',
+      'package.json',
+      'packages/a/package.json',
+      'tsconfig.json',
+      'pubspec.yaml',
+      'analysis_options.yaml',
+      'app/build.gradle.kts',
+      'gradle/libs.versions.toml',
+      'supabase/config.toml',
+      'supabase/migrations/20260101_init.sql',
+      'pyproject.toml',
+      'svc/setup.cfg',
+      'pytest.ini',
+      'tox.ini',
+    ]) {
+      asks(merge(SQUASH, { pr: green({ files: ['src/app.ts', path] }) }), path, new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+  });
+
+  test('AC-4 does not ask for ordinary source files of any stack', () => {
+    allowed(merge(SQUASH, {
+      pr: green({
+        files: [
+          'lib/main.dart',
+          'app/src/main/kotlin/App.kt',
+          'src/app.py',
+          'src/index.ts',
+          'README.md',
+          'docs/adr-notes.md',
+          'docs/guide.md',
+          'supabase/functions/hello/index.ts',
+        ],
+      }),
+    }), 'ordinary files');
+  });
+
+  test('AC-4 reads Human merge: from the base branch of the pull request with gh api', () => {
+    const agents = { stdout: '# Repo\n\n## Workflow\n\n- Review: none\n- Human merge: src/codex/args.ts, server.json\n' };
+    const outcome = (file, base = 'main') => merge(SQUASH, { pr: green({ files: [file], baseRefName: base }), api: agents });
+    asks(outcome('src/codex/args.ts'), 'listed file', /src\/codex\/args\.ts/);
+    asks(outcome('server.json'), 'second listed file', /server\.json/);
+    allowed(outcome('src/other.ts'), 'unlisted file');
+    const call = outcome('src/other.ts', 'develop').calls.find((c) => c[0] === 'api');
+    assert.ok(call, 'gh api was not called to read AGENTS.md');
+    const line = call.join(' ');
+    assert.match(line, /repos\/o\/r\/contents\/AGENTS\.md/);
+    assert.match(line, /ref=develop/);
+  });
+
+  test('AC-4 accepts globs in Human merge:, and none adds nothing', () => {
+    const globs = { stdout: '- Human merge: src/codex/**, **/*.sql\n' };
+    asks(merge(SQUASH, { pr: green({ files: ['src/codex/deep/x.ts'] }), api: globs }), 'glob directory');
+    asks(merge(SQUASH, { pr: green({ files: ['db/seed.sql'] }), api: globs }), 'glob extension');
+    const none = { stdout: '- Human merge: none\n' };
+    allowed(merge(SQUASH, { pr: green({ files: ['src/codex/x.ts'] }), api: none }), 'none, ordinary file');
+    asks(merge(SQUASH, { pr: green({ files: ['AGENTS.md'] }), api: none }), 'none, default path');
+  });
+
+  test('AC-4 applies only the defaults when the base has no AGENTS.md', () => {
+    allowed(merge(SQUASH, { pr: green({ files: ['src/x.ts'] }), api: NOT_FOUND }), 'no AGENTS.md, ordinary file');
+    asks(merge(SQUASH, { pr: green({ files: ['.github/workflows/ci.yml'] }), api: NOT_FOUND }), 'no AGENTS.md, default path');
+  });
+
+  test('AC-5 asks when the pull request carries needs-human, in any capitalisation', () => {
+    for (const labels of [
+      [{ name: 'needs-human' }],
+      [{ name: 'Needs-Human' }],
+      [{ name: 'bug' }, { name: 'needs-human' }],
+    ]) {
+      asks(merge(SQUASH, { pr: green({ labels }) }), JSON.stringify(labels), /needs-human/i);
+    }
+    allowed(merge(SQUASH, { pr: green({ labels: [{ name: 'bug' }] }) }), 'unrelated label');
+  });
+
+  test('AC-9 asks when the pull request is a draft', () => {
+    asks(merge(SQUASH, { pr: green({ isDraft: true }) }), 'draft', /draft/i);
+  });
+
+  test('AC-6 asks, and says why, when gh is missing', () => {
+    asks(bash(dir, SQUASH, { PATH: withoutGh() }), 'gh missing', /gh/);
+  });
+
+  test('AC-6 asks, and says why, when the pull request cannot be read', () => {
+    const cases = [
+      ['gh fails', { exit: 1, stderr: 'gh: not logged in' }, /not logged in/],
+      ['no pull request for the argument', { exit: 1, stderr: 'no pull requests found for branch "x"' }, /no pull requests found/],
+      ['output is not JSON', { stdout: '<html>oops</html>' }, /could not read/i],
+      ['output lacks fields', { stdout: { number: 12 } }, /could not read/i],
+      ['output is empty', { stdout: '' }, /could not read/i],
+    ];
+    for (const [label, view, pattern] of cases) {
+      asks(merge(SQUASH, { view }), label, pattern);
+    }
+  });
+
+  test('AC-6 asks when gh is slower than the limit', () => {
+    const env = { GUARD_GIT_GH_TIMEOUT_MS: '300' };
+    asks(merge(SQUASH, { view: { stdout: green(), delayMs: 1500 }, env }), 'slow pr view', /timed out/i);
+    asks(merge(SQUASH, { api: { stdout: '', delayMs: 1500 }, env }), 'slow gh api', /timed out/i);
+  });
+
+  test('AC-6 asks when fewer files are listed than the pull request changed', () => {
+    const files = Array.from({ length: 100 }, (_, i) => `src/f${i}.ts`);
+    asks(merge(SQUASH, { pr: green({ files, changedFiles: 143 }) }), 'truncated file list', /files/i);
+  });
+
+  test('AC-6 asks when AGENTS.md cannot be read for a reason other than not found', () => {
+    asks(merge(SQUASH, { api: { exit: 1, stderr: 'gh: Internal Server Error (HTTP 500)' } }), 'server error', /AGENTS\.md/);
+    asks(merge(SQUASH, { api: { exit: 1, stderr: 'dial tcp: lookup api.github.com: no such host' } }), 'network', /AGENTS\.md/);
   });
 });
 

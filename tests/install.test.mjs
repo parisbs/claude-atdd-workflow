@@ -1,7 +1,7 @@
 // Tests for scripts/install.mjs against a temporary target directory.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -60,7 +60,7 @@ describe('install', () => {
     assert.equal(s.includeGitInstructions, false);
     assert.ok(s.permissions.allow.includes('Bash(make:*)'));
     assert.ok(s.permissions.allow.includes('Bash(git status:*)'));
-    assert.ok(s.permissions.ask.includes('Bash(gh pr merge:*)'));
+    assert.ok(!(s.permissions.ask ?? []).includes('Bash(gh pr merge:*)'), 'the merge decision moved to guard-git (ADR 0010)');
     const commands = s.hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command));
     assert.ok(commands.includes('/usr/local/bin/my-own-hook'), 'a hook the user added is kept');
     assert.equal(commands.filter((c) => c.includes('guard-git.mjs')).length, 1, 'managed hooks are not duplicated');
@@ -94,5 +94,75 @@ describe('install', () => {
     assert.equal(r.status, 0);
     assert.equal(existsSync(join(retired, 'SKILL.md')), false);
     assert.ok(existsSync(join(target, 'skills', 'atdd-oracle', 'extra.md')), 'files it never installed are left alone');
+  });
+});
+
+// Issue #7 (ADR 0010): the ask on `gh pr merge` leaves the shipped settings, and
+// the installer can retire a permission rule it installed in the past.
+describe('install permissions', () => {
+  const OLD_ASK = 'Bash(gh pr merge:*)';
+  const seeded = (permissions) => {
+    const target = mkdtempSync(join(tmpdir(), 'cw-perms-'));
+    writeFileSync(join(target, 'settings.json'), JSON.stringify({ permissions }));
+    return target;
+  };
+
+  test('AC-7 ships no ask rule for gh pr merge', () => {
+    const shipped = JSON.parse(readFileSync(join(repo, 'global', 'settings.json'), 'utf8'));
+    assert.ok(!(shipped.permissions?.ask ?? []).includes(OLD_ASK));
+  });
+
+  test('AC-7 retires the rule an earlier install left in settings.json', () => {
+    const target = seeded({ ask: [OLD_ASK, 'Bash(mine:*)'], allow: ['Bash(keep:*)'] });
+    const r = install(target);
+    assert.equal(r.status, 0, r.stderr);
+    const s = settingsOf(target);
+    assert.deepEqual(s.permissions.ask, ['Bash(mine:*)']);
+    assert.ok(s.permissions.allow.includes('Bash(keep:*)'));
+    rmSync(target, { recursive: true, force: true });
+  });
+
+  describe('with a retired-permissions file', () => {
+    let fake;
+    const installFake = (target, ...args) => spawnSync(
+      process.execPath,
+      [join(fake, 'scripts', 'install.mjs'), '--target', target, ...args],
+      { encoding: 'utf8' },
+    );
+    before(() => {
+      fake = mkdtempSync(join(tmpdir(), 'cw-fake-repo-'));
+      mkdirSync(join(fake, 'scripts'));
+      mkdirSync(join(fake, 'global'));
+      copyFileSync(join(repo, 'scripts', 'install.mjs'), join(fake, 'scripts', 'install.mjs'));
+      writeFileSync(join(fake, 'global', 'CLAUDE.md'), 'x\n');
+      writeFileSync(join(fake, 'global', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(a:*)'] } }));
+      writeFileSync(join(fake, 'global', 'retired-permissions.json'), JSON.stringify({
+        ask: [OLD_ASK],
+        allow: ['Bash(old:*)'],
+      }));
+    });
+    after(() => rmSync(fake, { recursive: true, force: true }));
+
+    test('AC-8 removes a retired rule from every list and keeps the rules the user added', () => {
+      const target = seeded({ ask: [OLD_ASK, 'Bash(mine:*)'], allow: ['Bash(old:*)', 'Bash(keep:*)'] });
+      const r = installFake(target);
+      assert.equal(r.status, 0, r.stderr);
+      const s = settingsOf(target);
+      assert.deepEqual(s.permissions.ask, ['Bash(mine:*)']);
+      assert.ok(s.permissions.allow.includes('Bash(keep:*)'));
+      assert.ok(s.permissions.allow.includes('Bash(a:*)'));
+      assert.ok(!s.permissions.allow.includes('Bash(old:*)'));
+      rmSync(target, { recursive: true, force: true });
+    });
+
+    test('AC-8 reports a retired rule that is still installed as drift, and stops once it is gone', () => {
+      const target = seeded({ ask: [OLD_ASK] });
+      const before = installFake(target, '--check');
+      assert.equal(before.status, 1);
+      assert.match(before.stdout, /retired/i);
+      assert.equal(installFake(target).status, 0);
+      assert.equal(installFake(target, '--check').status, 0);
+      rmSync(target, { recursive: true, force: true });
+    });
   });
 });

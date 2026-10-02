@@ -24,6 +24,7 @@ export const TEST_CONFIG = [
   /(^|\/)pubspec\.yaml$/,
   /(^|\/)analysis_options\.yaml$/,
   /(^|\/)dart_test\.yaml$/,
+  /(^|\/)(pyproject\.toml|setup\.cfg|pytest\.ini|tox\.ini)$/,
   /(^|\/)supabase\/config\.toml$/,
   /(^|\/)\.github\/workflows\//,
 ];
