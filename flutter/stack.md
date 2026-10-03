@@ -13,6 +13,13 @@ When the project uses code generation, run
 `test/` and `integration_test/`, and files ending in `_test.dart`. The guard
 covers them by default.
 
+## Human merge
+
+The lockfile changes what is built, and the platform manifests change what the app
+may do. These come on top of the default control plane.
+
+- Human merge: pubspec.lock, android/app/src/main/AndroidManifest.xml, ios/Runner/Info.plist
+
 ## Rules for CLAUDE.md
 
 Adapt each line to what the repository actually uses; delete what does not

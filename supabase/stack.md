@@ -13,6 +13,13 @@ and any contract generation it checks for drift.
 `supabase/tests/` (pgTAP) and the repository's integration test directory. The
 guard covers `supabase/tests/` and `tests/` by default.
 
+## Human merge
+
+Edge functions run with the project's secrets and the seed data is applied to
+environments. Migrations are already on the default control plane.
+
+- Human merge: supabase/functions/, supabase/seed.sql
+
 ## Rules for CLAUDE.md
 
 These protect production data; keep them unless the repository has a stronger

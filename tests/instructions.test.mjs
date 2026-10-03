@@ -62,15 +62,15 @@ describe('instruction files', () => {
     assert.match(text, /migrat/i);
   });
 
-  // The places that must name AGENTS.md: the audit that reports it, the bootstrap that migrates it
-  // (until issue #10 rewrites it), and the control-plane list that keeps a stray one reaching the human.
+  // The places that must name AGENTS.md: the audit that reports it, the bootstrap that migrates it,
+  // and the control-plane list that keeps a stray one reaching the human.
   const ALLOWED = [
     'global/skills/drift-audit/SKILL.md',
     'global/skills/repo-bootstrap/SKILL.md',
     'global/hooks/controlplane.mjs',
   ];
-  // common/ belongs to issue #10, and merged ADRs are never edited.
-  const SCANNED = ['global', 'android', 'flutter', 'node-mcp', 'supabase', 'README.md', 'docs/ROADMAP.md'];
+  // Merged ADRs are never edited. common/ joined the scan with issue #10, which rewrote its template.
+  const SCANNED = ['global', 'common', 'android', 'flutter', 'node-mcp', 'supabase', 'README.md', 'docs/ROADMAP.md'];
 
   test('AC-6 nothing outside the allowlist names AGENTS.md', () => {
     const offenders = SCANNED.flatMap(walk)

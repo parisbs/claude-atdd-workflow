@@ -12,6 +12,13 @@ build and tests.
 `test/`, `tests/`, `__tests__/` and files ending in `.test.*` or `.spec.*`. The
 guard covers them by default.
 
+## Human merge
+
+The lockfile and the registry configuration decide which code runs. These come on
+top of the default control plane.
+
+- Human merge: package-lock.json, .npmrc
+
 ## Rules for CLAUDE.md
 
 Adapt each line to what the repository actually uses; delete what does not

@@ -15,6 +15,13 @@ a module with `:<module>:<task>`. Instrumented tests
 `src/test/`, `src/androidTest/` and Kotlin Multiplatform source sets such as
 `src/commonTest/` and `src/androidHostTest/`. The guard covers them by default.
 
+## Human merge
+
+The Gradle wrapper and lockfiles change what runs on every machine, and the manifest
+changes what the app may do. These come on top of the default control plane.
+
+- Human merge: gradle.lockfile, gradle/wrapper/, app/src/main/AndroidManifest.xml
+
 ## Rules for CLAUDE.md
 
 Adapt each line to what the repository actually uses; delete what does not

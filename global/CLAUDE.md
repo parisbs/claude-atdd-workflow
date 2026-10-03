@@ -52,6 +52,20 @@ preferences live in `~/.claude/rules/personal.md`.
 - State which checks ran and which did not. Never report a review or a check
   that did not run as clean.
 
+## Control plane
+
+A pull request that changes any of these is merged by the human, never by the
+orchestrator (claude-workflow ADR 0010). They are matched at any depth, and the
+repository's `CLAUDE.md` adds its own with a Human merge: line. Where an agent
+could weaken its own controls: `.github/workflows/ci.yml`,
+`docs/adr/0001-example.md` (also `docs/adrs/` and `docs/decisions/`),
+`CLAUDE.md`, `.claude/settings.json`. Where a merge deploys:
+`supabase/migrations/001_init.sql`. What changes how tests run: `package.json`,
+`tsconfig.json`, `vitest.config.ts`, `app/build.gradle.kts`,
+`gradle/libs.versions.toml`, `detekt.yml`, `pubspec.yaml`,
+`analysis_options.yaml`, `dart_test.yaml`, `supabase/config.toml`,
+`pyproject.toml`.
+
 ## Reviews
 
 - A second review pass after fixes runs in a fresh context, not as a follow-up

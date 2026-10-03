@@ -1,6 +1,6 @@
 ---
 name: repo-bootstrap
-description: Set up a new repository, or integrate an existing one, into the agent-assisted workflow - AGENTS.md and CLAUDE.md, stack rules, issue and PR templates, the PR title check, labels, merge settings and GitHub rulesets. Every repository ends up self-sufficient.
+description: Set up a new repository, or integrate an existing one, into the agent-assisted workflow - a single CLAUDE.md, stack rules, issue and PR templates, the PR title check, labels, merge settings and GitHub rulesets. Every repository ends up self-sufficient.
 argument-hint: new <name> [private|public] | integrate
 disable-model-invocation: true
 ---
@@ -10,7 +10,7 @@ Mode and arguments: $ARGUMENTS
 Templates live next to this file in `templates/`: `common/` for every
 repository, and one directory per stack (`android/`, `flutter/`, `node-mcp/`,
 `supabase/`) with a `stack.md`. The reasoning is in the claude-workflow ADRs
-0001, 0004, 0005 and 0006: whatever a repository needs to be worked on
+0001, 0004, 0005 and 0012: whatever a repository needs to be worked on
 correctly is copied into it, so it never depends on this machine.
 
 Work on a branch named `chore/ai-workflow-integration` (integrate) or on the
@@ -31,23 +31,33 @@ action on GitHub.
 
 ## 2. Instruction files
 
-- **new**: fill `common/AGENTS.md.template` with what the human tells you and
-  the stack rules from each `stack.md`.
-- **integrate**: move the existing instructions into `AGENTS.md` in English and
+A repository keeps its instructions in a single `CLAUDE.md` (ADR 0012).
+
+- **new**: fill `common/CLAUDE.md.template` with what the human tells you, the
+  stack rules from each `stack.md` and the `Human merge:` line of each
+  `stack.md`.
+- **integrate**: move the existing instructions into `CLAUDE.md` in English and
   keep only what cannot be derived from the code: invariants with their
   reasons, pitfalls, non-default conventions and commands that are not obvious.
   Drop directory layouts, dependency and version lists, architecture overviews
   and generic command lists. Keep every repository-specific rule; when unsure
   whether something is derivable, keep it and flag it.
+- If the repository has an `AGENTS.md`, or a `CLAUDE.md` that only imports it,
+  propose moving its content into `CLAUDE.md` and deleting `AGENTS.md`, and do
+  neither without the human's approval: a delegated agent would load the file
+  into every run.
 - Add the conventions section from the template, adapted where the repository
   has a recorded exception, and a `Verify:` line with the one command that
   mirrors CI. When there is no such command, propose one (npm script, make
   target, Gradle task) and add it.
+- Workflow lines: propose values for `Review:`, `Implement:` and `Human merge:`
+  and ask the human; never pick any of them silently. For `Human merge:` start
+  from the line in each stack's `stack.md`.
 - Paste the stack rules, adapted to what the repository actually uses. Critical
   rules always stay in the repository, even when another repository repeats
   them.
 - Repoint every living reference to the old file (skills, agents, rules,
-  README, contributing guide, design notes, code comments) at `AGENTS.md`.
+  README, contributing guide, design notes, code comments) at `CLAUDE.md`.
   Merged ADRs are immutable: record the move in a new ADR instead of editing
   them, and state the policy in the ADR index when the repository does not. When a
   comment changes under a path coupled to generated output, prove the output
@@ -55,9 +65,9 @@ action on GitHub.
 - Keep every repository rule at least as strong as it was. Where a repository
   rule is stricter than the template (for example, all diagram content also in
   text), keep the repository's.
-- `CLAUDE.md` becomes `@AGENTS.md` plus a Claude Code section listing the
-  project's skills, hooks and rules. Project skills, commands, agents, hooks and
-  rules stay where they are; flag any whose name a user-level skill shadows.
+- `CLAUDE.md` keeps a Claude Code section listing the project's skills, hooks
+  and rules. Project skills, commands, agents, hooks and rules stay where they
+  are; flag any whose name a user-level skill shadows.
 - `CLAUDE.local.md` and auto-memory entries that only repeat user-level personal
   preferences are proposed for removal; move removed files to the Trash, never
   delete them outright.
@@ -78,7 +88,7 @@ action on GitHub.
 - Documentation diagrams: convert ASCII diagrams to Mermaid with a prose
   description when touched; do not rewrite untouched documents.
 
-Commit in coherent groups (`docs: move agent instructions to AGENTS.md`,
+Commit in coherent groups (`docs: move agent instructions to CLAUDE.md`,
 `ci: check pull request titles`, `chore: add issue and pull request templates`)
 and prepare the pull request with `/pr-prep`.
 
