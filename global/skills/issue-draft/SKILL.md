@@ -2,7 +2,6 @@
 name: issue-draft
 description: Turn a feature idea or bug report into a GitHub issue with WHEN/THEN acceptance criteria (AC-n), labels, milestone and project, then stop. Use when requirements are being defined or refined, before any implementation.
 argument-hint: <idea, bug description or existing issue number>
-disable-model-invocation: true
 ---
 
 Draft or refine a GitHub issue for: $ARGUMENTS

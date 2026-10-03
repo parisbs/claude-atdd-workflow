@@ -1,8 +1,7 @@
 ---
 name: atdd-oracle
-description: Phase 1 of the ATDD workflow. From an issue's AC-n acceptance criteria, plan and write the acceptance tests, get human approval, record the red evidence, and freeze them as the oracle with an oracle/<branch> tag.
+description: Phase 1 of the ATDD workflow. From an issue's AC-n acceptance criteria, plan and write the acceptance tests, get human approval, record the red evidence, and freeze them as the oracle with an oracle/<branch> tag. Use only when the issue has AC-n criteria and no oracle exists yet.
 argument-hint: <issue number>
-disable-model-invocation: true
 ---
 
 Build the test oracle for issue $ARGUMENTS. The reasoning is in the
@@ -64,10 +63,12 @@ explicit approval:
    into `.atdd/test-paths`.
 2. Commit the tests, signatures and `.atdd/test-paths` together:
    `test(<scope>): add acceptance tests for #<issue>`.
-3. Create the lightweight tag `oracle/<branch>` on that commit. From now on,
-   the user-level guard denies edits to those paths on this branch.
+3. Create the lightweight tag `oracle/<branch>` on that commit. The user-level
+   guard asks before the tag is created: that prompt is the human's confirmation
+   that the oracle is approved, so never skip it or work around it. From then on
+   the guard denies edits to those paths on this branch.
 4. Comment on the issue with the criterion-to-test map, the oracle commit and
    the red evidence.
 
-Stop there. Implementation is `/atdd-implement`, preferably in a new session so
-it does not inherit this conversation.
+Stop there. Implementation is `/atdd-implement`, preferably in a new session or a
+subagent so it does not inherit this conversation.

@@ -2,7 +2,6 @@
 name: adr-draft
 description: Scaffold the next architecture decision record in the repository's own ADR directory, format and numbering, and add it to the index. Use when a decision closes an alternative.
 argument-hint: <decision title>
-disable-model-invocation: true
 ---
 
 Create an architecture decision record for: $ARGUMENTS

@@ -1,15 +1,15 @@
 ---
 name: atdd-implement
-description: Phase 2 of the ATDD workflow. Implement against the frozen oracle/<branch> tests without modifying them, stopping to ask when a test looks wrong.
+description: Phase 2 of the ATDD workflow. Implement against the frozen oracle/<branch> tests without modifying them, stopping to ask when a test looks wrong. Use only when an oracle/<branch> tag already freezes the approved tests for the issue.
 argument-hint: <issue number>
-disable-model-invocation: true
 ---
 
 Implement issue $ARGUMENTS against its frozen acceptance tests.
 
 ## Start from what was approved, not from how it was reached
 
-Run this in a fresh session. Read only:
+Run this in a fresh context: a new session, or a subagent that receives only
+what is listed here. Read only:
 
 - the issue and its criterion-to-test comment (`gh issue view <n> --comments`);
 - the oracle: `git show --stat oracle/<branch>` and the tests it contains;
