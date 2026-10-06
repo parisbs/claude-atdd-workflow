@@ -17,3 +17,5 @@ old one, which changes only in its status line.
 - [0011. Delegate through Claude Code subagents, interchangeable with Codex](0011-delegate-through-subagents-interchangeable-with-codex.md)
 - [0012. Keep repository instructions in CLAUDE.md alone](0012-keep-repository-instructions-in-claude-md-alone.md)
 - [0013. Let guard-git keep subagents off GitHub](0013-guard-git-keeps-subagents-off-github.md)
+- [0014. Run Codex through two registrations named by role and install them from this repository](0014-run-codex-through-two-role-named-registrations.md)
+- [0015. Give delegates goals, structured findings and the rules they lack](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md)
