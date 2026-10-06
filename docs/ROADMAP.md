@@ -5,7 +5,7 @@ Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
 - Phases 0 and 1: done.
 - Phase 2: done, except the removal of duplicates, which has not been checked.
 - Orchestration (below): done.
-- Delegation (below): decided in ADR 0014 and 0015, not implemented. Milestone `delegation`, issues 32 to 34.
+- Delegation (below): decided in ADR 0014 and 0015. Issue 32 is implemented, 33 and 34 are not. Milestone `delegation`.
 - Phase 3: started. One repository is migrated, one is pending.
 - Phase 4: not started. `docs/experiments/` holds one record, the delegation
   probes of 2026-10-06; the workflow has been used on this repository only and
@@ -65,12 +65,14 @@ command as words, so a quoted `; git push` inside a commit message is denied.
 
 ## Delegation (milestone `delegation`)
 
-Status: decided, not implemented. ADR 0014 and 0015 are accepted; the probes
-behind them are in `docs/experiments/2026-10-06-delegation-probes.md`.
+Status: decided; issue 32 implemented, 33 and 34 not. ADR 0014 and 0015 are
+accepted; the probes behind them are in
+`docs/experiments/2026-10-06-delegation-probes.md`.
 
 - Issue 32: declare the two Codex registrations in `global/mcp-servers.json`,
   install them through `claude mcp`, report drift in `--check`, and allow the
-  tools that spend no quota (ADR 0014).
+  tools that spend no quota (ADR 0014). Implemented; running the installer on
+  this machine, with `personal/mcp-servers.json` for `CODEX_BIN`, follows the merge.
 - Issue 33: name delegates `<engine>-<role>`, route by literal tool name, and
   check that descriptions route work. Upstream, `codex-subagent-mcp` issue 143
   asks each registration to describe itself.

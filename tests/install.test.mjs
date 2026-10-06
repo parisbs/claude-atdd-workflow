@@ -6,12 +6,18 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { fakeClaude } from './fake-claude.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The installer registers MCP servers through `claude` (ADR 0014); a fake one stands in for it, so the
+// tests neither need the CLI nor touch a real configuration.
+const claudeDir = mkdtempSync(join(tmpdir(), 'cw-install-claude-'));
+const fake = fakeClaude(claudeDir);
+after(() => rmSync(claudeDir, { recursive: true, force: true }));
 const install = (target, ...args) => spawnSync(
   process.execPath,
   [join(repo, 'scripts', 'install.mjs'), '--target', target, ...args],
-  { encoding: 'utf8' },
+  { encoding: 'utf8', env: { ...process.env, ...fake.env() } },
 );
 const settingsOf = (target) => JSON.parse(readFileSync(join(target, 'settings.json'), 'utf8'));
 

@@ -12,6 +12,10 @@ acceptance tests.
   - `settings.json`: read-only permissions, built-in git instructions off, hook
     wiring. `retired-permissions.json` lists rules that no longer ship and that
     the installer removes from an installed `settings.json`.
+  - `mcp-servers.json`: the MCP servers the installer registers in the user
+    scope through `claude mcp` (ADR 0014): `codex-reviewer` and
+    `codex-implementer`, two registrations of `codex-subagent-mcp` with different
+    sandbox ceilings. `retired-mcp-servers.json` lists registrations it removes.
   - `hooks/`: `guard-git.mjs` (no commit or push on main, no `--no-verify`,
     confirmation before remote Supabase actions, oracle tags created with
     confirmation and never moved or deleted, and the merge decision: squash
@@ -31,7 +35,8 @@ acceptance tests.
     the agent files. A project agent with the same name overrides them.
 - `personal/`: the installer's own preferences. Only `*.example.*` files are
   versioned. `preferences.md` becomes `~/.claude/rules/personal.md`;
-  `settings.json` is merged over the generic settings.
+  `settings.json` is merged over the generic settings; `mcp-servers.json` holds
+  machine values, such as `CODEX_BIN`, merged over the env of the shared servers.
 - `common/`: templates every repository receives through `repo-bootstrap`:
   a `CLAUDE.md` skeleton, issue and pull request templates, the
   pull request title check, labels and GitHub rulesets.
@@ -48,6 +53,7 @@ Requires Node 22 or later.
 ```bash
 cp personal/preferences.example.md personal/preferences.md
 cp personal/settings.example.json personal/settings.json
+cp personal/mcp-servers.example.json personal/mcp-servers.json
 node scripts/install.mjs --check
 node scripts/install.mjs
 ```
@@ -56,8 +62,13 @@ The personal files are optional: edit them to your own preferences first. The
 check reports what would change without writing anything. Installing copies
 files (never links them), merges `settings.json` keeping anything already
 there, backs up whatever it overwrites to `~/.claude/backups/claude-workflow/`,
-and removes files it installed earlier but no longer ships. Run the check again
-at any time to detect drift.
+and removes files it installed earlier but no longer ships. It also registers the
+declared MCP servers through the `claude` CLI, never by writing `~/.claude.json`,
+replacing a registration that differs (the old one is saved in the backup
+directory) and removing a retired one; a Claude Code session that is already
+open keeps the old server process until it reloads. Without `claude` on `PATH`
+the servers are reported as not verified, and the check exits 1. Run the check
+again at any time to detect drift.
 
 ## Workflow in short
 

@@ -1,0 +1,12 @@
+{
+  "codex-reviewer": {
+    "env": {
+      "CODEX_BIN": "/usr/local/bin/codex"
+    }
+  },
+  "codex-implementer": {
+    "env": {
+      "CODEX_BIN": "/usr/local/bin/codex"
+    }
+  }
+}

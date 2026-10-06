@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { fakeClaude } from './fake-claude.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const instructions = readFileSync(join(repo, 'global', 'CLAUDE.md'), 'utf8');
@@ -76,11 +77,15 @@ describe('Git section', () => {
 describe('install', () => {
   test('AC-5 the installed instructions match the repository', () => {
     const target = mkdtempSync(join(tmpdir(), 'cw-delegation-'));
-    const run = (...args) => spawnSync(process.execPath, [join(repo, 'scripts', 'install.mjs'), '--target', target, ...args], { encoding: 'utf8' });
+    // The installer registers MCP servers through `claude` (ADR 0014): a fake one stands in, so the test
+    // does not depend on the CLI being installed, which CI does not have.
+    const claude = fakeClaude(mkdtempSync(join(tmpdir(), 'cw-delegation-claude-')));
+    const run = (...args) => spawnSync(process.execPath, [join(repo, 'scripts', 'install.mjs'), '--target', target, ...args], { encoding: 'utf8', env: { ...process.env, ...claude.env() } });
     assert.equal(run().status, 0);
     const check = run('--check');
     assert.equal(check.status, 0, check.stdout);
     assert.match(check.stdout, /matches the repository/);
     rmSync(target, { recursive: true, force: true });
+    rmSync(dirname(claude.bin), { recursive: true, force: true });
   });
 });

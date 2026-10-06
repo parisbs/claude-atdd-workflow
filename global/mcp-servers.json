@@ -1,0 +1,30 @@
+{
+  "codex-reviewer": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "codex-subagent-mcp@^0.5.0"],
+    "env": {
+      "CODEX_SUBAGENT_DEFAULT_MODEL": "gpt-5.6-sol",
+      "CODEX_SUBAGENT_DEFAULT_EFFORT": "high",
+      "CODEX_SUBAGENT_MAX_EFFORT": "high",
+      "CODEX_SUBAGENT_MAX_SANDBOX": "read-only",
+      "CODEX_SUBAGENT_MCP_SERVERS": "none",
+      "CODEX_SUBAGENT_PLUGINS": "none",
+      "CODEX_SUBAGENT_APPS": "off"
+    }
+  },
+  "codex-implementer": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "codex-subagent-mcp@^0.5.0"],
+    "env": {
+      "CODEX_SUBAGENT_DEFAULT_MODEL": "gpt-5.6-sol",
+      "CODEX_SUBAGENT_DEFAULT_EFFORT": "high",
+      "CODEX_SUBAGENT_MAX_EFFORT": "high",
+      "CODEX_SUBAGENT_MAX_SANDBOX": "workspace-write",
+      "CODEX_SUBAGENT_MCP_SERVERS": "none",
+      "CODEX_SUBAGENT_PLUGINS": "none",
+      "CODEX_SUBAGENT_APPS": "off"
+    }
+  }
+}

@@ -16,14 +16,26 @@
 //   the file is kept. The one exception is global/retired-permissions.json: the
 //   rules listed there ({"ask": [...], "allow": [...], "deny": [...]}) were
 //   installed once and no longer ship, so they are removed from the existing
-//   settings before the merge, because a union alone never lets a rule leave.
+//   settings before the merge, because a union alone never lets a rule leave;
+// - MCP servers (ADR 0014): global/mcp-servers.json (name -> add-json object),
+//   with the env of personal/mcp-servers.json merged over it key by key, is
+//   registered in the user scope through `claude mcp add-json` and
+//   `claude mcp remove`, never by writing .claude.json, which only the CLI
+//   writes. A registration that differs is removed and added again; one named
+//   in global/retired-mcp-servers.json is removed; any other server is left
+//   alone. The state is read from .claude.json in the target when --target names
+//   a directory other than ~/.claude (the CLI then runs with
+//   CLAUDE_CONFIG_DIR=<target>) and in HOME otherwise. Without a claude on PATH the servers are reported as not
+//   verified.
 //
 // Files it installed before and no longer ships are removed, using the manifest
-// it writes. Everything it overwrites or removes is first copied to
-// backups/claude-workflow/<timestamp>/ inside the target.
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+// it writes. Everything it overwrites or removes, MCP registrations included
+// (as mcp-servers.json), is first copied to backups/claude-workflow/<timestamp>/
+// inside the target.
+import { spawnSync } from 'node:child_process';
+import { accessSync, constants, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { delimiter, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,12 +43,26 @@ const STACKS = ['android', 'flutter', 'node-mcp', 'supabase'];
 const MANIFEST = '.claude-workflow-manifest.json';
 const MANAGED_HOOK = /\/\.claude\/hooks\/[a-z-]+\.mjs/;
 
+const realOrResolved = (path) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+};
+
 function parseArgs(argv) {
-  const args = { check: false, target: join(homedir(), '.claude') };
+  const defaultTarget = join(homedir(), '.claude');
+  // configDir is the CLAUDE_CONFIG_DIR for claude: only an explicit target other than the default sets
+  // it. Left unset, claude keeps its user configuration in ~/.claude.json; set to ~/.claude it would
+  // use ~/.claude/.claude.json, which nothing reads.
+  const args = { check: false, target: defaultTarget, configDir: null };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--check') args.check = true;
-    else if (argv[i] === '--target') args.target = resolve(argv[(i += 1)]);
-    else throw new Error(`unknown argument: ${argv[i]}`);
+    else if (argv[i] === '--target') {
+      args.target = resolve(argv[(i += 1)]);
+      args.configDir = realOrResolved(args.target) === realOrResolved(defaultTarget) ? null : args.target;
+    } else throw new Error(`unknown argument: ${argv[i]}`);
   }
   return args;
 }
@@ -139,8 +165,117 @@ function desiredSettings(target) {
 
 const stable = (value) => `${JSON.stringify(value, null, 2)}\n`;
 
+// Declared servers with the personal env merged over the generic one, and the
+// personal names that declare nothing.
+function desiredServers() {
+  const generic = readJson(join(repo, 'global', 'mcp-servers.json'));
+  const personal = readJson(join(repo, 'personal', 'mcp-servers.json'));
+  const servers = {};
+  for (const [name, server] of Object.entries(generic)) {
+    const overlay = isObject(personal[name]?.env) ? personal[name].env : {};
+    servers[name] = isObject(server.env) || Object.keys(overlay).length > 0
+      ? { ...server, env: { ...server.env, ...overlay } }
+      : server;
+  }
+  return { servers, ignored: Object.keys(personal).filter((name) => !(name in generic)) };
+}
+
+// Missing and empty compare equal, so the check does not depend on how the CLI
+// writes defaults; env key order does not count, args order does.
+const shape = (s) => JSON.stringify([
+  s.type ?? 'stdio',
+  s.command,
+  s.args ?? [],
+  Object.entries(s.env ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+]);
+
+function mcpPlan(stateDir) {
+  const { servers, ignored } = desiredServers();
+  const retiredFile = join(repo, 'global', 'retired-mcp-servers.json');
+  const retired = existsSync(retiredFile) ? JSON.parse(readFileSync(retiredFile, 'utf8')) : [];
+  const declared = Object.keys(servers);
+  if (declared.length === 0 && retired.length === 0) return { servers, ignored, declared, current: {}, add: [], replace: [], remove: [] };
+  const state = readJson(join(stateDir, '.claude.json')).mcpServers;
+  const current = isObject(state) ? state : {};
+  return {
+    servers,
+    ignored,
+    declared,
+    current,
+    add: declared.filter((name) => !(name in current)),
+    replace: declared.filter((name) => name in current && shape(current[name]) !== shape(servers[name])),
+    remove: retired.filter((name) => name in current && !(name in servers)),
+  };
+}
+
+// Found on PATH rather than run: asking claude for its version would be a call
+// even when there is nothing to change.
+function findClaude() {
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (!dir) continue;
+    const path = join(dir, 'claude');
+    try {
+      if (!statSync(path).isFile()) continue;
+      accessSync(path, constants.X_OK);
+      return path;
+    } catch {
+      // not here
+    }
+  }
+  return null;
+}
+
+// Applies the plan through the CLI and returns how many servers failed.
+function registerServers(claude, configDir, plan) {
+  const env = { ...process.env };
+  if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
+  else delete env.CLAUDE_CONFIG_DIR;
+  const mcp = (...args) => {
+    const r = spawnSync(claude, ['mcp', ...args, '-s', 'user'], { encoding: 'utf8', env });
+    if (r.status === 0) return true;
+    console.error(`claude mcp ${args[0]} ${args[1]} failed: ${(r.stderr || r.error?.message || `exit ${r.status}`).trim()}`);
+    return false;
+  };
+  let failed = 0;
+  let changed = 0;
+  for (const name of plan.remove) {
+    if (mcp('remove', name)) {
+      changed += 1;
+      console.log(`Removed MCP server ${name}`);
+    } else {
+      failed += 1;
+      console.error(`MCP server ${name} not removed.`);
+    }
+  }
+  for (const name of plan.replace) {
+    if (!mcp('remove', name)) {
+      failed += 1;
+      console.error(`MCP server ${name} not replaced: the old registration is still in place.`);
+      continue;
+    }
+    changed += 1;
+    if (mcp('add-json', name, JSON.stringify(plan.servers[name]))) {
+      console.log(`Replaced MCP server ${name}`);
+    } else {
+      failed += 1;
+      console.error(`MCP server ${name} not registered: it was removed and adding it again failed.`);
+    }
+  }
+  for (const name of plan.add) {
+    if (mcp('add-json', name, JSON.stringify(plan.servers[name]))) {
+      changed += 1;
+      console.log(`Registered MCP server ${name}`);
+    } else {
+      failed += 1;
+      console.error(`MCP server ${name} not registered.`);
+    }
+  }
+  if (changed > 0) console.log('Open Claude Code sessions keep the old MCP server process until they reload.');
+  return failed;
+}
+
 function main() {
-  const { check, target } = parseArgs(process.argv.slice(2));
+  const { check, target, configDir } = parseArgs(process.argv.slice(2));
   const planned = plannedFiles();
   const previous = readJson(join(target, MANIFEST)).files ?? [];
   const orphans = previous.filter((f) => !planned.has(f) && existsSync(join(target, f)));
@@ -154,25 +289,46 @@ function main() {
   const settings = stable(desiredSettings(target));
   const settingsChanged = !existsSync(settingsPath) || readFileSync(settingsPath, 'utf8') !== settings;
 
+  const plan = mcpPlan(configDir ?? homedir());
+  const needed = [...plan.declared, ...plan.remove];
+  const claude = needed.length > 0 ? findClaude() : null;
+  const unverified = claude ? [] : needed;
+  if (plan.ignored.length > 0) {
+    console.log(`Ignored in personal/mcp-servers.json, not declared in global/mcp-servers.json: ${plan.ignored.join(', ')}`);
+  }
+
   if (check) {
     const drift = [
       ...changed.map((f) => `differs or missing: ${f}`),
       ...orphans.map((f) => `no longer shipped: ${f}`),
       ...retiredPresent(readJson(settingsPath)).map((rule) => `retired permission rule still installed: ${rule}`),
       ...(settingsChanged ? ['settings.json differs from the merged settings'] : []),
+      ...(claude ? [
+        ...plan.replace.map((name) => `mcp server differs: ${name}`),
+        ...plan.add.map((name) => `mcp server missing: ${name}`),
+        ...plan.remove.map((name) => `retired mcp server still registered: ${name}`),
+      ] : []),
     ];
-    if (drift.length === 0) {
+    if (drift.length === 0 && unverified.length === 0) {
       console.log(`${target} matches the repository.`);
       return 0;
     }
-    console.log(`Drift in ${target}:\n${drift.map((d) => `- ${d}`).join('\n')}`);
+    if (drift.length > 0) console.log(`Drift in ${target}:\n${drift.map((d) => `- ${d}`).join('\n')}`);
+    // Not drift: the registrations may well match, but nothing can say so.
+    if (unverified.length > 0) console.log(`cannot verify mcp servers (claude CLI unavailable): ${unverified.join(', ')}`);
     return 1;
   }
 
+  const backup = join(target, 'backups', 'claude-workflow', new Date().toISOString().replace(/[:.]/g, '-'));
+  const unregistered = claude ? [...plan.replace, ...plan.remove] : [];
+  if (unregistered.length > 0) {
+    mkdirSync(backup, { recursive: true });
+    writeFileSync(join(backup, 'mcp-servers.json'), stable(Object.fromEntries(unregistered.map((name) => [name, plan.current[name]]))));
+    console.log(`Backed up ${unregistered.length} MCP registration(s) to ${join(backup, 'mcp-servers.json')}`);
+  }
   const touched = [...changed, ...orphans, ...(settingsChanged ? ['settings.json'] : [])]
     .filter((f) => existsSync(join(target, f)));
   if (touched.length > 0) {
-    const backup = join(target, 'backups', 'claude-workflow', new Date().toISOString().replace(/[:.]/g, '-'));
     for (const f of touched) {
       mkdirSync(dirname(join(backup, f)), { recursive: true });
       cpSync(join(target, f), join(backup, f));
@@ -192,7 +348,11 @@ function main() {
   if (!existsSync(join(repo, 'personal', 'preferences.md'))) {
     console.log('No personal/preferences.md: copy personal/preferences.example.md to add your own.');
   }
-  return 0;
+  if (unverified.length > 0) {
+    console.log(`MCP servers not verified (claude CLI unavailable): ${unverified.join(', ')}`);
+    return 0;
+  }
+  return claude && registerServers(claude, configDir, plan) > 0 ? 1 : 0;
 }
 
 try {
