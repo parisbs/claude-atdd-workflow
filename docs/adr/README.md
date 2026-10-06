@@ -16,3 +16,4 @@ old one, which changes only in its status line.
 - [0010. Move human control to the specification and gate merges by verified conditions](0010-move-human-control-to-the-specification-and-gate-merges.md)
 - [0011. Delegate through Claude Code subagents, interchangeable with Codex](0011-delegate-through-subagents-interchangeable-with-codex.md)
 - [0012. Keep repository instructions in CLAUDE.md alone](0012-keep-repository-instructions-in-claude-md-alone.md)
+- [0013. Let guard-git keep subagents off GitHub](0013-guard-git-keeps-subagents-off-github.md)

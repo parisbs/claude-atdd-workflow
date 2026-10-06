@@ -10,7 +10,9 @@
 //   needs-human, draft state (ADR 0010). Anything that cannot be read asks;
 // - deploys to a linked Supabase project ask first;
 // - an ATDD oracle tag cannot be deleted or moved by the agent, and creating one
-//   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010).
+//   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010);
+// - a subagent never acts on GitHub: for an event with agent_id, git push and every
+//   gh command off a read-only list are denied, also inside bash -c or eval (ADR 0013).
 //
 // Parsing is deliberately simple: the command is split into segments on
 // shell operators, and each segment is read as words. It recognises the common
@@ -312,12 +314,104 @@ function checkSupabase(args, verdict) {
   }
 }
 
+// Subagents never act on GitHub (ADR 0010). A subagent file cannot say so: a Bash(...) entry in
+// disallowedTools removes the whole shell from it. So this hook enforces it for any event that
+// carries agent_id, which only a subagent's tool call has (ADR 0013). A gh command is denied unless
+// it is on this read-only list; a new gh command stays denied until it is added here.
+const GH_READS = {
+  pr: ['view', 'list', 'diff', 'checks', 'status'],
+  issue: ['view', 'list', 'diff', 'checks', 'status'],
+  run: ['view', 'list', 'watch'],
+  repo: ['view'],
+  label: ['list'],
+  release: ['view', 'list'],
+  workflow: ['view', 'list'],
+};
+
+// The program a word names, so /opt/homebrew/bin/gh reads as gh.
+const program = (word) => (word ?? '').split('/').pop();
+
+// The git subcommand after the global options, which can take a value of their own:
+// `git -c key=value push` and `git -C dir push` are both a push.
+function gitSubcommand(args) {
+  const withValue = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'];
+  let i = 0;
+  while (i < args.length && args[i].startsWith('-')) i += withValue.includes(args[i]) ? 2 : 1;
+  return args[i];
+}
+
+// gh api is a read only as a plain GET: any other method, or a field or an input body, writes.
+// graphql is denied outright, because a mutation looks like a query from here.
+function ghApiIsRead(args) {
+  if (args.includes('graphql')) return false;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (['-f', '-F', '--field', '--raw-field', '--input'].includes(arg)) return false;
+    if (/^--(field|raw-field|input)=/.test(arg) || /^-[fF]./.test(arg)) return false;
+    let method;
+    if (arg === '-X' || arg === '--method') method = args[i + 1];
+    else if (arg.startsWith('--method=')) method = arg.slice('--method='.length);
+    else if (/^-X./.test(arg)) method = arg.slice(2);
+    if (method !== undefined && method.toUpperCase() !== 'GET') return false;
+  }
+  return true;
+}
+
+function ghIsRead(args) {
+  const [cmd, sub] = args;
+  if (['--version', 'help', '--help'].includes(cmd) || cmd === 'search') return true;
+  if (cmd === 'api') return ghApiIsRead(args.slice(1));
+  if (cmd === 'auth') {
+    // auth status prints the token with -t or --show-token, also inside a cluster of short flags.
+    const showsToken = args.some((a) => a === '--show-token' || a.startsWith('--show-token=') || /^-[A-Za-z]*t/.test(a));
+    return sub === 'status' && !showsToken;
+  }
+  return Boolean(GH_READS[cmd]?.includes(sub));
+}
+
+function checkSubagent(w, verdict) {
+  const name = program(w[0]);
+  if (name === 'git' && gitSubcommand(w.slice(1)) === 'push') {
+    verdict.add('deny', 'A subagent never pushes: it commits on the work branch and the orchestrator pushes (ADR 0010, 0013).');
+  } else if (name === 'gh' && !ghIsRead(w.slice(1))) {
+    verdict.add('deny', `A subagent never acts on GitHub, and \`${['gh', ...w.slice(1, 3)].join(' ')}\` is not on its read-only list: return a report and let the orchestrator do it (ADR 0010, 0013).`);
+  }
+}
+
+// bash -c, sh -c, zsh -c and eval run a string this hook would otherwise read as one word.
+// The string is taken from the whole command, because segments() splits inside quotes.
+const WRAPPER = /(?:^|[\s;&|(`])(?:\S*\/)?(?:(?:ba|z|k|da)?sh(?:\s+-{1,2}[A-Za-z-]+)*?\s+-[A-Za-z]*c[A-Za-z]*|eval)\s+("[^"]*"|'[^']*'|[^;&|\n]+)/g;
+
+function wrapped(command) {
+  return [...command.matchAll(WRAPPER)].map((m) => m[1].replace(/^(["'])([\s\S]*)\1$/, '$2'));
+}
+
+function actsOnGitHub(command) {
+  const direct = segments(command).some((segment) => {
+    const w = words(segment);
+    while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
+    return program(w[0]) === 'gh' || (program(w[0]) === 'git' && gitSubcommand(w.slice(1)) === 'push');
+  });
+  return direct || wrapped(command).some(actsOnGitHub);
+}
+
+// A wrapper that runs gh or git push is denied even for a read: what it runs is harder to read
+// than a plain command, and a subagent has no need to hide one.
+function checkWrappers(command, verdict) {
+  if (wrapped(command).some(actsOnGitHub)) {
+    verdict.add('deny', 'A subagent must not run gh or git push inside a shell wrapper (bash -c, sh -c, zsh -c, eval); run a plain read instead (ADR 0013).');
+  }
+}
+
 try {
   const event = readEvent();
   const command = event?.tool_input?.command;
   if (typeof command !== 'string') process.exit(0);
 
+  // Only a subagent's call carries agent_id; the main session's carries none.
+  const subagent = typeof event.agent_id === 'string' && event.agent_id !== '';
   const verdict = new Verdict();
+  if (subagent) checkWrappers(command, verdict);
   let cwd = event.cwd ?? process.cwd();
   const branches = new Map();
   const parts = segments(command);
@@ -326,11 +420,14 @@ try {
     const w = words(segment);
     // Skip leading environment assignments such as FOO=1 git push.
     while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
+    if (subagent) checkSubagent(w, verdict);
     if (w[0] === 'cd' && w[1]) {
       cwd = isAbsolute(w[1]) ? w[1] : resolve(cwd, w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
     } else if (w[0] === 'git') {
       checkGit(w.slice(1), cwd, verdict, branches);
-    } else if (w[0] === 'gh') {
+    } else if (w[0] === 'gh' && !subagent) {
+      // A subagent's gh is decided by the read-only list alone, so it never reaches the
+      // merge decision and never earns its explicit allow.
       merged = checkGh(w.slice(1), verdict, cwd) || merged;
     } else if (w[0] === 'supabase' || (w[0] === 'npx' && w[1] === 'supabase')) {
       checkSupabase(w.slice(w[0] === 'npx' ? 2 : 1), verdict);
@@ -338,7 +435,7 @@ try {
   }
   // An explicit allow lifts the prompt for the whole command, so it is only given to a
   // command that is nothing but one plain merge, with no quotes, chains or redirections.
-  if (merged && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
+  if (merged && !subagent && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
     verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label (ADR 0010).');
   }
   verdict.emit();

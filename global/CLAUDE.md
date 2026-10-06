@@ -104,7 +104,8 @@ could weaken its own controls: `.github/workflows/ci.yml`,
 - Actions fall into three classes (ADR 0010):
   - Free for subagents: reading, researching, drafting, editing in the worktree,
     commits on the work branch, running tests. Subagents never act on GitHub;
-    they return a report.
+    they return a report. `guard-git` enforces this for any subagent: it denies
+    `git push` and every `gh` command off a read-only list (ADR 0013).
   - Orchestrator only: pushing the work branch, opening pull requests, issues,
     labels, milestones and comments, and merging under the conditions below.
   - Human only: accepting an ADR, amending a frozen test, publishing a release,
