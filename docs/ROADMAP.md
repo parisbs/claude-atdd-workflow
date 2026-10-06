@@ -1,10 +1,23 @@
 # Roadmap
 
+Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
+
+- Phases 0 and 1: done.
+- Phase 2: done, except the removal of duplicates, which has not been checked.
+- Orchestration (below): done.
+- Phase 3: started. One repository is migrated, one is pending.
+- Phase 4: not started. There is no `docs/experiments/` yet, so the workflow has
+  been used on this repository only and nothing about it has been measured.
+
 ## Phase 0: repository
+
+Status: done. The repository exists and `main` is protected by the rulesets of ADR 0004.
 
 - Create the private GitHub repository and push `main`.
 
 ## Phase 1: structure and generic configuration
+
+Status: done. Pull requests run the tests on Ubuntu and macOS with Node 22 and 24.
 
 - `global/`: user `CLAUDE.md`, generic settings, safety hooks and user skills.
 - `personal/`: example preferences and settings; real files stay local.
@@ -15,11 +28,49 @@
 
 ## Phase 2: install on this machine
 
+Status: installed, and `node scripts/install.mjs --check` reports no drift
+(2026-10-06). `codex-subagent-mcp` is registered in the user scope with
+`CODEX_SUBAGENT_MAX_SANDBOX=read-only` (`claude mcp get codex-subagent`). Not
+checked: whether the duplicate `CLAUDE.local.md` files and stale auto-memory
+entries are gone from every repository; Phase 3 covers them per repository.
+
 - Install, then remove the duplicates it replaces: personal preferences copied
   into project `CLAUDE.local.md` files and auto-memory entries.
 - Register `codex-subagent-mcp` in the user scope with a read-only ceiling.
 
+## Orchestration
+
+Status: done (milestone `orchestration`, issues 7 to 12, 17, 18 and 26). Open in
+that milestone: issue 19, which belongs to Phase 3.
+
+What now exists, each part with its decision record:
+
+- The merge decision of `gh pr merge` from what GitHub shows, with `Human merge`
+  read from the repository's `CLAUDE.md` (ADR 0010).
+- The orchestrator can start the workflow skills, and the global Delegation
+  section says who does what and when to stop (ADR 0010, 0011).
+- Two user-level subagents, `claude-implementer` and `claude-researcher`,
+  installed in `~/.claude/agents/` (ADR 0011). The reviewer is deferred.
+- `guard-git` denies `git push` and every `gh` command off a read-only list to
+  any subagent, also inside `bash -c` or `eval` (ADR 0013). It was probed on
+  2026-10-06 with a real subagent: merge, push and wrapper were denied and a
+  read was allowed.
+- `CLAUDE.md` as the only instruction file of a repository (ADR 0012).
+
+Known costs, accepted: a subagent cannot call `gh api graphql`; the hook reads a
+command as words, so a quoted `; git push` inside a commit message is denied.
+
+## Hardening (milestone `hardening`)
+
+- Issue 27: `guard-git` does not read `git -c key=value` or `--git-dir`, so
+  every rule is skipped for those forms.
+- Issue 28: CI check that merged ADRs change only their status line and that
+  every ADR is in the index.
+
 ## Phase 3: integrate the existing repositories
+
+Status: started. `codex-subagent-mcp` is migrated (its issue 142); `css-diagnostic`
+is pending. Issue 19 tracks both.
 
 One branch and one pull request per repository that already has agent
 instructions, through `repo-bootstrap` integrate mode, piloted on one
@@ -38,8 +89,32 @@ issues, not here. For each one:
 
 ## Phase 4: basic ATDD pilot
 
+Status: not started. Next step: three real issues in one repository that has a
+real test suite, run with the installed `claude-implementer`, with notes kept by
+hand in `docs/experiments/`: what each issue cost, where the oracle was wrong,
+what the human had to correct. Instrumentation waits for what the pilot shows.
+
 Run the workflow of ADR 0003 on real issues and record what happens in
 `docs/experiments/`.
+
+## Measurement
+
+Status: designed on 2026-10-05, not started, no issue and no ADR yet. The aim is
+that other developers can inspect and replicate the evidence behind the workflow,
+within its limits; it is not to pool data from many people.
+
+- An optional local event log, off by default: counts, categories and
+  enumerations only, never prompts, code or paths. What each developer records
+  stays on their machine.
+- A baseline taken from the Claude Code transcripts and the git and GitHub
+  history that already exist, which needs a check of the transcript format first.
+- An analysis script anyone can run on their own log, and the maintainer's
+  dataset published in `docs/experiments/` with model, effort and CLI versions.
+- A measurement protocol written before the data is read, as an ADR: metrics with
+  operational definitions, hypotheses, covariates and limits.
+- The claim it can support is "this worked in one developer's context, and here
+  is how to check", not "the workflow is valid in general". With one developer the
+  effect of the developer and of the project type cannot be separated.
 
 ## Later: the full protocol
 
@@ -95,6 +170,10 @@ Measure on real repositories instead of relying on Python benchmarks.
 
 ## Pending verification
 
+- The `effort` applied to the shipped subagents: the probe of issue 12 read the
+  model from the subagent transcripts, not the effort.
+- Whether the tool list of a subagent can be read from the harness: the probe
+  relied on the agents reporting their own missing tools.
 - Pitest support for Kotlin, and whether it needs the commercial Arcmutate
   plugin.
 - Kotest property testing: current version and Gradle integration.
