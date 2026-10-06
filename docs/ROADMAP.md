@@ -5,7 +5,7 @@ Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
 - Phases 0 and 1: done.
 - Phase 2: done, except the removal of duplicates, which has not been checked.
 - Orchestration (below): done.
-- Delegation (below): decided in ADR 0014 and 0015. Issue 32 is implemented, 33 and 34 are not. Milestone `delegation`.
+- Delegation (below): decided in ADR 0014 and 0015. Issues 32 and 34 are implemented, 33 is not. Milestone `delegation`.
 - Phase 3: started. One repository is migrated, one is pending.
 - Phase 4: not started. `docs/experiments/` holds one record, the delegation
   probes of 2026-10-06; the workflow has been used on this repository only and
@@ -65,7 +65,7 @@ command as words, so a quoted `; git push` inside a commit message is denied.
 
 ## Delegation (milestone `delegation`)
 
-Status: decided; issue 32 implemented, 33 and 34 not. ADR 0014 and 0015 are
+Status: decided; issues 32 and 34 implemented, 33 not. ADR 0014 and 0015 are
 accepted; the probes behind them are in
 `docs/experiments/2026-10-06-delegation-probes.md`.
 
@@ -78,6 +78,8 @@ accepted; the probes behind them are in
   asks each registration to describe itself.
 - Issue 34: the `task-package` skill, the three context rules, `omitClaudeMd`
   and a `tools` allowlist in both Claude agents, one report shape (ADR 0015).
+  Implemented; its manual probes (the first-request cost and what a real
+  subagent's context holds) are in section 5 of the probes record.
 
 ## Hardening (milestone `hardening`)
 

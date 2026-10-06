@@ -115,7 +115,7 @@ describe('the shipped agents', () => {
     const a = agent('claude-implementer');
     assert.equal(a.fields.model, 'opus');
     assert.equal(a.fields.effort, 'high');
-    assert.ok(a.disallowed.includes('Agent'), 'Agent must be disallowed');
+    assert.ok(excludes(a, 'Agent'), 'Agent must be excluded, by disallowedTools or by leaving it out of tools');
     assert.ok(!a.disallowed.some((entry) => /^Bash/.test(entry)), 'a Bash entry removes the whole shell (ADR 0013)');
     assert.equal(a.fields.isolation, undefined, 'isolation: worktree is not used (ADR 0011)');
   });

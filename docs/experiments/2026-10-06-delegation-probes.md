@@ -55,3 +55,24 @@ Method: headless as in section 2, with agents built from the bodies of the shipp
 - Implementer, on the scratch repository with the failing test: it fixed `src/greet.js` with a one-line change, touched nothing else, ran `npm test` before and after, did not commit as the package said, and reported that `mini-upper` is installed in `node_modules` but not listed in `package.json`, left alone as out of scope. First request: 5,890 tokens.
 
 Against about 50,000 for the installed researcher in the desktop session. One run each, on one small task each; the headless environment has a smaller baseline, so the ratio, not the absolute numbers, is the point.
+
+## 5. The installed agents in a desktop session (issue 34, AC-7 and AC-8)
+
+Method: a desktop session started after `node scripts/install.mjs`, so the installed files were the shipped ones. Claude Code 2.1.291, Sonnet 5.5 and Opus 5.5. Each probe was a foreground `Agent` call; the numbers come from the subagent transcript (`subagents/agent-<id>.jsonl`): input, cache creation and cache read tokens of the first assistant message.
+
+First-request cost of a trivial delegation (prompt "reply OK"), two runs each:
+
+- `claude-researcher`: 54,253 and 54,253 before, 4,540 and 4,540 after.
+- `claude-implementer`: 54,934 and 54,934 before, 4,479 and 4,479 after.
+- `Explore`, the control the change does not touch: 38,883 and 38,883 before, 39,062 and 39,062 after. The 179 tokens are drift in the environment.
+
+The saving cannot be split between `omitClaudeMd` and the shorter tool list: both changed together.
+
+A package built from the `task-package` template, asking the agent to read one file and to say what its context holds:
+
+- Both agents returned status, failure type, what changed, checks run and not run, findings each with source and verified flag, and what was left out. Both corrected a prior finding marked not verified, citing the line.
+- Reading `package.json`, neither agent reported a `CLAUDE.md` or the personal rules, and the transcripts hold none of the text of the user, repository or personal files.
+- A first attempt read `global/agents/*.md` and is discarded: Claude Code loaded `global/CLAUDE.md` after that `Read` (in the transcripts it appears after the tool result, not at start). `omitClaudeMd` stops the startup files, not the `CLAUDE.md` of a directory the agent reads into, so a delegate that reads under a folder with its own `CLAUDE.md` receives it. ADR 0015 does not cover this.
+- The implementer of that attempt said it had no `Grep` or `Glob` although `tools` lists them. One observation, not checked.
+
+One run per variant, on trivial tasks.

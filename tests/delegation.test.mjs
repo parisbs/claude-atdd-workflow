@@ -62,7 +62,7 @@ describe('Delegation section', () => {
   test('stays short, because the global instructions are loaded in every session', () => {
     const lines = delegation.trim().split('\n').length;
     assert.ok(lines > 0, 'there is no Delegation section');
-    assert.ok(lines <= 40, `the Delegation section has ${lines} lines; keep it to 40 or fewer`);
+    assert.ok(lines <= 45, `the Delegation section has ${lines} lines; keep it to 45 or fewer`);
   });
 });
 

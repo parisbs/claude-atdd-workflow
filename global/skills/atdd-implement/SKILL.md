@@ -15,6 +15,10 @@ what is listed here. Read only:
 - the oracle: `git show --stat oracle/<branch>` and the tests it contains;
 - the repository's `CLAUDE.md`.
 
+When the fresh context is a subagent, it loads no `CLAUDE.md`, so the
+invariants and conventions the task touches arrive in its package, built with
+`task-package`.
+
 Do not read the transcript of the session that wrote the tests.
 
 ## Rules

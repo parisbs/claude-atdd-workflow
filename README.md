@@ -26,13 +26,16 @@ acceptance tests.
     tests while an `oracle/<branch>` tag exists) and `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle).
   - `skills/`: `issue-draft`, `atdd-oracle`, `atdd-implement`, `adr-draft`,
-    `pr-prep`, `drift-audit`, `release-prep` and `repo-bootstrap`. Their names
+    `pr-prep`, `drift-audit`, `task-package` (the package and report shape for
+    any delegation, ADR 0015), `release-prep` and `repo-bootstrap`. Their names
     never collide with project skills (ADR 0007).
   - `agents/`: the subagents the orchestrator delegates to (ADR 0011):
     `claude-implementer` (Opus, writes code against a task package) and
-    `claude-researcher` (Sonnet, read-only). Neither can start other agents;
-    that neither acts on GitHub is enforced by `guard-git` (ADR 0013), not by
-    the agent files. A project agent with the same name overrides them.
+    `claude-researcher` (Sonnet, read-only). Both set `omitClaudeMd`, so the
+    package is all they know, list their tools as an allowlist that leaves out
+    `Agent`, and end with the shared report (ADR 0015). That neither acts on
+    GitHub is enforced by `guard-git` (ADR 0013), not by the agent files. A
+    project agent with the same name overrides them.
 - `personal/`: the installer's own preferences. Only `*.example.*` files are
   versioned. `preferences.md` becomes `~/.claude/rules/personal.md`;
   `settings.json` is merged over the generic settings; `mcp-servers.json` holds
