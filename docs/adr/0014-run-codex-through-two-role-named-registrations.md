@@ -1,6 +1,6 @@
 # 0014. Run Codex through two registrations named by role and install them from this repository
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-06
 - Amends: [0011](0011-delegate-through-subagents-interchangeable-with-codex.md)
 

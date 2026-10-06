@@ -5,9 +5,11 @@ Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
 - Phases 0 and 1: done.
 - Phase 2: done, except the removal of duplicates, which has not been checked.
 - Orchestration (below): done.
+- Delegation (below): decided in ADR 0014 and 0015, not implemented. Milestone `delegation`, issues 32 to 34.
 - Phase 3: started. One repository is migrated, one is pending.
-- Phase 4: not started. There is no `docs/experiments/` yet, so the workflow has
-  been used on this repository only and nothing about it has been measured.
+- Phase 4: not started. `docs/experiments/` holds one record, the delegation
+  probes of 2026-10-06; the workflow has been used on this repository only and
+  nothing about it has been measured beyond those probes.
 
 ## Phase 0: repository
 
@@ -29,14 +31,15 @@ Status: done. Pull requests run the tests on Ubuntu and macOS with Node 22 and 2
 ## Phase 2: install on this machine
 
 Status: installed, and `node scripts/install.mjs --check` reports no drift
-(2026-10-06). `codex-subagent-mcp` is registered in the user scope with
-`CODEX_SUBAGENT_MAX_SANDBOX=read-only` (`claude mcp get codex-subagent`). Not
+(2026-10-06). `codex-subagent-mcp` is registered by hand in the user scope, twice, as
+`codex-reviewer` (ceiling `read-only`) and `codex-implementer` (`workspace-write`),
+on `^0.5.0` (`claude mcp get <name>`); issue 32 makes the repository install them. Not
 checked: whether the duplicate `CLAUDE.local.md` files and stale auto-memory
 entries are gone from every repository; Phase 3 covers them per repository.
 
 - Install, then remove the duplicates it replaces: personal preferences copied
   into project `CLAUDE.local.md` files and auto-memory entries.
-- Register `codex-subagent-mcp` in the user scope with a read-only ceiling.
+- Register `codex-subagent-mcp` in the user scope: two registrations by role (ADR 0014).
 
 ## Orchestration
 
@@ -59,6 +62,20 @@ What now exists, each part with its decision record:
 
 Known costs, accepted: a subagent cannot call `gh api graphql`; the hook reads a
 command as words, so a quoted `; git push` inside a commit message is denied.
+
+## Delegation (milestone `delegation`)
+
+Status: decided, not implemented. ADR 0014 and 0015 are accepted; the probes
+behind them are in `docs/experiments/2026-10-06-delegation-probes.md`.
+
+- Issue 32: declare the two Codex registrations in `global/mcp-servers.json`,
+  install them through `claude mcp`, report drift in `--check`, and allow the
+  tools that spend no quota (ADR 0014).
+- Issue 33: name delegates `<engine>-<role>`, route by literal tool name, and
+  check that descriptions route work. Upstream, `codex-subagent-mcp` issue 143
+  asks each registration to describe itself.
+- Issue 34: the `task-package` skill, the three context rules, `omitClaudeMd`
+  and a `tools` allowlist in both Claude agents, one report shape (ADR 0015).
 
 ## Hardening (milestone `hardening`)
 
@@ -170,6 +187,8 @@ Measure on real repositories instead of relying on Python benchmarks.
 
 ## Pending verification
 
+- Not checked in the delegation probes: `auto_approve`, Codex efforts above low, Linux and Windows,
+  and whether path-scoped rules load inside a subagent.
 - The `effort` applied to the shipped subagents: the probe of issue 12 read the
   model from the subagent transcripts, not the effort.
 - Whether the tool list of a subagent can be read from the harness: the probe
