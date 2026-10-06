@@ -6,7 +6,7 @@
 //   node scripts/install.mjs --target <dir>
 //
 // What it installs (ADR 0001):
-// - global/CLAUDE.md, global/hooks and global/skills, copied, never linked:
+// - global/CLAUDE.md, global/hooks, global/skills and global/agents, copied, never linked:
 //   Cowork sessions skip a symlinked ~/.claude/CLAUDE.md;
 // - common/ and the stack directories, as templates of the repo-bootstrap skill;
 // - personal/preferences.md, when present, as rules/personal.md;
@@ -61,6 +61,7 @@ function plannedFiles() {
   files.set('CLAUDE.md', join(repo, 'global', 'CLAUDE.md'));
   add(join(repo, 'global', 'hooks'), 'hooks');
   add(join(repo, 'global', 'skills'), 'skills');
+  add(join(repo, 'global', 'agents'), 'agents');
   add(join(repo, 'common'), 'skills/repo-bootstrap/templates/common');
   for (const stack of STACKS) add(join(repo, stack), `skills/repo-bootstrap/templates/${stack}`);
   const personal = join(repo, 'personal', 'preferences.md');

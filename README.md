@@ -24,6 +24,11 @@ acceptance tests.
   - `skills/`: `issue-draft`, `atdd-oracle`, `atdd-implement`, `adr-draft`,
     `pr-prep`, `drift-audit`, `release-prep` and `repo-bootstrap`. Their names
     never collide with project skills (ADR 0007).
+  - `agents/`: the subagents the orchestrator delegates to (ADR 0011):
+    `claude-implementer` (Opus, writes code against a task package) and
+    `claude-researcher` (Sonnet, read-only). Neither can start other agents;
+    that neither acts on GitHub is enforced by `guard-git` (ADR 0013), not by
+    the agent files. A project agent with the same name overrides them.
 - `personal/`: the installer's own preferences. Only `*.example.*` files are
   versioned. `preferences.md` becomes `~/.claude/rules/personal.md`;
   `settings.json` is merged over the generic settings.
