@@ -69,6 +69,17 @@
             "statusMessage": "Checking the ATDD test oracle"
           }
         ]
+      },
+      {
+        "matcher": "^mcp__codex-(reviewer|implementer)__codex_(delegate|follow_up)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/guard-codex.mjs\"",
+            "timeout": 15,
+            "statusMessage": "Checking the Codex delegation rules"
+          }
+        ]
       }
     ]
   }

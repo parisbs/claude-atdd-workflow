@@ -5,7 +5,7 @@ Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
 - Phases 0 and 1: done.
 - Phase 2: done, except the removal of duplicates, which has not been checked.
 - Orchestration (below): done.
-- Delegation (below): decided in ADR 0014 and 0015. Issues 32 and 34 are implemented; 33, 42 and 43 are open. Milestone `delegation`.
+- Delegation (below): decided in ADR 0014 and 0015. Issues 32, 34 and 42 are implemented; 33, 43 and 46 are open. Milestone `delegation`.
 - Phase 3: started. One repository is migrated, one is pending.
 - Phase 4: not started. `docs/experiments/` holds two records, the delegation
   probes and the Codex alignment probes of 2026-10-06; the workflow has been used
@@ -66,7 +66,7 @@ command as words, so a quoted `; git push` inside a commit message is denied.
 
 ## Delegation (milestone `delegation`)
 
-Status: decided; issues 32 and 34 implemented, 33, 42 and 43 open. ADR 0014 and
+Status: decided; issues 32, 34 and 42 implemented, 33, 43 and 46 open. ADR 0014 and
 0015 are accepted; the probes behind them are in
 `docs/experiments/2026-10-06-delegation-probes.md`, and the checks of
 `codex-subagent-mcp` against them in
@@ -86,10 +86,13 @@ Status: decided; issues 32 and 34 implemented, 33, 42 and 43 open. ADR 0014 and
 - Issue 42: a hook over the Codex tools that denies a worktree delegation from a
   tree with uncommitted changes, a call without `working_dir` and a writing
   follow-up outside a Codex worktree, and a script that integrates a worktree.
+  Implemented as `guard-codex.mjs` and `codex-integrate.mjs`.
   Upstream, `codex-subagent-mcp` issue 149 makes a follow-up resume in the
   worktree and issue 150 reports the worktree and what it left out.
 - Issue 43: how to protect the oracle inside a Codex run now that Codex has hooks
   of its own. Needs an ADR.
+- Issue 46: a Claude subagent's worktree starts from the default branch, not
+  the work branch, so the package must name the commit the delegate builds on.
 - The two-attempt budget of ADR 0010 is prose for every delegate.
   `codex-subagent-mcp` issue 62, which ADR 0010 names as its counterpart, bounds
   how many delegations a session can start; it does not count attempts at one
@@ -101,6 +104,8 @@ Status: decided; issues 32 and 34 implemented, 33, 42 and 43 open. ADR 0014 and
   every rule is skipped for those forms.
 - Issue 28: CI check that merged ADRs change only their status line and that
   every ADR is in the index.
+- Issue 45: `guard-tests` keys the oracle on the branch name, so it does not
+  freeze the tests inside a Claude subagent's worktree.
 
 ## Phase 3: integrate the existing repositories
 

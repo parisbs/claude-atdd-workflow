@@ -133,13 +133,19 @@ describe('the task-package skill', () => {
     says(text, /\b(not|never|cannot)\b/i, /commit/i);
   });
 
-  test('AC-9 the integration loses nothing: new files and binaries enter the diff, a moved branch applies three-way, and the worktree is removed only after the diff is applied', () => {
+  // Issue #42 replaced the listed integration steps with codex-integrate.mjs; what they guaranteed (new and
+  // binary files, removal only after the changes are applied) is now tested on the script itself, in
+  // codex-integrate.test.mjs.
+  test('AC-7 (#42) names the integration script for a codex-implementer worktree instead of listing the steps', () => {
     const text = skill();
-    assert.match(text, /git add -N/);
-    assert.match(text, /git diff --binary/);
-    assert.match(text, /--3way/);
-    says(text, /git worktree remove/, /--force/, /\b(after|only)\b/i);
-    says(text, /apply/i, /fail/i, /\b(report|stop)\b/i);
+    says(text, /codex-integrate\.mjs/, /worktree/i);
+    for (const step of [/git add -N/, /git diff --binary/, /git apply\b/, /--3way/]) {
+      assert.doesNotMatch(text, step, `the skill still lists the step ${step}`);
+    }
+  });
+
+  test('AC-7 (#42) says what to do when the script stops: report and keep the worktree', () => {
+    says(skill(), /codex-integrate|script/i, /\b(stops|fails|exits)\b/i, /\b(report|keep)\b/i);
   });
 
   test('ADR 0015 when the package asks for commits it carries the commit convention, because the delegate does not load CLAUDE.md', () => {
@@ -212,6 +218,12 @@ describe('the package for Codex', () => {
       says(text, /`output_schema`/, /report/i);
     });
   }
+
+  test('AC-7 (#42) the task-package skill maps the working directory to working_dir, and a follow-up to the worktree path', () => {
+    const text = skill();
+    says(text, /\b(directory|working root)\b/i, /`working_dir`/);
+    says(text, /`codex_follow_up`/, /`working_dir`/, /worktree/i);
+  });
 
   test('AC-4 pr-prep points to the task-package skill', () => {
     assert.match(read('global/skills/pr-prep/SKILL.md'), /task-package/);
