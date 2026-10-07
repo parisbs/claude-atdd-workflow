@@ -204,6 +204,71 @@ describe('the Reviews section', () => {
   });
 });
 
+// Issue #46: a Claude subagent started with `isolation: worktree` starts from the default remote branch, not
+// from the work branch, so the package carries the commit it builds on and the delegate reaches it before any
+// task edit; only then does guard-tests bind its worktree (ADR 0016). The statements must be affirmative and
+// sit in a section about Claude, so that a negated sentence or one about Codex cannot satisfy them.
+describe('a Claude subagent in a worktree (#46)', () => {
+  // "no" is left out: "a repository with no remote" states a condition, not a negation of the rule.
+  const NEGATED = /\b(never|not|cannot|can't|don't|doesn't|mustn't)\b/i;
+  const affirms = (text, ...patterns) =>
+    assert.ok(
+      sentences(text).some((sentence) => patterns.every((pattern) => pattern.test(sentence)) && !NEGATED.test(sentence)),
+      `no single affirmative sentence matches all of ${patterns.join(' and ')}`,
+    );
+  const claudeSection = () => {
+    const chunk = skill().split('\n## ').slice(1).find((part) => /\bClaude\b/.test(part.split('\n')[0]));
+    return chunk ? chunk.slice(chunk.indexOf('\n') + 1) : '';
+  };
+  const baseCommitField = () => {
+    const fields = (skill().split('\n## Fields\n')[1] ?? '').split('\n## ')[0];
+    return /^- Base commit:.*(?:\n {2}.*)*/m.exec(fields)?.[0] ?? '';
+  };
+
+  test('AC-1 (#46) the skill has a section about Claude subagents', () => {
+    assert.ok(sentences(claudeSection()).length > 0, 'no non-empty "## ..." section whose heading names Claude');
+  });
+
+  test('AC-1 (#46) says a Claude subagent with isolation: worktree starts from the default remote branch unless worktree.baseRef is head', () => {
+    affirms(claudeSection(), /isolation:\s*worktree/, /\bstarts?\b/i, /default remote branch/i, /worktree\.baseRef/, /\bhead\b/i);
+  });
+
+  test('AC-1 (#46) the package template has a Base commit field: the work branch commit the delegate builds on', () => {
+    const field = baseCommitField();
+    assert.ok(field, 'the Fields list has no "- Base commit:" item');
+    affirms(field, /\bcommit\b/i, /work branch/i, /\bbuilds? on\b/i);
+  });
+
+  test('AC-1 (#46) says the package carries, in Base commit, the commit the delegate builds on', () => {
+    affirms(claudeSection(), /\bpackage\b/i, /Base commit/, /\bbuilds? on\b/i);
+  });
+
+  test('AC-2 (#46) says the delegate confirms its branch contains the Base commit before any task edit', () => {
+    affirms(
+      claudeSection(),
+      /\bdelegate\b/i,
+      /\b(confirms?|checks?|verif(y|ies))\b/i,
+      /\b(contains?|equals?|descends?|ancestor)\b/i,
+      /Base commit/,
+      /\b(branch|HEAD)\b/,
+      /\bbefore\b.*\bedit/i,
+    );
+  });
+
+  test('AC-2 (#46) says the delegate stops and reports missing-dependency when it cannot reach the Base commit', () => {
+    const reports = sentences(claudeSection()).some(
+      (sentence) =>
+        /\b(cannot|can't|unable)\b/i.test(sentence) &&
+        /Base commit/.test(sentence) &&
+        /\bstops?\b/i.test(sentence) &&
+        /\breports?\b/i.test(sentence) &&
+        /missing-dependency/.test(sentence) &&
+        !/\b(not|never|don't)\s+(\w+\s+)?reports?\b/i.test(sentence),
+    );
+    assert.ok(reports, 'no sentence says that, when it cannot reach the Base commit, the delegate stops and reports missing-dependency');
+  });
+});
+
 describe('the package for Codex', () => {
   const MAPPINGS = [
     ['goal and criteria to acceptance_criteria', /\b(goal|criteria)\b/i, /`acceptance_criteria`/],

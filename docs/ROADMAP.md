@@ -5,10 +5,11 @@ Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
 - Phases 0 and 1: done.
 - Phase 2: done, except the removal of duplicates, which has not been checked.
 - Orchestration (below): done.
-- Delegation (below): decided in ADR 0014 and 0015. Issues 32, 34 and 42 are implemented; 33, 43 and 46 are open. Milestone `delegation`.
+- Delegation (below): decided in ADR 0014 and 0015. Issues 32, 34, 42 and 46 are implemented; 33, 38 and 43 are open. Milestone `delegation`.
 - Phase 3: started. One repository is migrated, one is pending.
-- Phase 4: not started. `docs/experiments/` holds two records, the delegation
-  probes and the Codex alignment probes of 2026-10-06; the workflow has been used
+- Phase 4: not started. `docs/experiments/` holds three records, the delegation
+  probes and the Codex alignment probes of 2026-10-06 and the Claude worktree
+  probes of 2026-10-07; the workflow has been used
   on this repository only and nothing about it has been measured beyond those
   probes.
 
@@ -66,11 +67,13 @@ command as words, so a quoted `; git push` inside a commit message is denied.
 
 ## Delegation (milestone `delegation`)
 
-Status: decided; issues 32, 34 and 42 implemented, 33, 43 and 46 open. ADR 0014 and
+Status: decided; issues 32, 34, 42 and 46 implemented, 33, 38 and 43 open. ADR 0014 and
 0015 are accepted; the probes behind them are in
 `docs/experiments/2026-10-06-delegation-probes.md`, and the checks of
 `codex-subagent-mcp` against them in
-`docs/experiments/2026-10-06-codex-alignment-probes.md`.
+`docs/experiments/2026-10-06-codex-alignment-probes.md`. Where a Claude
+subagent's worktree starts, and what it takes to bind the oracle there, is in
+`docs/experiments/2026-10-07-claude-worktree-probes.md`.
 
 - Issue 32: declare the two Codex registrations in `global/mcp-servers.json`,
   install them through `claude mcp`, report drift in `--check`, and allow the
@@ -89,10 +92,16 @@ Status: decided; issues 32, 34 and 42 implemented, 33, 43 and 46 open. ADR 0014 
   Implemented as `guard-codex.mjs` and `codex-integrate.mjs`.
   Upstream, `codex-subagent-mcp` issue 149 makes a follow-up resume in the
   worktree and issue 150 reports the worktree and what it left out.
+- Issue 38: integrating a Claude subagent's worktree into the work branch and
+  removing it with its branch. Its guard part is done by issue 45 and its base
+  commit by issue 46; the integration and the ADR it names remain.
 - Issue 43: how to protect the oracle inside a Codex run now that Codex has hooks
   of its own. Needs an ADR.
-- Issue 46: a Claude subagent's worktree starts from the default branch, not
-  the work branch, so the package must name the commit the delegate builds on.
+- Issue 46: a Claude subagent's worktree starts from the fetched default remote
+  branch, not the work branch, so the package names a Base commit and the
+  delegate reaches it before any task edit. Implemented in `task-package`; its
+  implementation ran through `claude-implementer` with `isolation: worktree` and
+  a Base commit.
 - The two-attempt budget of ADR 0010 is prose for every delegate.
   `codex-subagent-mcp` issue 62, which ADR 0010 names as its counterpart, bounds
   how many delegations a session can start; it does not count attempts at one
@@ -108,6 +117,8 @@ Status: decided; issues 32, 34 and 42 implemented, 33, 43 and 46 open. ADR 0014 
   freeze the tests inside a Claude subagent's worktree. Implemented: a linked
   worktree is bound by the nearest oracle tag that is an ancestor of `HEAD`
   (ADR 0016).
+- Issue 50: `.claude/worktrees/` is not ignored here nor by `repo-bootstrap`,
+  so a subagent worktree shows as untracked in the main checkout.
 
 ## Phase 3: integrate the existing repositories
 
