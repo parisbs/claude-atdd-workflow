@@ -118,7 +118,9 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   worktree is bound by the nearest oracle tag that is an ancestor of `HEAD`
   (ADR 0016).
 - Issue 50: `.claude/worktrees/` is not ignored here nor by `repo-bootstrap`,
-  so a subagent worktree shows as untracked in the main checkout.
+  so a subagent worktree shows as untracked in the main checkout. Implemented:
+  this repository ignores it, `repo-bootstrap` adds it to the root `.gitignore`
+  in both modes, and `drift-audit` reports a missing rule or tracked paths.
 
 ## Phase 3: integrate the existing repositories
 

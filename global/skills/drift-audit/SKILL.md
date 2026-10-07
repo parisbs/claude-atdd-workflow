@@ -50,6 +50,17 @@ Compare with the templates in `~/.claude/skills/repo-bootstrap/templates/`:
   requests fail the title check.
 - Issue and pull request templates carry acceptance criteria and the
   criterion-to-test map.
+- `.claude/worktrees/`, where Claude Code makes its worktrees, is ignored by a
+  versioned `.gitignore`. Run
+  `git check-ignore --no-index -v .claude/worktrees/x` and report a missing
+  root `.gitignore`, no match, a `!` pattern, or a match from a file that is
+  not a versioned `.gitignore`. An equivalent pattern
+  (`/.claude/worktrees/`, `worktrees/`) counts; the user-level excludes and
+  `.git/info/exclude` do not count, since other clones lack them. Recommend
+  `.claude/worktrees/` in the root `.gitignore`.
+- No path under `.claude/worktrees/` is tracked: report every path
+  `git ls-files .claude/worktrees` lists (mode 160000 is a worktree staged as
+  an embedded repository), since an ignore rule leaves it tracked.
 - Rulesets (`gh api repos/{owner}/{repo}/rulesets` and each ruleset by id):
   main requires pull requests with zero approvals, squash merges, required
   checks, linear history, no force push or deletion, and only the administrator

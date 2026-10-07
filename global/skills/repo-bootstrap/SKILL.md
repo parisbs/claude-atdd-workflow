@@ -85,6 +85,12 @@ A repository keeps its instructions in a single `CLAUDE.md` (ADR 0012).
   `commit-message` to `prefix: "build"` (dependencies) or `prefix: "ci"`
   (GitHub Actions) with `include: "scope"`, so Dependabot titles its pull
   requests `build(deps): ...` and passes the title check.
+- Root `.gitignore`, in both modes: create it when it is missing, or complete
+  the existing one, and add `.claude/worktrees/` so it appears exactly once.
+  Claude Code makes its worktrees there, and unignored, a broad `git add`
+  stages a live worktree as an embedded repository. Keep the existing entries
+  and add no rule that ignores the rest of `.claude/`: the repository versions
+  its settings, skills, agents and rules.
 - Documentation diagrams: convert ASCII diagrams to Mermaid with a prose
   description when touched; do not rewrite untouched documents.
 
