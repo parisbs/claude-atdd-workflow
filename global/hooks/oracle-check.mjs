@@ -5,10 +5,12 @@
 //   node ~/.claude/hooks/oracle-check.mjs
 //
 // Compares the working tree (committed and uncommitted changes) with the
-// `oracle/<branch>` tag and reports every changed test path, every changed
-// test-configuration file, and every added skip annotation. Exits 1 when a test
-// path changed, 0 otherwise; configuration changes and skips are reported for a
-// human to judge. With no oracle tag on the branch there is nothing to check.
+// `oracle/<branch>` tag (in a linked worktree, otherwise the nearest oracle tag
+// whose commit is an ancestor of HEAD, see oracle.mjs) and reports every changed
+// test path, every changed test-configuration file, and every added skip
+// annotation. Exits 1 when a test path changed, 0 otherwise; configuration
+// changes and skips are reported for a human to judge. With no oracle tag that
+// binds the checkout there is nothing to check.
 import { git } from './lib.mjs';
 import { isTest, isTestConfig, oracleTag, testMatchers } from './oracle.mjs';
 

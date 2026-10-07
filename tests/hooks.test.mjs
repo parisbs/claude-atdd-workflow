@@ -17,9 +17,9 @@ function run(hook, event, env = {}) {
     env: { ...process.env, ...env },
   });
   assert.equal(result.status, 0, result.stderr);
-  if (result.stdout.trim() === '') return { decision: 'allow', explicit: false };
+  if (result.stdout.trim() === '') return { decision: 'allow', explicit: false, stderr: result.stderr };
   const out = JSON.parse(result.stdout).hookSpecificOutput;
-  return { decision: out.permissionDecision, reason: out.permissionDecisionReason, explicit: true };
+  return { decision: out.permissionDecision, reason: out.permissionDecisionReason, explicit: true, stderr: result.stderr };
 }
 
 function sh(cwd, ...args) {
@@ -624,5 +624,171 @@ describe('oracle-check', () => {
     assert.equal(r.status, 1);
     assert.match(r.stdout, /test paths changed[\s\S]*test\/pay\.test\.ts/);
     assert.match(r.stdout, /skip annotations added/);
+  });
+});
+
+// A delegate in a linked worktree works on a branch of its own (#45). The oracle
+// of the branch the worktree was made from still binds it.
+describe('guard-tests and oracle-check in a linked worktree (#45)', () => {
+  let dir;
+  let trees;
+  const tree = (name, start, branch = `worktree-agent-${name}`) => {
+    const path = join(trees, name);
+    sh(dir, 'worktree', 'add', '-q', '-b', branch, path, start);
+    return path;
+  };
+  const commit = (cwd, files, message) => {
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(join(cwd, dirname(file)), { recursive: true });
+      writeFileSync(join(cwd, file), content);
+    }
+    sh(cwd, 'add', '.');
+    sh(cwd, 'commit', '-q', '-m', message);
+  };
+  const write = (cwd, file_path) => run('guard-tests.mjs', { cwd, tool_name: 'Write', tool_input: { file_path, content: 'x\n' } });
+  const check = (cwd) => spawnSync(process.execPath, [join(hooks, 'oracle-check.mjs')], { cwd, encoding: 'utf8' });
+  // An allow must come from evaluating the rule, not from failing open.
+  const evaluatedAllow = (r) => {
+    assert.equal(r.decision, 'allow');
+    assert.equal(r.stderr, '');
+  };
+
+  before(() => {
+    dir = repo();
+    trees = mkdtempSync(join(tmpdir(), 'cw-trees-'));
+    sh(dir, 'checkout', '-q', '-b', 'feature/x');
+    commit(dir, { 'test/x.test.ts': "test('AC-1 x', () => {});\n", 'package.json': '{}\n' }, 'test: add acceptance tests');
+    sh(dir, 'tag', 'oracle/feature/x');
+    sh(dir, 'checkout', '-q', '-b', 'feature/y');
+    commit(dir, { 'test/y.test.ts': "test('AC-1 y', () => {});\n" }, 'test: add more acceptance tests');
+    sh(dir, 'tag', 'oracle/feature/y');
+    sh(dir, 'checkout', '-q', '-b', 'feature/custom', 'main');
+    commit(dir, { '.atdd/test-paths': 'specs/**\n', 'specs/a.kt': 'class A\n', 'package.json': '{}\n' }, 'test: declare test paths');
+    sh(dir, 'tag', 'oracle/feature/custom');
+    sh(dir, 'checkout', '-q', 'main');
+  });
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(trees, { recursive: true, force: true });
+  });
+
+  test('AC-1 denies Edit and Write on a test path in a worktree whose HEAD is the oracle commit of another branch', () => {
+    const wt = tree('at-oracle', 'oracle/feature/x');
+    const r = edit(wt, join(wt, 'test/x.test.ts'));
+    assert.equal(r.decision, 'deny');
+    assert.match(r.reason, /oracle\/feature\/x/);
+    assert.equal(write(wt, join(wt, 'test/new.test.ts')).decision, 'deny');
+  });
+
+  test('AC-1 resolves the oracle from the worktree of the edited file, not from the session cwd', () => {
+    const wt = tree('cwd-elsewhere', 'oracle/feature/x');
+    assert.equal(edit(dir, join(wt, 'test/x.test.ts')).decision, 'deny');
+  });
+
+  test('AC-1 denies test paths in a worktree with commits after the oracle commit', () => {
+    const wt = tree('after-oracle', 'oracle/feature/x');
+    commit(wt, { 'src/x.ts': 'export const x = 1;\n' }, 'feat: implement x');
+    assert.equal(edit(wt, join(wt, 'test/x.test.ts')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'test/new.test.ts')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'src/x.ts')).decision, 'allow');
+  });
+
+  test('AC-1 denies test paths in a detached linked worktree that descends from the oracle', () => {
+    const wt = tree('detached', 'oracle/feature/x');
+    sh(wt, 'checkout', '-q', '--detach');
+    assert.equal(edit(wt, join(wt, 'test/x.test.ts')).decision, 'deny');
+  });
+
+  test('AC-1 denies test paths when the oracle commit is reached through a merge', () => {
+    const wt = tree('merged', 'main');
+    commit(wt, { 'src/m.ts': 'export const m = 1;\n' }, 'feat: independent work');
+    sh(wt, 'merge', '-q', '--no-ff', '--no-edit', 'oracle/feature/x');
+    assert.equal(edit(wt, join(wt, 'test/x.test.ts')).decision, 'deny');
+  });
+
+  test('AC-1 honours an annotated oracle tag', () => {
+    const wt = tree('annotated', 'main');
+    commit(wt, { 'test/a.test.ts': "test('AC-1 a', () => {});\n" }, 'test: add acceptance tests');
+    sh(wt, 'tag', '-a', 'oracle/feature/annotated', '-m', 'approved');
+    commit(wt, { 'src/a.ts': 'export const a = 1;\n' }, 'feat: implement a');
+    assert.equal(edit(wt, join(wt, 'test/a.test.ts')).decision, 'deny');
+  });
+
+  test('AC-1 applies the test paths and configuration rules recorded in that oracle commit', () => {
+    const wt = tree('custom', 'oracle/feature/custom');
+    commit(wt, { '.atdd/test-paths': 'other/**\n' }, 'test: attempt to redefine paths');
+    assert.equal(edit(wt, join(wt, 'specs/b.kt')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, '.atdd/test-paths')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'other/a.kt')).decision, 'allow');
+    assert.equal(edit(wt, join(wt, 'test/other.test.ts')).decision, 'allow');
+    assert.equal(edit(wt, join(wt, 'package.json')).decision, 'ask');
+  });
+
+  test('AC-1 uses the oracle tag nearest to HEAD when several are ancestors', () => {
+    const wt = tree('nearest', 'oracle/feature/y');
+    commit(wt, { 'src/near.ts': 'export const near = 1;\n' }, 'feat: advance');
+    sh(wt, 'tag', 'oracle/feature/x2');
+    commit(wt, { 'src/later.ts': 'export const later = 1;\n' }, 'feat: advance again');
+    const r = edit(wt, join(wt, 'test/x.test.ts'));
+    assert.equal(r.decision, 'deny');
+    assert.match(r.reason, /oracle\/feature\/x2/);
+    assert.doesNotMatch(r.reason, /oracle\/feature\/(x|y)\b/);
+  });
+
+  test('AC-2 allows test paths in a worktree that no oracle tag is an ancestor of', () => {
+    const wt = tree('from-main', 'main');
+    evaluatedAllow(edit(wt, join(wt, 'test/x.test.ts')));
+  });
+
+  test("AC-2 keeps a linked worktree branch's own oracle tag, even when it is not an ancestor", () => {
+    const wt = tree('own', 'main');
+    sh(wt, 'tag', 'oracle/worktree-agent-own', 'oracle/feature/x');
+    const r = edit(wt, join(wt, 'test/x.test.ts'));
+    assert.equal(r.decision, 'deny');
+    assert.match(r.reason, /oracle\/worktree-agent-own/);
+  });
+
+  test('AC-2 leaves the main checkout as today on a branch stacked on another branch with an oracle', () => {
+    sh(dir, 'checkout', '-q', '-b', 'feature/stacked', 'oracle/feature/x');
+    try {
+      evaluatedAllow(edit(dir, join(dir, 'test/x.test.ts')));
+    } finally {
+      sh(dir, 'checkout', '-q', 'main');
+    }
+  });
+
+  test('AC-3 oracle-check in such a worktree compares against that oracle tag', () => {
+    const wt = tree('check', 'oracle/feature/x');
+    commit(wt, { 'src/x.ts': 'export const x = 1;\n' }, 'feat: implement x');
+    let r = check(wt);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /against oracle\/feature\/x/);
+    writeFileSync(join(wt, 'test/x.test.ts'), "test.skip('AC-1 x', () => {});\n");
+    r = check(wt);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /test paths changed[\s\S]*test\/x\.test\.ts/);
+    commit(wt, {}, 'test: alter frozen test');
+    r = check(wt);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /test paths changed[\s\S]*test\/x\.test\.ts/);
+  });
+
+  test('AC-3 oracle-check uses the nearest oracle and its recorded test paths', () => {
+    const clean = tree('check-nearest', 'oracle/feature/y');
+    let r = check(clean);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /against oracle\/feature\/y/);
+    const custom = tree('check-custom', 'oracle/feature/custom');
+    writeFileSync(join(custom, 'specs/a.kt'), 'class Changed\n');
+    r = check(custom);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /test paths changed[\s\S]*specs\/a\.kt/);
+  });
+
+  test('AC-3 oracle-check has nothing to check in a worktree no oracle tag is an ancestor of', () => {
+    const wt = tree('check-main', 'main');
+    const r = check(wt);
+    assert.equal(r.status, 0, r.stdout);
+    assert.match(r.stdout, /nothing to check/);
   });
 });

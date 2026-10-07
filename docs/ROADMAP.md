@@ -105,7 +105,9 @@ Status: decided; issues 32, 34 and 42 implemented, 33, 43 and 46 open. ADR 0014 
 - Issue 28: CI check that merged ADRs change only their status line and that
   every ADR is in the index.
 - Issue 45: `guard-tests` keys the oracle on the branch name, so it does not
-  freeze the tests inside a Claude subagent's worktree.
+  freeze the tests inside a Claude subagent's worktree. Implemented: a linked
+  worktree is bound by the nearest oracle tag that is an ancestor of `HEAD`
+  (ADR 0016).
 
 ## Phase 3: integrate the existing repositories
 

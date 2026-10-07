@@ -1,6 +1,7 @@
 // What the ATDD oracle protects (ADR 0003). Shared by the edit guard and by
 // oracle-check, so the paths the guard freezes and the paths the pre-PR check
 // compares are the same by construction.
+import { resolve } from 'node:path';
 import { git } from './lib.mjs';
 
 export const DEFAULT_TESTS = [
@@ -47,11 +48,37 @@ export function globToRegExp(glob) {
   return new RegExp(`^${re}$`);
 }
 
+// The oracle that binds the checkout at root: the tag `oracle/<current branch>`
+// when it exists. In a linked worktree, where a delegate works on a branch of
+// its own (or on a detached HEAD), it is otherwise the `oracle/*` tag whose
+// commit is an ancestor of HEAD and nearest to it, so the oracle of the branch
+// the worktree was made from still binds it. The main checkout keeps the
+// branch's own tag only, so a branch stacked on another is not bound by it.
 export function oracleTag(root) {
   const branch = git(root, ['branch', '--show-current']);
-  if (!branch) return undefined;
-  const tag = `oracle/${branch}`;
-  return git(root, ['rev-parse', '--verify', '-q', `refs/tags/${tag}`]) === undefined ? undefined : tag;
+  if (branch) {
+    const tag = `oracle/${branch}`;
+    if (git(root, ['rev-parse', '--verify', '-q', `refs/tags/${tag}`]) !== undefined) return tag;
+  }
+  return isLinkedWorktree(root) ? nearestAncestorTag(root) : undefined;
+}
+
+function isLinkedWorktree(root) {
+  const dirs = git(root, ['rev-parse', '--git-dir', '--git-common-dir'])?.split('\n');
+  if (dirs?.length !== 2) return false;
+  return resolve(root, dirs[0]) !== resolve(root, dirs[1]);
+}
+
+// Ties at equal distance go to the first tag name in sort order.
+function nearestAncestorTag(root) {
+  const refs = git(root, ['for-each-ref', '--merged', 'HEAD', '--format=%(refname)', 'refs/tags/oracle/']);
+  let nearest;
+  for (const ref of (refs ?? '').split('\n').filter(Boolean).sort()) {
+    const distance = Number(git(root, ['rev-list', '--count', `${ref}..HEAD`]));
+    if (!Number.isInteger(distance)) continue;
+    if (nearest === undefined || distance < nearest.distance) nearest = { tag: ref.slice('refs/tags/'.length), distance };
+  }
+  return nearest?.tag;
 }
 
 // Test paths as recorded in the oracle commit, so a later edit to

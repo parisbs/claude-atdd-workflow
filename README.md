@@ -23,7 +23,8 @@ acceptance tests.
     when its checks passed and it touches no control-plane path; and for a
     subagent's call, no `git push` and only read-only `gh` commands, ADR 0013),
     `controlplane.mjs` (those paths), `guard-tests.mjs` (frozen acceptance
-    tests while an `oracle/<branch>` tag exists), `oracle-check.mjs` (the
+    tests while an `oracle/<branch>` tag exists, and in a linked worktree while
+    an oracle tag's commit is an ancestor of HEAD), `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle), `guard-codex.mjs` (Codex
     delegations pass `working_dir`, a worktree delegation starts from a clean
     directory, and a writing `codex-implementer` call runs in a Codex
