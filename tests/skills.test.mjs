@@ -52,6 +52,13 @@ describe('workflow skills', () => {
     }
   });
 
+  test('pr-prep and drift-audit run at medium effort, the other open skills at the session effort', () => {
+    for (const name of OPEN) {
+      const expected = ['pr-prep', 'drift-audit'].includes(name) ? 'medium' : undefined;
+      assert.equal(frontmatter(name).effort, expected, name);
+    }
+  });
+
   test('ADR 0007 the nine skill names are unchanged and match their folders', () => {
     const folders = readdirSync(skillsDir).filter((entry) => !entry.startsWith('.')).sort();
     assert.deepEqual(folders, [...OPEN, ...MANUAL].sort());

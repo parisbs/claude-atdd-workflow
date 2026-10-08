@@ -1,6 +1,7 @@
 ---
 name: drift-audit
 description: Audit a repository for drift between its documentation, its code, GitHub and the claude-workflow templates - dangling references, stale roadmap and ADR state, instruction files that restate derivable facts, and missing conventions. Reports; changes nothing unless asked. Use when asked to audit a repository, or before preparing a release.
+effort: medium
 ---
 
 Audit this repository for drift. Report findings grouped by area, each with the

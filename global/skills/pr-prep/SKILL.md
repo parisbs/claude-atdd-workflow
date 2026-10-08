@@ -1,6 +1,7 @@
 ---
 name: pr-prep
 description: Prepare the current branch for a pull request - scope check, the repository's verify command, the ATDD oracle check, the optional review, documentation couplings and the PR body. Defers to the repository's own pre-PR procedure when it has one. Use when the work on a branch is done and a pull request is about to open.
+effort: medium
 ---
 
 Prepare this branch for a pull request. Work through every step; do not stop at
