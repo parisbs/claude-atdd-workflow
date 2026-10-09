@@ -19,6 +19,15 @@ preferences live in `~/.claude/rules/personal.md`.
     code and GitHub.
 - When a requirement or an edge case looks wrong, say so before building on it.
 
+## Waiting and reading
+
+- Wait for completion instead of polling.
+- A Codex delegation is blocking unless the human asks for parallel or background work.
+- Wait for CI through the app's PR monitor or `gh pr checks --watch`.
+- Run local work as background commands and wait for completion notifications.
+- Read files and outputs by range, selecting the relevant lines.
+- Send broad investigations to `claude-researcher`.
+
 ## Git
 
 - `main` is the default branch unless the repository says otherwise.
@@ -108,10 +117,6 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   evidence, source (file and line, or the command), verified or not verified.
   Never pass an earlier agent's verdict or its reasoning; a review pass after
   fixes gets the earlier findings as records plus the fix commits.
-- For `codex-implementer` in a worktree, the orchestrator commits before
-  delegating, then must apply the worktree diff to the work branch, run
-  `oracle-check` and the verify command there, and only then run
-  `git worktree remove`.
 - Actions fall into three classes (ADR 0010):
   - Free for subagents: reading, researching, drafting, editing in the worktree,
     commits on the work branch, running tests. Subagents never act on GitHub;

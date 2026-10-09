@@ -32,10 +32,12 @@ Status: done. Pull requests run the tests on Ubuntu and macOS with Node 22 and 2
 
 ## Phase 2: install on this machine
 
-Status: installed, and `node scripts/install.mjs --check` reports no drift
-(2026-10-06). `codex-subagent-mcp` is registered by hand in the user scope, twice, as
+Last machine verification: installed, with `node scripts/install.mjs --check`
+reporting no drift on 2026-10-06, when `codex-subagent-mcp` was registered by hand as
 `codex-reviewer` (ceiling `read-only`) and `codex-implementer` (`workspace-write`),
-on `^0.5.0` (`claude mcp get <name>`); issue 32 makes the repository install them. Not
+on `^0.5.0` (`claude mcp get <name>`); the repository now installs both through
+the CLI and pins them to `0.5.0` (issues 32 and 57), pending installation on this
+machine after merge. Not
 checked: whether the duplicate `CLAUDE.local.md` files and stale auto-memory
 entries are gone from every repository; Phase 3 covers them per repository.
 
@@ -67,7 +69,7 @@ command as words, so a quoted `; git push` inside a commit message is denied.
 
 ## Delegation (milestone `delegation`)
 
-Status: decided; issues 32, 34, 42 and 46 implemented, 33, 38 and 43 open. ADR 0014 and
+Status: decided; issues 32, 34, 42, 46 and 57 implemented, 33, 38 and 43 open. ADR 0014 and
 0015 are accepted; the probes behind them are in
 `docs/experiments/2026-10-06-delegation-probes.md`, and the checks of
 `codex-subagent-mcp` against them in
@@ -77,7 +79,8 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
 
 - Issue 32: declare the two Codex registrations in `global/mcp-servers.json`,
   install them through `claude mcp`, report drift in `--check`, and allow the
-  tools that spend no quota (ADR 0014). Implemented; running the installer on
+  tools that spend no quota except job status (ADR 0014, amended by ADR 0017).
+  Implemented; running the installer on
   this machine, with `personal/mcp-servers.json` for `CODEX_BIN`, follows the merge.
 - Issue 33: name delegates `<engine>-<role>`, route by literal tool name, and
   check that descriptions route work. Upstream, `codex-subagent-mcp` issue 143
@@ -106,6 +109,21 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   `codex-subagent-mcp` issue 62, which ADR 0010 names as its counterpart, bounds
   how many delegations a session can start; it does not count attempts at one
   problem.
+- Issue 57 (ADR 0017): Bash output is capped at 12,000 characters; MCP and Read
+  caps stay unchanged, Codex runs blocking unless the human asks otherwise,
+  and job status is never polled in a loop or allowed without permission.
+  Both registrations are pinned to `codex-subagent-mcp@0.5.0`; the installer
+  derives the five no-quota permissions and guard matcher from the server
+  declarations, retires the old job-status permissions and reconciles removed
+  names, with the same derivation used by `--check`.
+  `guard-codex` applies the writing rules by requested sandbox for any name.
+  Implemented: `task-package` keeps its fields and report prose in `SKILL.md`,
+  with Codex details and schema in `codex.md` and Claude worktree rules in
+  `worktree.md`; `task-package.mjs` prints its mechanical fields using the
+  oracle's own commit and tree, and `pr-prep` refers to the Codex reference.
+  Global instructions say to wait for CI through the app's PR monitor or
+  `gh pr checks --watch`, run local work as background commands, read by range,
+  and send broad investigations to `claude-researcher`.
 
 ## Hardening (milestone `hardening`)
 

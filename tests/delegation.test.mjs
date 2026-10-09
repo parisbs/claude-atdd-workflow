@@ -66,6 +66,52 @@ describe('Delegation section', () => {
   });
 });
 
+// Issue #57 (ADR 0017): every poll is a full request over the whole context, and every large result is
+// re-read on every later request, so the orchestrator waits instead of polling and reads by range. The
+// Codex worktree steps moved to task-package's codex.md, read only when a delegation needs them.
+const sentences = (text) =>
+  text
+    .split(/\n\s*(?:[-*]|\d+\.)\s+|\n\s*\n/)
+    .flatMap((chunk) => chunk.replace(/\s+/g, ' ').split(/[.!?](?:\s|$)/))
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+const says = (text, ...patterns) =>
+  assert.ok(
+    sentences(text).some((sentence) => patterns.every((pattern) => pattern.test(sentence))),
+    `no single sentence matches all of ${patterns.join(' and ')}`,
+  );
+
+describe('waiting and reading (#57)', () => {
+  test('AC-10 (#57) the global instructions say to wait instead of polling', () => {
+    says(instructions, /\bwait/i, /\bpoll/i, /\b(instead|never|not)\b/i);
+  });
+
+  test('AC-10 (#57) a Codex delegation is blocking', () => {
+    says(instructions, /\bCodex\b/, /\bblocking\b/i);
+  });
+
+  test('AC-10 (#57) CI is waited on through the PR monitor or gh pr checks --watch', () => {
+    says(instructions, /\bmonitor\b/i, /gh pr checks --watch/);
+  });
+
+  test('AC-10 (#57) local work runs as background commands', () => {
+    says(instructions, /\bbackground\b/i, /\b(commands?|shell|Bash)\b/i);
+  });
+
+  test('AC-10 (#57) files and outputs are read by range', () => {
+    says(instructions, /\bread\b/i, /\branges?\b/i);
+  });
+
+  test('AC-10 (#57) broad investigations go to claude-researcher', () => {
+    says(instructions, /claude-researcher/, /\binvestigat/i);
+  });
+
+  test('AC-10 (#57) the Delegation section no longer carries the Codex worktree integration steps', () => {
+    assert.doesNotMatch(delegation, /git worktree remove/);
+    assert.doesNotMatch(delegation, /\bapply\b[^.]*\bdiff\b/i);
+  });
+});
+
 describe('Git section', () => {
   test('the merge bullet says who merges and points to Delegation', () => {
     const git = sectionOf('Git');

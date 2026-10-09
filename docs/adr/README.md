@@ -20,3 +20,4 @@ old one, which changes only in its status line.
 - [0014. Run Codex through two registrations named by role and install them from this repository](0014-run-codex-through-two-role-named-registrations.md)
 - [0015. Give delegates goals, structured findings and the rules they lack](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md)
 - [0016. Bind a linked worktree to the nearest ancestor oracle tag](0016-bind-a-linked-worktree-to-the-nearest-ancestor-oracle.md)
+- [0017. Bound tool output, block on Codex instead of polling, and derive the Codex registrations from one file](0017-bound-output-and-block-on-codex-instead-of-polling.md)

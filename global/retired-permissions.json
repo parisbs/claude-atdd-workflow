@@ -1,5 +1,9 @@
 {
   "ask": [
     "Bash(gh pr merge:*)"
+  ],
+  "allow": [
+    "mcp__codex-reviewer__codex_job_status",
+    "mcp__codex-implementer__codex_job_status"
   ]
 }

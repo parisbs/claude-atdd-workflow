@@ -351,9 +351,7 @@ describe('AC-6 the shipped registrations', () => {
     assert.ok(existsSync(file), 'global/mcp-servers.json is missing');
     return JSON.parse(readFileSync(file, 'utf8'));
   };
-  const RANGE = /^codex-subagent-mcp@\^\d+\.\d+\.\d+$/;
-
-  test('AC-6 declares codex-reviewer and codex-implementer on the same caret range, and no codex-subagent', () => {
+  test('AC-2 (#57) declares codex-reviewer and codex-implementer on exactly codex-subagent-mcp@0.5.0, and no codex-subagent', () => {
     const servers = shipped();
     assert.ok('codex-reviewer' in servers && 'codex-implementer' in servers);
     assert.equal('codex-subagent' in servers, false);
@@ -364,10 +362,24 @@ describe('AC-6 the shipped registrations', () => {
       assert.ok(s.args.includes('-y'), name);
       const pkg = s.args.filter((a) => a.startsWith('codex-subagent-mcp'));
       assert.equal(pkg.length, 1, name);
-      assert.match(pkg[0], RANGE, `${name}: a caret range, not a floating or exact version`);
+      assert.equal(pkg[0], 'codex-subagent-mcp@0.5.0', `${name}: an exact version, not a range (ADR 0017)`);
       return pkg[0];
     });
-    assert.equal(ranges[0], ranges[1], 'both registrations run the same version range');
+    assert.equal(ranges[0], ranges[1], 'both registrations run the same version');
+  });
+
+  test('AC-2 (#57) --check reports a registration installed on a caret range as drift from the shipped exact version', () => {
+    const servers = shipped();
+    const repoDir = makeRepo({ servers });
+    const target = fresh('target');
+    const onRange = (server) => ({ ...server, args: server.args.map((a) => (a.startsWith('codex-subagent-mcp@') ? 'codex-subagent-mcp@^0.5.0' : a)) });
+    fake.seed(target, { 'codex-reviewer': onRange(servers['codex-reviewer']), 'codex-implementer': servers['codex-implementer'] });
+    fake.reset();
+    const r = run(repoDir, target, ['--check']);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /mcp server differs: codex-reviewer/);
+    assert.doesNotMatch(r.stdout, /mcp server differs: codex-implementer/);
+    assert.deepEqual(fake.calls(), [], '--check must not run claude');
   });
 
   test('AC-6 gives the reviewer a read-only ceiling and the implementer a workspace-write one, with no default sandbox', () => {
@@ -394,8 +406,10 @@ describe('AC-6 the shipped registrations', () => {
   });
 });
 
+// Issue #57 (ADR 0017) narrows AC-7: codex_job_status is no longer allowed, so a status poll asks, and the
+// rules are derived at install time from global/mcp-servers.json instead of being written in global/settings.json.
 describe('AC-7 permissions for the tools that spend no quota', () => {
-  const NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_status', 'codex_job_result', 'codex_job_cancel'];
+  const NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel'];
   const SERVERS = ['codex-reviewer', 'codex-implementer'];
 
   const assertRules = (allow) => {
@@ -403,22 +417,98 @@ describe('AC-7 permissions for the tools that spend no quota', () => {
       for (const tool of NO_QUOTA) assert.ok(allow.includes(`mcp__${server}__${tool}`), `mcp__${server}__${tool}`);
       assert.ok(!allow.includes(`mcp__${server}__codex_delegate`), `${server}: codex_delegate asks every time`);
       assert.ok(!allow.includes(`mcp__${server}__codex_follow_up`), `${server}: codex_follow_up asks every time`);
+      assert.ok(!allow.includes(`mcp__${server}__codex_job_status`), `${server}: codex_job_status asks every time (#57)`);
       assert.ok(!allow.includes(`mcp__${server}`), `${server}: the whole server is not allowed`);
     }
     assert.ok(!allow.some((rule) => rule.startsWith('mcp__codex-subagent')), 'no rule for the old name');
   };
 
-  test('AC-7 the shipped settings allow the six tools of each server and nothing that delegates', () => {
-    const shipped = JSON.parse(readFileSync(join(repo, 'global', 'settings.json'), 'utf8'));
-    assertRules(shipped.permissions?.allow ?? []);
-  });
-
-  test('AC-7 an install of this repository leaves those rules in settings.json', () => {
+  test('AC-7 (#57) an install of this repository leaves the five rules of each server in settings.json, and none that delegates or polls', () => {
     const target = fresh('target');
     const r = run(repo, target);
     assert.equal(r.status, 0, r.stderr);
     const installed = JSON.parse(readFileSync(join(target, 'settings.json'), 'utf8'));
     assertRules(installed.permissions?.allow ?? []);
+  });
+});
+
+describe('AC-3 (#57) codex_job_status leaves the allow list', () => {
+  const STATUS = ['mcp__codex-reviewer__codex_job_status', 'mcp__codex-implementer__codex_job_status'];
+
+  test('AC-3 (#57) global/retired-permissions.json retires both codex_job_status rules from the allow list', () => {
+    const retired = JSON.parse(readFileSync(join(repo, 'global', 'retired-permissions.json'), 'utf8'));
+    for (const rule of STATUS) assert.ok((retired.allow ?? []).includes(rule), `${rule} is not retired`);
+  });
+
+  test('AC-3 (#57) an install over settings that allow codex_job_status removes it and keeps the other no-quota tools and the user\'s rules', () => {
+    const target = fresh('target');
+    writeFileSync(join(target, 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(make:*)', ...STATUS] } }));
+    const r = run(repo, target);
+    assert.equal(r.status, 0, r.stderr);
+    const allow = JSON.parse(readFileSync(join(target, 'settings.json'), 'utf8')).permissions?.allow ?? [];
+    for (const rule of STATUS) assert.ok(!allow.includes(rule), `${rule} is still allowed`);
+    for (const server of ['codex-reviewer', 'codex-implementer']) {
+      for (const tool of ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel']) {
+        assert.ok(allow.includes(`mcp__${server}__${tool}`), `mcp__${server}__${tool}`);
+      }
+      for (const tool of ['codex_delegate', 'codex_follow_up']) assert.ok(!allow.includes(`mcp__${server}__${tool}`), `mcp__${server}__${tool}`);
+    }
+    assert.ok(allow.includes('Bash(make:*)'), 'a rule the user added is kept');
+  });
+});
+
+// Issue #57 (ADR 0017): global/mcp-servers.json is the one list of Codex registrations. The installer derives
+// from it the allow rules for the tools that spend no quota and the matcher of the guard-codex hook, so a
+// registration is added in that file alone. The repository here copies the real global/settings.json and
+// declares no codex-reviewer or codex-implementer, so any rule or coverage for those names was written by hand.
+describe('AC-4 (#57) Codex rules derived from global/mcp-servers.json', () => {
+  const NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel'];
+  const SERVERS = {
+    'codex-auditor': { type: 'stdio', command: 'npx', args: ['-y', 'codex-subagent-mcp@0.5.0'], env: { CODEX_SUBAGENT_MAX_SANDBOX: 'read-only' } },
+    my_codex2: { type: 'stdio', command: '/opt/tools/codex-subagent-mcp/build/index.js', args: [], env: { CODEX_SUBAGENT_MAX_SANDBOX: 'workspace-write' } },
+    other: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83'] },
+  };
+  const DERIVED = ['codex-auditor', 'my_codex2'];
+
+  let installed;
+  const setup = () => {
+    if (installed) return installed;
+    const repoDir = makeRepo({ servers: SERVERS });
+    copyFileSync(join(repo, 'global', 'settings.json'), join(repoDir, 'global', 'settings.json'));
+    const target = fresh('target');
+    const r = run(repoDir, target);
+    assert.equal(r.status, 0, r.stderr);
+    installed = JSON.parse(readFileSync(join(target, 'settings.json'), 'utf8'));
+    return installed;
+  };
+  const matcher = () => {
+    const entries = (setup().hooks?.PreToolUse ?? []).filter((entry) => (entry.hooks ?? []).some((h) => (h.command ?? '').includes('guard-codex.mjs')));
+    assert.equal(entries.length, 1, 'guard-codex.mjs must be registered once under PreToolUse');
+    return new RegExp(`^(?:${entries[0].matcher})$`);
+  };
+
+  test('AC-4 (#57) allows exactly the five no-quota tools of each declared Codex registration, from the command or the args form', () => {
+    const rules = (setup().permissions?.allow ?? []).filter((rule) => rule.startsWith('mcp__')).sort();
+    const expected = DERIVED.flatMap((name) => NO_QUOTA.map((tool) => `mcp__${name}__${tool}`)).sort();
+    assert.deepEqual(rules, expected);
+  });
+
+  test('AC-4 (#57) the guard-codex matcher covers codex_delegate and codex_follow_up of each declared Codex registration, and nothing else of them', () => {
+    const re = matcher();
+    for (const name of DERIVED) {
+      for (const tool of ['codex_delegate', 'codex_follow_up']) assert.match(`mcp__${name}__${tool}`, re);
+      for (const tool of [...NO_QUOTA, 'codex_job_status']) assert.doesNotMatch(`mcp__${name}__${tool}`, re);
+    }
+  });
+
+  test('AC-4 (#57) a server that is not codex-subagent-mcp, and a Codex name that is not declared, get no rule and no coverage', () => {
+    const re = matcher();
+    const allow = setup().permissions?.allow ?? [];
+    for (const name of ['other', 'codex-reviewer', 'codex-implementer', 'codex-auditor-x']) {
+      assert.ok(!allow.some((rule) => rule.startsWith(`mcp__${name}__`)), `${name} has an allow rule`);
+      for (const tool of ['codex_delegate', 'codex_follow_up']) assert.doesNotMatch(`mcp__${name}__${tool}`, re, name);
+    }
+    for (const other of ['Bash', 'Edit', 'mcp__codex__codex_delegate']) assert.doesNotMatch(other, re);
   });
 });
 

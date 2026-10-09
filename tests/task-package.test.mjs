@@ -19,6 +19,10 @@ const sectionOf = (heading) => (instructions.split(`\n## ${heading}\n`)[1] ?? ''
 const delegation = sectionOf('Delegation');
 const reviews = sectionOf('Reviews');
 const skill = () => read('global/skills/task-package/SKILL.md');
+// Issue #57 (ADR 0017): the Codex mapping and the worktree rules moved out of SKILL.md into two files the
+// orchestrator reads only when a delegation needs them.
+const codexDoc = () => read('global/skills/task-package/codex.md');
+const worktreeDoc = () => read('global/skills/task-package/worktree.md');
 
 // One sentence or one list item at a time, so that a keyword and its negation or its companions must sit
 // together, not merely appear somewhere in the same file.
@@ -96,9 +100,9 @@ describe('the task-package skill', () => {
     says(text, /findings/i, /source/i, /verified/i);
   });
 
-  test('AC-4 the report schema for output_schema is a JSON block that satisfies the strict rules, with the shared fields and values', () => {
-    const blocks = [...skill().matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]);
-    assert.ok(blocks.length > 0, 'the skill has no fenced json block');
+  test('AC-4 (#57) the report schema for output_schema is a JSON block in codex.md that satisfies the strict rules, with the shared fields and values', () => {
+    const blocks = [...codexDoc().matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]);
+    assert.ok(blocks.length > 0, 'codex.md has no fenced json block');
     const schema = blocks.map((block) => JSON.parse(block)).find((candidate) => candidate?.properties?.status);
     assert.ok(schema, 'no json block is the report schema (an object with a status property)');
     assert.ok(JSON.stringify(schema).length < 64 * 1024, 'output_schema allows at most 64 KiB');
@@ -121,14 +125,14 @@ describe('the task-package skill', () => {
     assert.equal(schema.properties.findings.items.properties.verified.type, 'boolean');
   });
 
-  test('AC-9 for codex-implementer the worktree is made from the last commit, so uncommitted changes, dependencies and build output are missing', () => {
-    const text = skill();
+  test('AC-9 (#57) codex.md says that for codex-implementer the worktree is made from the last commit, so uncommitted changes, dependencies and build output are missing', () => {
+    const text = codexDoc();
     assert.match(text, /codex-implementer/);
     says(text, /last commit/i, /uncommitted/i, /dependenc/i, /build output/i);
   });
 
-  test('AC-9 the delegate reports a missing dependency instead of changing production code to get around it, and leaves its changes uncommitted', () => {
-    const text = skill();
+  test('AC-9 (#57) codex.md says the delegate reports a missing dependency instead of changing production code to get around it, and leaves its changes uncommitted', () => {
+    const text = codexDoc();
     says(text, /report/i, /missing dependenc/i, /(instead of|rather than|not)/i, /production code/i);
     says(text, /\b(not|never|cannot)\b/i, /commit/i);
   });
@@ -136,24 +140,26 @@ describe('the task-package skill', () => {
   // Issue #42 replaced the listed integration steps with codex-integrate.mjs; what they guaranteed (new and
   // binary files, removal only after the changes are applied) is now tested on the script itself, in
   // codex-integrate.test.mjs.
-  test('AC-7 (#42) names the integration script for a codex-implementer worktree instead of listing the steps', () => {
-    const text = skill();
+  test('AC-7 (#42, #57) codex.md names the integration script for a codex-implementer worktree instead of listing the steps', () => {
+    const text = codexDoc();
     says(text, /codex-integrate\.mjs/, /worktree/i);
     for (const step of [/git add -N/, /git diff --binary/, /git apply\b/, /--3way/]) {
       assert.doesNotMatch(text, step, `the skill still lists the step ${step}`);
     }
   });
 
-  test('AC-7 (#42) says what to do when the script stops: report and keep the worktree', () => {
-    says(skill(), /codex-integrate|script/i, /\b(stops|fails|exits)\b/i, /\b(report|keep)\b/i);
+  test('AC-7 (#42, #57) codex.md says what to do when the script stops: report and keep the worktree', () => {
+    says(codexDoc(), /codex-integrate|script/i, /\b(stops|fails|exits)\b/i, /\b(report|keep)\b/i);
   });
 
   test('ADR 0015 when the package asks for commits it carries the commit convention, because the delegate does not load CLAUDE.md', () => {
     says(skill(), /commits?/i, /convention/i, /CLAUDE\.md/);
   });
 
-  test('ADR 0015 holds nothing the skill loader would expand or run', () => {
-    assert.doesNotMatch(skill(), /!`|\$ARGUMENTS|\$\{|\$\d/, 'a placeholder or shell form in a skill body can be substituted or executed on load');
+  test('ADR 0015 holds nothing the skill loader would expand or run, in SKILL.md, codex.md or worktree.md (#57)', () => {
+    for (const [name, text] of [['SKILL.md', skill()], ['codex.md', codexDoc()], ['worktree.md', worktreeDoc()]]) {
+      assert.doesNotMatch(text, /!`|\$ARGUMENTS|\$\{|\$\d/, `${name}: a placeholder or shell form in a skill file can be substituted or executed on load`);
+    }
   });
 });
 
@@ -185,11 +191,14 @@ describe('the Delegation section', () => {
     says(delegation, /review/i, /records?/i, /fix commits/i);
   });
 
-  test('AC-9 the integration of a Codex worktree: commit before delegating, apply the diff to the work branch, run oracle-check and the verify command, remove the worktree', () => {
-    says(delegation, /commit/i, /before delegat/i);
-    says(delegation, /apply/i, /diff/i, /work branch/i);
-    says(delegation, /oracle-check/, /verify command/i);
-    assert.match(delegation, /git worktree remove/);
+  test('AC-9 (#57) codex.md holds the integration of a Codex worktree: commit before delegating, apply the changes to the work branch, run oracle-check and the verify command, remove the worktree', () => {
+    const text = codexDoc();
+    says(text, /commit/i, /before delegat/i);
+    says(text, /\bappl(y|ies)\b/i, /changes/i, /worktree/i);
+    says(text, /changes/i, /work branch/i);
+    says(text, /oracle-check/);
+    says(text, /verify command/i);
+    says(text, /\bremoves?\b/i, /\bworktree\b/i);
   });
 });
 
@@ -216,17 +225,16 @@ describe('a Claude subagent in a worktree (#46)', () => {
       sentences(text).some((sentence) => patterns.every((pattern) => pattern.test(sentence)) && !NEGATED.test(sentence)),
       `no single affirmative sentence matches all of ${patterns.join(' and ')}`,
     );
-  const claudeSection = () => {
-    const chunk = skill().split('\n## ').slice(1).find((part) => /\bClaude\b/.test(part.split('\n')[0]));
-    return chunk ? chunk.slice(chunk.indexOf('\n') + 1) : '';
-  };
+  // Since #57 the rules for a Claude subagent in a worktree live in worktree.md.
+  const claudeSection = () => worktreeDoc();
   const baseCommitField = () => {
     const fields = (skill().split('\n## Fields\n')[1] ?? '').split('\n## ')[0];
     return /^- Base commit:.*(?:\n {2}.*)*/m.exec(fields)?.[0] ?? '';
   };
 
-  test('AC-1 (#46) the skill has a section about Claude subagents', () => {
-    assert.ok(sentences(claudeSection()).length > 0, 'no non-empty "## ..." section whose heading names Claude');
+  test('AC-1 (#46, #57) worktree.md is about Claude subagents', () => {
+    assert.ok(sentences(claudeSection()).length > 0, 'worktree.md is empty');
+    assert.match(claudeSection(), /\bClaude\b/, 'worktree.md does not name Claude');
   });
 
   test('AC-1 (#46) says a Claude subagent with isolation: worktree starts from the default remote branch unless worktree.baseRef is head', () => {
@@ -276,22 +284,81 @@ describe('the package for Codex', () => {
     ['paths to target_files', /\bpaths?\b/i, /`target_files`/],
     ['rules to system_instructions', /\brules?\b/i, /`system_instructions`/],
   ];
-  for (const [name, file] of [['pr-prep', 'global/skills/pr-prep/SKILL.md'], ['the task-package skill', 'global/skills/task-package/SKILL.md']]) {
-    test(`AC-4 ${name} maps the package to the Codex fields and asks for the report through output_schema`, () => {
-      const text = read(file);
-      for (const [label, from, to] of MAPPINGS) assert.ok(some(text, from, to), `${name} does not map ${label}`);
-      says(text, /`output_schema`/, /report/i);
-    });
-  }
+  test('AC-4 (#57) codex.md maps the package to the Codex fields and asks for the report through output_schema', () => {
+    const text = codexDoc();
+    for (const [label, from, to] of MAPPINGS) assert.ok(some(text, from, to), `codex.md does not map ${label}`);
+    says(text, /`output_schema`/, /report/i);
+  });
 
-  test('AC-7 (#42) the task-package skill maps the working directory to working_dir, and a follow-up to the worktree path', () => {
-    const text = skill();
+  test('AC-7 (#42, #57) codex.md maps the working directory to working_dir, and a follow-up to the worktree path', () => {
+    const text = codexDoc();
     says(text, /\b(directory|working root)\b/i, /`working_dir`/);
     says(text, /`codex_follow_up`/, /`working_dir`/, /worktree/i);
   });
 
-  test('AC-4 pr-prep points to the task-package skill', () => {
-    assert.match(read('global/skills/pr-prep/SKILL.md'), /task-package/);
+  test('AC-9 (#57) pr-prep points to the task-package skill for the Codex mapping and does not repeat it', () => {
+    const text = read('global/skills/pr-prep/SKILL.md');
+    assert.match(text, /task-package/);
+    for (const field of ['acceptance_criteria', 'target_files', 'system_instructions', 'output_schema']) {
+      assert.ok(!text.includes(field), `pr-prep still names ${field}`);
+    }
+  });
+});
+
+// Issue #57 (ADR 0017): progressive disclosure. SKILL.md keeps what every delegation needs; the Codex
+// mapping and the worktree rules live in codex.md and worktree.md and nowhere else in the instructions.
+describe('task-package by progressive disclosure (#57)', () => {
+  const CODEX_MARKERS = ['`acceptance_criteria`', '`target_files`', '`system_instructions`', '`output_schema`', '`working_dir`', '`use_worktree`', 'codex-integrate.mjs'];
+  const WORKTREE_MARKERS = ['isolation: worktree', 'worktree.baseRef', 'worktree-agent-', 'git merge --ff-only'];
+  const OWNERS = new Set(['global/skills/task-package/codex.md', 'global/skills/task-package/worktree.md']);
+  const markdownUnder = (dir) =>
+    readdirSync(join(repo, dir), { withFileTypes: true }).flatMap((entry) => {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return markdownUnder(path);
+      return entry.name.endsWith('.md') ? [path] : [];
+    });
+
+  test('AC-5 (#57) SKILL.md is under 6,000 characters', () => {
+    const length = skill().length;
+    assert.ok(length < 6000, `SKILL.md has ${length} characters`);
+  });
+
+  test('AC-5 (#57) SKILL.md names codex.md for a delegation to Codex and worktree.md for one into a worktree', () => {
+    says(skill(), /codex\.md/, /\bCodex\b/);
+    says(skill(), /worktree\.md/, /\bworktree\b/i);
+  });
+
+  test('AC-5 (#57) the Codex mapping and the worktree rules appear in no instruction file but codex.md and worktree.md', () => {
+    for (const path of ['global/CLAUDE.md', ...markdownUnder('global/skills')]) {
+      if (OWNERS.has(path)) continue;
+      const text = read(path);
+      for (const marker of [...CODEX_MARKERS, ...WORKTREE_MARKERS]) assert.ok(!text.includes(marker), `${path} names ${marker}`);
+    }
+  });
+
+  test('AC-5 (#57) codex.md holds the Codex mapping and worktree.md the worktree rules', () => {
+    const codex = codexDoc();
+    const worktree = worktreeDoc();
+    for (const marker of CODEX_MARKERS) assert.ok(codex.includes(marker), `codex.md does not name ${marker}`);
+    for (const marker of ['isolation: worktree', 'worktree.baseRef']) assert.ok(worktree.includes(marker), `worktree.md does not name ${marker}`);
+  });
+
+  test('AC-6 (#57) codex.md says codex_delegate runs blocking unless the human asks for parallel or background work', () => {
+    says(codexDoc(), /codex_delegate/, /\bblocking\b/i, /\bunless\b/i, /\b(human|user)\b/i, /\b(parallel|background)\b/i);
+  });
+
+  test('AC-6 (#57) codex.md says job status is never polled in a loop', () => {
+    says(codexDoc(), /\b(status|codex_job_status)\b/i, /\bpoll/i, /\b(never|not)\b/i, /\bloop\b/i);
+  });
+
+  test('AC-6 (#57) codex.md gives, for each role, one ToolSearch select naming exactly its codex_delegate and codex_follow_up', () => {
+    const selects = [...codexDoc().matchAll(/select:([A-Za-z0-9_,-]+)/g)].map((m) => m[1].split(',').filter(Boolean).sort());
+    for (const role of ['codex-reviewer', 'codex-implementer']) {
+      const expected = [`mcp__${role}__codex_delegate`, `mcp__${role}__codex_follow_up`].sort();
+      const matching = selects.filter((names) => names.some((name) => name.startsWith(`mcp__${role}__`)));
+      assert.equal(matching.length, 1, `codex.md should have exactly one select for ${role}, found ${matching.length}`);
+      assert.deepEqual(matching[0], expected, `the select for ${role}`);
+    }
   });
 });
 

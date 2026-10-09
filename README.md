@@ -10,12 +10,16 @@ acceptance tests.
   is specific to one person or one project.
   - `CLAUDE.md`: workflow defaults (git, pull requests, reviews, task levels).
   - `settings.json`: read-only permissions, built-in git instructions off, hook
-    wiring. `retired-permissions.json` lists rules that no longer ship and that
+    wiring and a 12,000-character Bash output cap; MCP and Read caps stay at their
+    defaults. `retired-permissions.json` lists rules that no longer ship and that
     the installer removes from an installed `settings.json`.
   - `mcp-servers.json`: the MCP servers the installer registers in the user
     scope through `claude mcp` (ADR 0014): `codex-reviewer` and
-    `codex-implementer`, two registrations of `codex-subagent-mcp` with different
-    sandbox ceilings. `retired-mcp-servers.json` lists registrations it removes.
+    `codex-implementer`, two registrations pinned to `codex-subagent-mcp@0.5.0`
+    with different sandbox ceilings. The installer derives their permissions
+    and guard matcher from this file (ADR 0017), recognizing the package in a
+    command or argument under any registration name.
+    `retired-mcp-servers.json` lists registrations it removes.
   - `hooks/`: `guard-git.mjs` (no commit or push on main, no `--no-verify`,
     confirmation before remote Supabase actions, oracle tags created with
     confirmation and never moved or deleted, and the merge decision: squash
@@ -27,13 +31,17 @@ acceptance tests.
     an oracle tag's commit is an ancestor of HEAD), `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle), `guard-codex.mjs` (Codex
     delegations pass `working_dir`, a worktree delegation starts from a clean
-    directory, and a writing `codex-implementer` call runs in a Codex
+    directory, and a writing call of any declared Codex registration runs in a Codex
     worktree), `codex-integrate.mjs` (applies a Codex worktree's changes to the
     work branch, runs `oracle-check` and removes the worktree) and `codex.mjs`
-    (where Codex makes its worktrees).
+    (where Codex makes its worktrees); `task-package.mjs` prints repository
+    invariants, conventions, the verify command, HEAD, the oracle with its own
+    commit and frozen tests, and the report schema.
   - `skills/`: `issue-draft`, `atdd-oracle`, `atdd-implement`, `adr-draft`,
     `pr-prep`, `drift-audit`, `task-package` (the package and report shape for
-    any delegation, ADR 0015), `release-prep` and `repo-bootstrap`. Their names
+    any delegation in `SKILL.md`, Codex mapping and schema in `codex.md`, and
+    Claude worktree rules in `worktree.md`, ADR 0015 and 0017), `release-prep`
+    and `repo-bootstrap`. Their names
     never collide with project skills (ADR 0007).
   - `agents/`: the subagents the orchestrator delegates to (ADR 0011):
     `claude-implementer` (Opus, writes code against a task package) and
@@ -69,8 +77,9 @@ node scripts/install.mjs
 
 The personal files are optional: edit them to your own preferences first. The
 check reports what would change without writing anything. Installing copies
-files (never links them), merges `settings.json` keeping anything already
-there, backs up whatever it overwrites to `~/.claude/backups/claude-workflow/`,
+files (never links them), merges `settings.json` keeping existing user settings
+except retired rules and reconciling the derived Codex permissions, backs up
+whatever it overwrites to `~/.claude/backups/claude-workflow/`,
 and removes files it installed earlier but no longer ships. It also registers the
 declared MCP servers through the `claude` CLI, never by writing `~/.claude.json`,
 replacing a registration that differs (the old one is saved in the backup
@@ -78,6 +87,21 @@ directory) and removing a retired one; a Claude Code session that is already
 open keeps the old server process until it reloads. Without `claude` on `PATH`
 the servers are reported as not verified, and the check exits 1. Run the check
 again at any time to detect drift.
+
+Each declared Codex registration allows only the five no-quota tools
+`codex_doctor`, `list_codex_models`, `codex_recommend`, `codex_job_result` and
+`codex_job_cancel`; delegation, follow-up and job status require permission.
+The previously shipped job-status permissions are retired during installation.
+Removing a Codex name also removes its derived permissions and guard coverage.
+`--check` compares the same derived settings and exact server version that an
+install writes.
+
+Codex delegations block unless the human requests parallel or background work;
+job status is never polled in a loop. CI uses the app's PR monitor or
+`gh pr checks --watch`, local work uses background commands, and files and
+outputs are read by range (ADR 0017).
+Run `node ~/.claude/hooks/task-package.mjs` from a repository to collect the
+mechanical package fields before delegating.
 
 ## Workflow in short
 

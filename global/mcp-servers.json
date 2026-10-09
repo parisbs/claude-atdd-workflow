@@ -2,7 +2,7 @@
   "codex-reviewer": {
     "type": "stdio",
     "command": "npx",
-    "args": ["-y", "codex-subagent-mcp@^0.5.0"],
+    "args": ["-y", "codex-subagent-mcp@0.5.0"],
     "env": {
       "CODEX_SUBAGENT_DEFAULT_MODEL": "gpt-5.6-sol",
       "CODEX_SUBAGENT_DEFAULT_EFFORT": "high",
@@ -16,7 +16,7 @@
   "codex-implementer": {
     "type": "stdio",
     "command": "npx",
-    "args": ["-y", "codex-subagent-mcp@^0.5.0"],
+    "args": ["-y", "codex-subagent-mcp@0.5.0"],
     "env": {
       "CODEX_SUBAGENT_DEFAULT_MODEL": "gpt-5.6-sol",
       "CODEX_SUBAGENT_DEFAULT_EFFORT": "high",

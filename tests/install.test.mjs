@@ -172,3 +172,25 @@ describe('install permissions', () => {
     });
   });
 });
+
+// Issue #57 (ADR 0017): a Bash result above the bound arrives as a file path plus a preview, and task-package
+// ships its Codex and worktree rules as files beside the skill.
+describe('install (#57)', () => {
+  let target;
+  before(() => {
+    target = mkdtempSync(join(tmpdir(), 'cw-install-57-'));
+    const r = install(target);
+    assert.equal(r.status, 0, r.stderr);
+  });
+  after(() => rmSync(target, { recursive: true, force: true }));
+
+  test('AC-1 (#57) an install sets bashOutputMaxChars to 12000', () => {
+    assert.equal(settingsOf(target).bashOutputMaxChars, 12000);
+  });
+
+  test('AC-5 (#57) an install copies codex.md and worktree.md beside the task-package skill', () => {
+    for (const f of ['skills/task-package/SKILL.md', 'skills/task-package/codex.md', 'skills/task-package/worktree.md']) {
+      assert.ok(existsSync(join(target, f)), f);
+    }
+  });
+});

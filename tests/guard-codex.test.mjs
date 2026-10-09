@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { fakeClaude } from './fake-claude.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const hook = join(root, 'global', 'hooks', 'guard-codex.mjs');
@@ -71,9 +72,22 @@ function codexWorktree(dir, id) {
   return path;
 }
 
+// Since #57 (ADR 0017) the matcher is derived at install time from global/mcp-servers.json, so the settings
+// that count are the installed ones: an install of this repository into a scratch target, with a fake claude.
+function installedSettings() {
+  const target = tmp('cw-guard-codex-target-');
+  const fake = fakeClaude(tmp('cw-guard-codex-claude-'));
+  const r = spawnSync(process.execPath, [join(root, 'scripts', 'install.mjs'), '--target', target], {
+    encoding: 'utf8',
+    env: { ...process.env, ...fake.env() },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(readFileSync(join(target, 'settings.json'), 'utf8'));
+}
+
 describe('guard-codex registration', () => {
-  test('AC-2 settings.json runs the guard for codex_delegate and codex_follow_up of both registrations, and for no other tool', () => {
-    const settings = JSON.parse(readFileSync(join(root, 'global', 'settings.json'), 'utf8'));
+  test('AC-2 (#57) the installed settings run the guard for codex_delegate and codex_follow_up of both registrations, and for no other tool', () => {
+    const settings = installedSettings();
     const entries = settings.hooks.PreToolUse.filter((entry) => entry.hooks.some((h) => (h.command ?? '').includes('guard-codex.mjs')));
     assert.equal(entries.length, 1, 'guard-codex.mjs must be registered once under PreToolUse');
     const matcher = new RegExp(`^(?:${entries[0].matcher})$`);
@@ -176,10 +190,13 @@ describe('guard-codex', () => {
     }
   });
 
-  test('AC-3 gives no verdict for a follow-up that does not write, or one to codex-reviewer', () => {
-    passes(call(tool('codex-implementer', 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir, sandbox: 'read-only' }), 'read-only');
-    passes(call(tool('codex-implementer', 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir }), 'no sandbox: the registration default is read-only');
-    passes(call(tool('codex-reviewer', 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir, sandbox: 'workspace-write' }), 'codex-reviewer');
+  // Since #57 whether a call writes is decided by the sandbox it asks for, not by the registration's name, so
+  // the old case of a writing follow-up to codex-reviewer passing is gone (see the AC-4 (#57) tests below).
+  test('AC-3 gives no verdict for a follow-up that does not write', () => {
+    for (const registration of REGISTRATIONS) {
+      passes(call(tool(registration, 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir, sandbox: 'read-only' }), `${registration} read-only`);
+      passes(call(tool(registration, 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir }), `${registration} no sandbox: the registration default is read-only`);
+    }
   });
 
   test('AC-8 denies a writing delegation of codex-implementer without a worktree, and says to set use_worktree', () => {
@@ -237,5 +254,60 @@ describe('guard-codex on a standalone repository under the worktrees directory',
     const r = call(tool('codex-implementer', 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: plain, sandbox: 'workspace-write' });
     assert.equal(r.decision, 'deny');
     assert.match(r.reason, /worktree/i);
+  });
+});
+
+// Issue #57 (ADR 0017): a Codex registration can have any name declared in global/mcp-servers.json, and the
+// guard applies its rules to every one of them. Whether a call writes is decided by the sandbox it asks for,
+// not by the registration's name; the server's own ceiling still refuses a sandbox above it.
+describe('guard-codex for any registration (#57)', () => {
+  let dir;
+  before(() => {
+    dir = repo();
+  });
+
+  for (const registration of ['codex-auditor', 'my_codex2']) {
+    test(`AC-4 (#57) denies codex_delegate and codex_follow_up of ${registration} without working_dir`, () => {
+      for (const [name, input] of [
+        ['codex_delegate', { prompt: 'x', sandbox: 'read-only' }],
+        ['codex_follow_up', { prompt: 'x', thread_id: 't1', sandbox: 'read-only' }],
+      ]) {
+        const r = call(tool(registration, name), input, dir);
+        assert.equal(r.decision, 'deny', `${registration} ${name}`);
+        assert.match(r.reason, /working_dir/);
+      }
+    });
+
+    test(`AC-4 (#57) denies a writing delegation of ${registration} without a worktree, and a worktree delegation from a dirty tree`, () => {
+      const noWorktree = call(tool(registration, 'codex_delegate'), { prompt: 'x', working_dir: dir, sandbox: 'workspace-write' });
+      assert.equal(noWorktree.decision, 'deny');
+      assert.match(noWorktree.reason, /use_worktree/);
+      writeFileSync(join(dir, 'notes.txt'), 'new\n');
+      try {
+        const dirty = call(tool(registration, 'codex_delegate'), { prompt: 'x', working_dir: dir, use_worktree: true, sandbox: 'workspace-write' });
+        assert.equal(dirty.decision, 'deny');
+        assert.match(dirty.reason, /notes\.txt/);
+      } finally {
+        rmSync(join(dir, 'notes.txt'));
+      }
+    });
+
+    test(`AC-4 (#57) denies a writing follow-up of ${registration} outside a Codex worktree, and passes a read-only one`, () => {
+      const writing = call(tool(registration, 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir, sandbox: 'workspace-write' });
+      assert.equal(writing.decision, 'deny');
+      assert.match(writing.reason, /worktree/i);
+      passes(call(tool(registration, 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir, sandbox: 'read-only' }), registration);
+    });
+  }
+
+  test('AC-4 (#57) decides by the sandbox, not the name: a writing follow-up of codex-reviewer outside a Codex worktree is denied', () => {
+    const r = call(tool('codex-reviewer', 'codex_follow_up'), { prompt: 'x', thread_id: 't1', working_dir: dir, sandbox: 'workspace-write' });
+    assert.equal(r.decision, 'deny');
+  });
+
+  test('AC-4 (#57) gives no verdict on a tool that is not codex_delegate or codex_follow_up', () => {
+    for (const name of ['mcp__codex-auditor__codex_job_status', 'mcp__other__browser_navigate', 'Bash']) {
+      passes(call(name, { prompt: 'x' }, dir), name);
+    }
   });
 });

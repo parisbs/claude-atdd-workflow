@@ -42,6 +42,8 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STACKS = ['android', 'flutter', 'node-mcp', 'supabase'];
 const MANIFEST = '.claude-workflow-manifest.json';
 const MANAGED_HOOK = /\/\.claude\/hooks\/[a-z-]+\.mjs/;
+const CODEX_NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel'];
+const CODEX_ALLOW = new RegExp(`^mcp__.+__(?:${CODEX_NO_QUOTA.join('|')})$`);
 
 const realOrResolved = (path) => {
   try {
@@ -160,7 +162,34 @@ function desiredSettings(target) {
   const existing = withoutRetired(readJson(join(target, 'settings.json')));
   const generic = readJson(join(repo, 'global', 'settings.json'));
   const personal = readJson(join(repo, 'personal', 'settings.json'));
-  return mergeSettings(mergeSettings(existing, generic), personal);
+  const settings = mergeSettings(mergeSettings(existing, generic), personal);
+  const servers = readJson(join(repo, 'global', 'mcp-servers.json'));
+  const names = Object.entries(servers).filter(([, server]) =>
+    [server.command, ...(server.args ?? [])].some((part) => typeof part === 'string' && part.includes('codex-subagent-mcp')),
+  ).map(([name]) => name);
+
+  // Derived rules are reconciled, not unioned: a renamed registration must not
+  // leave permissions behind. Other permission rules still merge by union.
+  const allow = settings.permissions?.allow ?? [];
+  if (names.length > 0 || allow.some((rule) => CODEX_ALLOW.test(rule))) {
+    settings.permissions = {
+      ...settings.permissions,
+      allow: [
+        ...allow.filter((rule) => !CODEX_ALLOW.test(rule)),
+        ...names.flatMap((name) => CODEX_NO_QUOTA.map((tool) => `mcp__${name}__${tool}`)),
+      ],
+    };
+  }
+  if (settings.hooks?.PreToolUse) {
+    const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    settings.hooks.PreToolUse = settings.hooks.PreToolUse.flatMap((entry) => {
+      if (!(entry.hooks ?? []).some((hook) => /(?:^|\/)guard-codex\.mjs(?:["'\s]|$)/.test(hook.command ?? ''))) return [entry];
+      return names.length > 0
+        ? [{ ...entry, matcher: `^mcp__(?:${escaped.join('|')})__codex_(?:delegate|follow_up)$` }]
+        : [];
+    });
+  }
+  return settings;
 }
 
 const stable = (value) => `${JSON.stringify(value, null, 2)}\n`;

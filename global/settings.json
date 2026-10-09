@@ -31,19 +31,7 @@
       "Bash(gh run view:*)",
       "Bash(gh run watch:*)",
       "Bash(gh label list:*)",
-      "Bash(gh repo view:*)",
-      "mcp__codex-reviewer__codex_doctor",
-      "mcp__codex-reviewer__list_codex_models",
-      "mcp__codex-reviewer__codex_recommend",
-      "mcp__codex-reviewer__codex_job_status",
-      "mcp__codex-reviewer__codex_job_result",
-      "mcp__codex-reviewer__codex_job_cancel",
-      "mcp__codex-implementer__codex_doctor",
-      "mcp__codex-implementer__list_codex_models",
-      "mcp__codex-implementer__codex_recommend",
-      "mcp__codex-implementer__codex_job_status",
-      "mcp__codex-implementer__codex_job_result",
-      "mcp__codex-implementer__codex_job_cancel"
+      "Bash(gh repo view:*)"
     ]
   },
   "hooks": {
@@ -71,7 +59,6 @@
         ]
       },
       {
-        "matcher": "^mcp__codex-(reviewer|implementer)__codex_(delegate|follow_up)$",
         "hooks": [
           {
             "type": "command",
@@ -82,5 +69,6 @@
         ]
       }
     ]
-  }
+  },
+  "bashOutputMaxChars": 12000
 }
