@@ -210,12 +210,17 @@ function desiredServers() {
 }
 
 // Missing and empty compare equal, so the check does not depend on how the CLI
-// writes defaults; env key order does not count, args order does.
+// writes defaults; env and headers key order does not count, args order does.
+// A stdio server is its command, args and env; an http or sse one is its url
+// and headers.
+const sortedEntries = (o) => Object.entries(o ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 const shape = (s) => JSON.stringify([
   s.type ?? 'stdio',
-  s.command,
+  s.command ?? null,
   s.args ?? [],
-  Object.entries(s.env ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  sortedEntries(s.env),
+  s.url ?? null,
+  sortedEntries(s.headers),
 ]);
 
 function mcpPlan(stateDir) {

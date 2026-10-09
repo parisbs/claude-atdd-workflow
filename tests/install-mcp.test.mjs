@@ -512,6 +512,61 @@ describe('AC-4 (#57) Codex rules derived from global/mcp-servers.json', () => {
   });
 });
 
+// A remote server is its type, url and headers, so a change in the url or the headers alone is drift
+// that an install repairs, while a missing and an empty headers object compare equal.
+describe('AC-2 remote servers differ by url and headers', () => {
+  const REMOTE = { type: 'http', url: 'http://127.0.0.1:64342/stream' };
+  const WITH_HEADERS = { type: 'http', url: 'http://127.0.0.1:9000/mcp', headers: { 'X-A': '1', 'X-B': '2' } };
+  const SERVERS = { remote: REMOTE, guarded: WITH_HEADERS };
+
+  test('--check names a server whose url or headers changed under the same type, and changes nothing', () => {
+    const repoDir = makeRepo({ servers: SERVERS });
+    const cases = {
+      url: { remote: { ...REMOTE, url: 'http://127.0.0.1:64343/stream' }, guarded: WITH_HEADERS },
+      'a header value': { remote: REMOTE, guarded: { ...WITH_HEADERS, headers: { 'X-A': '1', 'X-B': '3' } } },
+      'a missing header': { remote: REMOTE, guarded: { ...WITH_HEADERS, headers: { 'X-A': '1' } } },
+      'an extra header': { remote: { ...REMOTE, headers: { Authorization: 'x' } }, guarded: WITH_HEADERS },
+    };
+    for (const [what, seeded] of Object.entries(cases)) {
+      const target = fresh('target');
+      assert.equal(run(repoDir, target).status, 0, `${what}: the files are installed first`);
+      fake.seed(target, seeded);
+      fake.reset();
+      const r = run(repoDir, target, ['--check']);
+      assert.equal(r.status, 1, `${what}: ${r.stdout}`);
+      const differs = [...r.stdout.matchAll(/mcp server differs: (\S+)/g)].map((m) => m[1]);
+      assert.equal(differs.length, 1, `${what}: exactly one server differs: ${r.stdout}`);
+      assert.deepEqual(fake.calls(), [], `${what}: --check must not run claude`);
+      assert.deepEqual(fake.servers(target), seeded, `${what}: --check must not write`);
+    }
+  });
+
+  test('replaces a server whose url changed, and --check then exits 0', () => {
+    const repoDir = makeRepo({ servers: SERVERS });
+    const target = fresh('target');
+    fake.seed(target, { remote: { ...REMOTE, url: 'http://127.0.0.1:64342/mcp' }, guarded: WITH_HEADERS });
+    fake.reset();
+    const r = run(repoDir, target);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(writesOf('remote'), ['remove', 'add-json']);
+    assert.deepEqual(writesOf('guarded'), [], 'a matching server is not touched');
+    assert.deepEqual(fake.servers(target).remote, REMOTE);
+    assert.match(r.stdout, /Replaced MCP server remote/);
+    assert.equal(run(repoDir, target, ['--check']).status, 0);
+  });
+
+  test('header order does not count, and missing headers equal empty ones', () => {
+    const repoDir = makeRepo({ servers: SERVERS });
+    const target = fresh('target');
+    assert.equal(run(repoDir, target).status, 0, 'the files are installed first');
+    fake.seed(target, { remote: { ...REMOTE, headers: {} }, guarded: { ...WITH_HEADERS, headers: { 'X-B': '2', 'X-A': '1' } } });
+    fake.reset();
+    const r = run(repoDir, target, ['--check']);
+    assert.equal(r.status, 0, r.stdout);
+    assert.deepEqual(fake.calls(), []);
+  });
+});
+
 describe('the fake claude', () => {
   const hasClaude = spawnSync('claude', ['--version'], { encoding: 'utf8' }).status === 0;
 
