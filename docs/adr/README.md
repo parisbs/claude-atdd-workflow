@@ -1,8 +1,17 @@
 # Architecture decision records
 
 Short MADR form. Create new records from `template.md`. Records are immutable
-once merged to `main`: a changed decision is a new record that supersedes the
-old one, which changes only in its status line.
+from the commit on `main` where their status becomes accepted or rejected.
+Proposed records on `main` remain editable drafts, revised through pull
+requests. Only the human accepts or rejects a record. A changed decision needs
+a new record; superseded records change only in their status line.
+
+Numbers are never reused, including those of rejected records. A rejected
+record keeps its number and body as the history of a discarded option;
+reconsidering it needs a new record. The status is its leading word, so
+`accepted, amended by NNNN` is accepted. A missing status or a leading word
+other than proposed, accepted, rejected or superseded makes a record immutable
+from its merge; `drift-audit` asks to normalise it (ADR 0018).
 
 - [0001. Separate generic, personal and repository configuration](0001-separate-generic-personal-and-repository-configuration.md)
 - [0002. Enforce with hooks, permissions and CI, and guide with prose](0002-enforce-with-hooks-permissions-and-ci.md)
@@ -21,3 +30,4 @@ old one, which changes only in its status line.
 - [0015. Give delegates goals, structured findings and the rules they lack](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md)
 - [0016. Bind a linked worktree to the nearest ancestor oracle tag](0016-bind-a-linked-worktree-to-the-nearest-ancestor-oracle.md)
 - [0017. Bound tool output, block on Codex instead of polling, and derive the Codex registrations from one file](0017-bound-output-and-block-on-codex-instead-of-polling.md)
+- [0018. ADRs are immutable once accepted or rejected](0018-adrs-are-immutable-once-accepted-or-rejected.md)

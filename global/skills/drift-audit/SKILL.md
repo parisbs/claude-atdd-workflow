@@ -33,9 +33,24 @@ the result.
 
 - ADR index matches the files; numbering has no gaps or duplicates; each record
   has a status; superseded records name their successor.
-- No merged ADR had its body edited after merging: for each record,
-  `git log --follow --format=%h -- <file>` on `main` should show one content
-  commit plus, at most, status-line changes (check each later diff).
+- Read each ADR's history on `main` chronologically, using first-parent
+  snapshots (including merge commits), following earlier paths if renamed.
+  The baseline is the first commit on `main` where its status became accepted,
+  rejected or, with no earlier decision, superseded. Compare every later
+  snapshot with that body, excluding only the status line; report body edits,
+  even if later reverted. Proposed drafts may be edited through pull requests
+  before that baseline without an immutability violation.
+- A status is read from its leading word: proposed, accepted, rejected or
+  superseded. What follows it, such as `amended by NNNN` or a named successor,
+  is an annotation. A record with no status line or no recognised leading word
+  is immutable from its merge. Compare subsequent bodies against that snapshot
+  and ask the human to normalise the status; normalisation does not unfreeze
+  its history.
+- Flag proposed records on `main` for more than 30 days, measured from their
+  first appearance on `main`; editing a draft does not reset its age.
+- Flag references to proposed records from `CLAUDE.md`, code, or decided
+  (accepted, rejected or superseded) records: a draft must not serve as a
+  decided rule, so ask the human to accept or reject the record cited.
 - `docs/ROADMAP.md` against GitHub: items marked done have merged pull requests
   or closed issues; open milestones and `next` issues appear in the roadmap
   (`gh issue list --state all`, `gh api repos/{owner}/{repo}/milestones`).

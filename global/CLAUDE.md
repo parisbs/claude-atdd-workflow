@@ -93,11 +93,11 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   unless the repository says otherwise.
 - Documentation diagrams use Mermaid and always carry a short prose
   description of what they show.
-- ADRs are immutable once merged to `main`. A changed decision is a new record
-  that supersedes the old one; the old record changes only in its status line.
-  A stale reference inside an accepted record stays as written, and the new
-  record notes it. While a record is still in an open pull request it is a
-  draft and can be edited.
+- ADRs are immutable from the commit on `main` where their status becomes
+  accepted or rejected. Proposed records on `main`, and any record in an open
+  pull request, remain editable drafts. A changed decision is a new record;
+  superseded records change only in their status line. Stale references
+  inside frozen records stay as written, and the new record notes them.
 - The instruction file (`CLAUDE.md`) holds only what cannot be derived
   from the code: pitfalls, rationale, invariants and conventions that differ
   from tool defaults.
@@ -124,9 +124,9 @@ could weaken its own controls: `.github/workflows/ci.yml`,
     `git push` and every `gh` command off a read-only list (ADR 0013).
   - Orchestrator only: pushing the work branch, opening pull requests, issues,
     labels, milestones and comments, and merging under the conditions below.
-  - Human only: accepting an ADR, amending a frozen test, publishing a release,
-    creating, moving or deleting an oracle tag (the guard asks), force pushes
-    and `--admin`.
+  - Human only: accepting or rejecting an ADR, amending a frozen test,
+    publishing a release, creating, moving or deleting an oracle tag (the
+    guard asks), force pushes and `--admin`.
 - The orchestrator merges without asking only when every required check is
   green, `oracle-check` is clean, the review the repository declares with
   `Review:` ran with no open finding, no changed file is on the control plane

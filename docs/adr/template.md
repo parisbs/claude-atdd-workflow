@@ -1,6 +1,6 @@
 # NNNN. Title as a short imperative phrase
 
-- Status: proposed | accepted | superseded by NNNN
+- Status: proposed | accepted | rejected | superseded by NNNN
 - Date: YYYY-MM-DD
 
 ## Context

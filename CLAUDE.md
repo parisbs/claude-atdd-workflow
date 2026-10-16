@@ -44,9 +44,9 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   pull request title.
 - Code, comments and documentation are in English.
 - Documentation diagrams use Mermaid and carry a short prose description.
-- Decisions that close an alternative are recorded in `docs/adr/`. Records are immutable once merged to
-  `main`: a changed decision is a new record that supersedes the old one, which changes only in its status
-  line.
+- Decisions that close an alternative are recorded in `docs/adr/`. Records are immutable from the commit on
+  `main` where their status becomes accepted or rejected. Proposed records on `main` remain editable drafts;
+  a changed decision needs a new record, and superseded records change only in their status line.
 
 ## Workflow
 

@@ -58,8 +58,11 @@ A repository keeps its instructions in a single `CLAUDE.md` (ADR 0012).
   them.
 - Repoint every living reference to the old file (skills, agents, rules,
   README, contributing guide, design notes, code comments) at `CLAUDE.md`.
-  Merged ADRs are immutable: record the move in a new ADR instead of editing
-  them, and state the policy in the ADR index when the repository does not. When a
+  ADRs are immutable from the commit on `main` where their status becomes
+  accepted or rejected; proposed records on `main` remain editable drafts,
+  revised through pull requests. Record the move in a new ADR instead of
+  editing frozen bodies; superseded records change only in their status line.
+  State the policy in the ADR index when the repository does not. When a
   comment changes under a path coupled to generated output, prove the output
   did not change.
 - Keep every repository rule at least as strong as it was. Where a repository
