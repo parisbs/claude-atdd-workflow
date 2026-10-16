@@ -60,6 +60,8 @@ acceptance tests.
 - `android/`, `flutter/`, `node-mcp/`, `supabase/`: per-stack verify
   commands, test paths and the rules a repository of that stack should carry.
 - `scripts/install.mjs`: the installer.
+- `scripts/check-adrs.mjs`: the CI check that ADRs change only as ADR 0018
+  allows, with numbering and index (ADR 0019).
 - `CLAUDE.md`: this repository's own instructions, the only instruction file it has (ADR 0012).
 - `docs/`: the decisions (`adr/`), the roadmap and the research behind them.
 

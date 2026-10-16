@@ -9,6 +9,22 @@ permissions:
   contents: read
 
 jobs:
+  adrs:
+    name: Check ADRs
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check ADRs against the base
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-adrs.mjs "refs/remotes/origin/$BASE_REF"
+
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}

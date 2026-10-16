@@ -129,8 +129,8 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
 
 - Issue 27: `guard-git` does not read `git -c key=value` or `--git-dir`, so
   every rule is skipped for those forms.
-- Issue 28: CI check that merged ADRs change only their status line and that
-  every ADR is in the index.
+- Issue 28: Implemented: CI compares ADRs with the pull request base under
+  ADR 0018, enforcing immutability, status transitions, numbering and the index.
 - Issue 45: `guard-tests` keys the oracle on the branch name, so it does not
   freeze the tests inside a Claude subagent's worktree. Implemented: a linked
   worktree is bound by the nearest oracle tag that is an ancestor of `HEAD`

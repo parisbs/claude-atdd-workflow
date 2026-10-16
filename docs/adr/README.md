@@ -31,3 +31,4 @@ from its merge; `drift-audit` asks to normalise it (ADR 0018).
 - [0016. Bind a linked worktree to the nearest ancestor oracle tag](0016-bind-a-linked-worktree-to-the-nearest-ancestor-oracle.md)
 - [0017. Bound tool output, block on Codex instead of polling, and derive the Codex registrations from one file](0017-bound-output-and-block-on-codex-instead-of-polling.md)
 - [0018. ADRs are immutable once accepted or rejected](0018-adrs-are-immutable-once-accepted-or-rejected.md)
+- [0019. Check ADRs in CI against the base](0019-check-adrs-in-ci-against-the-base.md)
