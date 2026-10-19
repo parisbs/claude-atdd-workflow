@@ -129,3 +129,7 @@ next.
 ```bash
 npm test
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
