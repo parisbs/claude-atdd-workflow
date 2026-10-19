@@ -1,6 +1,7 @@
 {
   "name": "claude-workflow",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
