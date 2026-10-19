@@ -33,11 +33,17 @@ the result.
 
 - ADR index links every record; numbering has no gaps or duplicates; each
   record has a status in its front matter; superseded records name their
-  successor.
+  successor. Links inside HTML comments do not index a record; an unclosed
+  comment hides everything after its opening. The index check reads inline
+  links, including those in code spans or fences, but not reference-style links.
+- An added record needs a recognised leading status word in its front matter:
+  proposed, accepted, rejected, superseded or deprecated, without regard to
+  case; annotations after the word are allowed. Historical records imported
+  from another repository may keep any of these five.
 - Read each ADR's history on `main` chronologically, using first-parent
   snapshots (including merge commits), following earlier paths if renamed.
   The baseline is the first commit on `main` where its status became accepted,
-  rejected or, with no earlier decision, superseded. Compare every later
+  rejected, deprecated or, with no earlier decision, superseded. Compare every later
   snapshot with that body, excluding only the status and, when the status
   changed with it, the date; report body edits, even if later reverted.
   Proposed drafts may be edited through pull requests before that baseline
@@ -46,10 +52,12 @@ the result.
   read by its leading word: proposed, accepted, rejected, deprecated or
   superseded. What follows it, such as `amended by NNNN` or a named successor,
   is an annotation. A record with no front matter status or no recognised
-  leading word is immutable from its merge. Compare subsequent bodies against
-  that snapshot and ask the human to normalise the status; normalisation does
-  not unfreeze its history. Report a deprecated record whose base was not
-  accepted, and one that later moved anywhere but superseded.
+  leading word on `main` is immutable from its merge. Report it, compare
+  subsequent bodies against that snapshot and ask the human to normalise the
+  status to accepted, rejected or superseded; normalisation does not unfreeze
+  its history. Report a deprecated record whose base was not accepted, unless
+  it first appeared on `main` as deprecated (a historical import), and one
+  that later moved anywhere but superseded.
 - The one-time migration of a legacy record into front matter is mechanical:
   front matter added holding the legacy status and date, the legacy
   `- Status:` or `Status:` line and `- Date:` line removed, every other line

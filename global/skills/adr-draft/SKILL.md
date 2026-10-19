@@ -27,7 +27,10 @@ repository, never a default, when it has a convention.
    `status: proposed`, `date:` with today's date as `YYYY-MM-DD`, and a closing
    `---`, then the title line. The status is that front matter field, never a
    `- Status:` or `Status:` line in the body: the ADR check counts a record
-   without it as missing a status.
+   without it as missing a status. An added record needs a recognised leading
+   status word: proposed, accepted, rejected, superseded or deprecated,
+   without regard to case; annotations after the word are allowed. Historical
+   records imported from another repository may keep any of these five.
 6. Records are immutable from the commit on `main` where their status becomes
    accepted or rejected. A proposed record on `main`, and any record in an
    open pull request, is still an editable draft. A changed decision or
@@ -49,6 +52,9 @@ repository, never a default, when it has a convention.
    `repo-bootstrap` brings the script and the check. Propose the migration in
    its own pull request; never mix it with edits.
 8. Add the record to the index in numeric order when the repository keeps one.
+   Use an inline link: links inside HTML comments do not index a record, and
+   an unclosed comment hides everything after its opening. Links inside code
+   spans or fences still count; reference-style links are not read.
 9. Diagrams use Mermaid and carry a short prose description.
 
 Report the path and stop. Do not commit: the human reviews the record first.

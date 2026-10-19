@@ -137,6 +137,7 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   migrates legacy records mechanically, which the check verifies, and
   `repo-bootstrap` distributes the check, the migration script, the workflow
   and the required check.
+- Issue 70: Implemented: added ADRs require a recognised status word, and index links inside HTML comments are ignored (ADR 0021).
 - Issue 45: `guard-tests` keys the oracle on the branch name, so it does not
   freeze the tests inside a Claude subagent's worktree. Implemented: a linked
   worktree is bound by the nearest oracle tag that is an ancestor of `HEAD`

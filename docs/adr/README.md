@@ -18,6 +18,15 @@ record immutable from its merge; `drift-audit` asks to normalise it (ADR
 0018). Only an accepted record becomes deprecated, and a deprecated one only
 superseded. The date of a decided record changes only with its status.
 
+An added record needs a recognised leading status word in its front matter:
+proposed, accepted, rejected, superseded or deprecated, without regard to case.
+Annotations after the word are allowed; imported historical records may keep
+any of these five statuses (ADR 0021).
+
+The index check reads inline links. Links inside HTML comments do not index a
+record; an unclosed comment hides everything after its opening. Links inside
+code spans or fences still count; reference-style links are not read (ADR 0021).
+
 A record without front matter, such as one with a legacy `- Status:` line,
 counts as missing a status. Its one-time migration is mechanical: front matter
 added, the legacy status and date lines removed, every other line identical.
@@ -43,3 +52,4 @@ added, the legacy status and date lines removed, every other line identical.
 - [0018. ADRs are immutable once accepted or rejected](0018-adrs-are-immutable-once-accepted-or-rejected.md)
 - [0019. Check ADRs in CI against the base](0019-check-adrs-in-ci-against-the-base.md)
 - [0020. Standardise ADR metadata on MADR 4 front matter](0020-standardise-adr-metadata-on-madr-4-front-matter.md)
+- [0021. Require recognised statuses on added ADRs and ignore commented index links](0021-require-recognised-statuses-on-added-adrs-and-ignore-commented-index-links.md)
