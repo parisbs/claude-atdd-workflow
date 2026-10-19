@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-09-29
+---
 # 0002. Enforce with hooks, permissions and CI, and guide with prose
 
-- Status: accepted
-- Date: 2026-09-29
 
 ## Context
 

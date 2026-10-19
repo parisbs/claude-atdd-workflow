@@ -96,8 +96,14 @@ could weaken its own controls: `.github/workflows/ci.yml`,
 - ADRs are immutable from the commit on `main` where their status becomes
   accepted or rejected. Proposed records on `main`, and any record in an open
   pull request, remain editable drafts. A changed decision is a new record;
-  superseded records change only in their status line. Stale references
-  inside frozen records stay as written, and the new record notes them.
+  superseded records change only in their front matter status. Stale
+  references inside frozen records stay as written, and the new record notes
+  them.
+- An ADR's status is the `status` field of its YAML front matter (MADR 4); a
+  legacy `- Status:` or `Status:` line does not count. The one-time migration
+  of a legacy record is mechanical: it adds front matter and removes the
+  legacy status and date lines, every other line identical, and the ADR check
+  verifies it.
 - The instruction file (`CLAUDE.md`) holds only what cannot be derived
   from the code: pitfalls, rationale, invariants and conventions that differ
   from tool defaults.

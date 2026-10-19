@@ -23,7 +23,8 @@ action on GitHub.
   than one.
 - For integrate: current `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`,
   `.claude/` contents, `.github/` templates and workflows, ADR directory and
-  format, the CI check names from a recent run
+  format (whether every record has MADR 4 front matter with a `status`
+  field), the CI check names from a recent run
   (`gh pr checks <n>` on a recent pull request, or
   `gh api repos/{owner}/{repo}/commits/<sha>/check-runs --jq '.check_runs[].name'`),
   existing rulesets and classic branch protection, merge settings, labels.
@@ -61,7 +62,8 @@ A repository keeps its instructions in a single `CLAUDE.md` (ADR 0012).
   ADRs are immutable from the commit on `main` where their status becomes
   accepted or rejected; proposed records on `main` remain editable drafts,
   revised through pull requests. Record the move in a new ADR instead of
-  editing frozen bodies; superseded records change only in their status line.
+  editing frozen bodies; superseded records change only in their front matter
+  status.
   State the policy in the ADR index when the repository does not. When a
   comment changes under a path coupled to generated output, prove the output
   did not change.
@@ -84,6 +86,31 @@ A repository keeps its instructions in a single `CLAUDE.md` (ADR 0012).
   acceptance criteria and verification sections merged in. Remove duplicate
   templates that differ only in file name case.
 - `.github/workflows/pr-title.yml` from the template.
+- ADR check (ADR 0020). A record's status is the `status` field of its YAML
+  front matter (MADR 4); a legacy `- Status:` or `Status:` line does not
+  count. When every record in `docs/adr/`, `docs/adrs/` or `docs/decisions/`
+  is in that standard format, or there are none, and each directory with
+  records has a `README.md` index linking every record with plain inline
+  links, `[title](NNNN-slug.md)` (create or complete it first, or the check
+  fails every pull request; reference-style links are not read), copy
+  `templates/common/scripts/check-adrs.mjs` to `scripts/`,
+  `templates/common/github/workflows/check-adrs.yml` to `.github/workflows/`,
+  and `templates/common/docs/adr/template.md` when the repository has no ADR
+  template, and keep `Check ADRs` in the ruleset's required checks.
+- Otherwise propose the migration before the check: copy
+  `templates/common/scripts/migrate-adrs.mjs` to `scripts/`, run
+  `node scripts/migrate-adrs.mjs` and settle with the human each record it
+  names. The migration is mechanical (front matter added, the legacy status
+  and date lines removed, every other line identical), so the check admits
+  it. No CI runs the check yet: create or complete the `README.md` index as
+  above, commit the migration, run this skill's
+  `templates/common/scripts/check-adrs.mjs` from the repository root against
+  the merge base with `main` (`node <skill>/templates/common/scripts/check-adrs.mjs
+  "$(git merge-base HEAD main)"`), and show the output. It goes in a pull
+  request of its own, with
+  the human's approval. Install the check, its workflow and the required
+  check only once that migration has merged, and leave `Check ADRs` out of
+  the ruleset until then.
 - `.github/dependabot.yml`, when present: set each ecosystem's
   `commit-message` to `prefix: "build"` (dependencies) or `prefix: "ci"`
   (GitHub Actions) with `include: "scope"`, so Dependabot titles its pull
@@ -108,9 +135,11 @@ and prepare the pull request with `/pr-prep`.
    applying them:
    `gh api repos/{owner}/{repo} --method PATCH -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false -F delete_branch_on_merge=true`.
 2. Labels from `common/github/labels.json` (`gh label create --force`).
-3. Rulesets, after the pull request title check has run at least once so its
-   name exists. Both templates let the administrator role bypass (ADR 0008):
-   on main only through pull requests, on tags always.
+3. Rulesets, after the pull request title check, and the ADR check when
+   installed, have run at least once so their names exist. Drop `Check ADRs`
+   from `main.json` while the ADR check is not installed (section 3). Both
+   templates let the administrator role bypass (ADR 0008): on main only
+   through pull requests, on tags always.
    - Fill `common/github/rulesets/main.json` with the real check names, show it,
      and create it with
      `gh api repos/{owner}/{repo}/rulesets --method POST --input <file>`.

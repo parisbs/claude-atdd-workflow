@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-10-02
+---
 # 0010. Move human control to the specification and gate merges by verified conditions
 
-- Status: accepted
-- Date: 2026-10-02
 - Amends: [0008](0008-administrator-bypasses-rulesets-through-pull-requests.md)
 
 ## Context

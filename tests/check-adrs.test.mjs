@@ -1,7 +1,9 @@
 // Issue #28 (ADR 0018): scripts/check-adrs.mjs compares the ADRs of a pull request with its base. A record
-// whose status on the base is decided, missing or unrecognised is frozen except its status line; a proposed
-// one is a draft. Each case builds a real repository with a base branch and a head branch, as the hook
-// tests do, and runs the script from its root. The static checks at the end read this repository.
+// whose status on the base is decided, missing or unrecognised is frozen except its status; a proposed one
+// is a draft. Each case builds a real repository with a base branch and a head branch, as the hook tests
+// do, and runs the script from its root. The static checks at the end read this repository.
+// Issue #66 rewrote the fixtures in the standard format, MADR 4 front matter: the behaviours of #28 hold on
+// it (AC-8 of #66).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -10,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { frontMatter, frontStatus } from './front-matter.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const script = join(repo, 'scripts', 'check-adrs.mjs');
@@ -30,9 +33,9 @@ function write(dir, path, content) {
 
 const read = (dir, path) => readFileSync(join(dir, path), 'utf8');
 
-// Line 3 is the status line; "Original context." is on line 8, or line 7 when there is no status line.
+// Line 2 is the status field; "Original context." is on line 9, or line 8 when there is no status field.
 const record = (number, title, status) =>
-  [`# ${number}. ${title}`, '', ...(status === null ? [] : [`- Status: ${status}`]), '- Date: 2026-01-01', '',
+  ['---', ...(status === null ? [] : [`status: ${status}`]), 'date: 2026-01-01', '---', `# ${number}. ${title}`, '',
     '## Context', '', 'Original context.', '', '## Decision', '', 'Original decision.', ''].join('\n');
 
 const BASE = {
@@ -91,29 +94,29 @@ function fails(r, ...names) {
 }
 
 const editContext = (dir, file) => replace(dir, file, 'Original context.', 'Rewritten context.');
-const setStatus = (dir, file, from, to) => replace(dir, file, `- Status: ${from}\n`, `- Status: ${to}\n`);
+const setStatus = (dir, file, from, to) => replace(dir, file, `status: ${from}\n`, `status: ${to}\n`);
 
-describe('check-adrs (#28)', () => {
-  describe('AC-1 (#28) a decided record is frozen except its status line', () => {
+describe('check-adrs (#28), AC-8 (#66) on records in the standard format', () => {
+  describe('AC-1 (#28) a decided record is frozen except its status', () => {
     for (const [file, status] of [['0001-a.md', 'accepted'], ['0005-e.md', 'rejected'], ['0006-f.md', 'superseded'], ['0007-g.md', 'accepted, amended by']]) {
       test(`AC-1 (#28) fails on a body edit of a ${status} record, naming the file and the line`, () => {
         const dir = fixture();
         editContext(dir, `docs/adr/${file}`);
-        fails(check(dir), `docs/adr/${file}:8`);
+        fails(check(dir), `docs/adr/${file}:9`);
       });
     }
 
     test('AC-1 (#28) fails on a body edit in docs/decisions', () => {
       const dir = fixture();
       editContext(dir, 'docs/decisions/0001-x.md');
-      fails(check(dir), 'docs/decisions/0001-x.md:8');
+      fails(check(dir), 'docs/decisions/0001-x.md:9');
     });
 
     test('AC-1 (#28) fails when the same change supersedes a record and edits its body', () => {
       const dir = fixture();
       setStatus(dir, 'docs/adr/0001-a.md', 'accepted', 'superseded by [0002](0002-b.md)');
       editContext(dir, 'docs/adr/0001-a.md');
-      fails(check(dir), 'docs/adr/0001-a.md:8');
+      fails(check(dir), 'docs/adr/0001-a.md:9');
     });
   });
 
@@ -121,13 +124,13 @@ describe('check-adrs (#28)', () => {
     test('AC-2 (#28) fails on a body edit of a record whose status is unrecognised', () => {
       const dir = fixture();
       editContext(dir, 'docs/adr/0003-c.md');
-      fails(check(dir), 'docs/adr/0003-c.md:8');
+      fails(check(dir), 'docs/adr/0003-c.md:9');
     });
 
-    test('AC-2 (#28) fails on a body edit of a record without a status line', () => {
+    test('AC-2 (#28) fails on a body edit of a record without a status field', () => {
       const dir = fixture();
       editContext(dir, 'docs/adr/0004-d.md');
-      fails(check(dir), 'docs/adr/0004-d.md:7');
+      fails(check(dir), 'docs/adr/0004-d.md:8');
     });
   });
 
@@ -194,9 +197,9 @@ describe('check-adrs (#28)', () => {
       passes(check(dir));
     });
 
-    test('AC-6 (#28) passes when a record without a status line gains one', () => {
+    test('AC-6 (#28) passes when a record without a status field gains one', () => {
       const dir = fixture();
-      replace(dir, 'docs/adr/0004-d.md', '- Date: 2026-01-01\n', '- Status: accepted\n- Date: 2026-01-01\n');
+      replace(dir, 'docs/adr/0004-d.md', 'date: 2026-01-01\n', 'status: accepted\ndate: 2026-01-01\n');
       passes(check(dir));
     });
 
@@ -289,7 +292,7 @@ describe('check-adrs wiring and records (#28)', () => {
 
   test('AC-12 (#28) ADR 0019 exists with status proposed or accepted and is in the index', () => {
     const { file, text: body } = recordOf('0019');
-    assert.match(/^- Status: (.*)$/m.exec(body)?.[1] ?? '', /^(proposed|accepted)\b/);
+    assert.match(frontStatus(body), /^(proposed|accepted)\b/);
     assert.ok(text('docs/adr/README.md').includes(`(${file})`), 'docs/adr/README.md does not link ADR 0019');
   });
 
@@ -305,9 +308,14 @@ describe('check-adrs wiring and records (#28)', () => {
     assert.match(consequences, /histor/i);
   });
 
-  test('AC-12 (#28) ADR 0018 is unchanged apart from its status line', () => {
-    const body = recordOf('0018').text.replace(/^- Status: .*\n/m, '');
-    assert.equal(createHash('sha256').update(body).digest('hex'), '4225ed2db8e379117ff5e693bd279765e2a899b5d0d45349b89c661246eb738e');
+  // Issue #66 migrated ADR 0018 into front matter: what follows the front matter is the record of #63 without
+  // its "- Status:" and "- Date:" lines, and the front matter carries only the status and the original date.
+  test('AC-12 (#28) ADR 0018 is unchanged apart from its status', () => {
+    const header = frontMatter(recordOf('0018').text);
+    assert.ok(header, 'ADR 0018 has no front matter');
+    assert.deepEqual([...header.keys].sort(), ['date', 'status']);
+    assert.equal(header.fields.date, '2026-10-16');
+    assert.equal(createHash('sha256').update(header.rest).digest('hex'), '94fba82856b16c43d58a8cea8b3314cf0d12b616596124befa306e0473c1d1d3');
   });
 
   test('AC-13 (#28) the roadmap line for issue 28 describes the check under ADR 0018', () => {

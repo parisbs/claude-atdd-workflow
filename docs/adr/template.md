@@ -1,7 +1,8 @@
+---
+status: proposed | accepted | rejected | deprecated | superseded by NNNN
+date: YYYY-MM-DD
+---
 # NNNN. Title as a short imperative phrase
-
-- Status: proposed | accepted | rejected | superseded by NNNN
-- Date: YYYY-MM-DD
 
 ## Context
 

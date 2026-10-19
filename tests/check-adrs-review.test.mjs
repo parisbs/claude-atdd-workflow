@@ -1,6 +1,7 @@
 // Issue #28, review of the first implementation: cases the frozen oracle in check-adrs.test.mjs did not
 // pin. The check ran from a subdirectory matched no record and passed; a status word glued to more text
 // (proposed-x) read as proposed, so editable; and a duplicate number hid the number it skipped.
+// Issue #66 rewrote the fixtures in the standard format, MADR 4 front matter (AC-8 of #66).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -24,9 +25,9 @@ function write(dir, path, content) {
   writeFileSync(join(dir, path), content);
 }
 
-// "Original context." is on line 8.
+// "Original context." is on line 9.
 const record = (number, status) =>
-  [`# ${number}. Title`, '', `- Status: ${status}`, '- Date: 2026-01-01', '', '## Context', '', 'Original context.', ''].join('\n');
+  ['---', `status: ${status}`, 'date: 2026-01-01', '---', `# ${number}. Title`, '', '## Context', '', 'Original context.', ''].join('\n');
 const entry = (file) => `- [${file.slice(0, 4)}. Title](${file})\n`;
 
 // A base main with 0001 accepted and 0002 marked proposed-x, and a head branch feature/x.
@@ -67,18 +68,18 @@ describe('check-adrs review regressions (#28)', () => {
   test('AC-1 (#28 review) still fails on a frozen body edit when run from a subdirectory', () => {
     const dir = fixture();
     replace(dir, 'docs/adr/0001-a.md', 'Original context.', 'Rewritten context.');
-    fails(check(dir, join(dir, 'docs')), 'docs/adr/0001-a.md:8');
+    fails(check(dir, join(dir, 'docs')), 'docs/adr/0001-a.md:9');
   });
 
   test('AC-2 (#28 review) a status word glued to more text is unrecognised, so the record is frozen', () => {
     const dir = fixture();
     replace(dir, 'docs/adr/0002-b.md', 'Original context.', 'Rewritten context.');
-    fails(check(dir), 'docs/adr/0002-b.md:8');
+    fails(check(dir), 'docs/adr/0002-b.md:9');
   });
 
   test('AC-5 (#28 review) a decided status cannot become a glued word that starts with it', () => {
     const dir = fixture();
-    replace(dir, 'docs/adr/0001-a.md', '- Status: accepted\n', '- Status: accepted-not\n');
+    replace(dir, 'docs/adr/0001-a.md', 'status: accepted\n', 'status: accepted-not\n');
     fails(check(dir), 'docs/adr/0001-a.md', 'accepted-not');
   });
 

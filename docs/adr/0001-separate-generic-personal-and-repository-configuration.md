@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-09-29
+---
 # 0001. Separate generic, personal and repository configuration
 
-- Status: accepted
-- Date: 2026-09-29
 
 ## Context
 

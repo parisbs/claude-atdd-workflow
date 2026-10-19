@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-10-16
+---
 # 0019. Check ADRs in CI against the base
 
-- Status: accepted
-- Date: 2026-10-16
 
 ## Context
 

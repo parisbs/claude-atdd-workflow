@@ -2,11 +2,13 @@
 // merge; a proposed record on main is still a draft. These are static checks over the files: they prove the
 // rule is stated where an agent reads it, not that it reads well. That ADR 0009 changes only in its status
 // line (AC-3) and that drift-audit tells an edited proposal from an edited decision (AC-9) are checked by hand.
+// Issue #66 moved the status into MADR 4 front matter, so the status is read from there.
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { frontStatus } from './front-matter.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(join(repo, path), 'utf8');
@@ -16,7 +18,7 @@ const recordOf = (number) => {
   assert.ok(file, `there is no ADR ${number}`);
   return { file, text: readFileSync(join(adrDir, file), 'utf8') };
 };
-const statusLine = (text) => /^- Status: (.*)$/m.exec(text)?.[1] ?? '';
+const statusLine = frontStatus;
 const section = (text, heading) => (text.split(`\n## ${heading}\n`)[1] ?? '').split('\n## ')[0];
 // A paragraph or a list item: the unit a rule is stated in.
 const blocks = (text) =>

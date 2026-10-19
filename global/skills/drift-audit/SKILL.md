@@ -31,26 +31,35 @@ the result.
 
 ## 2. Documentation
 
-- ADR index matches the files; numbering has no gaps or duplicates; each record
-  has a status; superseded records name their successor.
+- ADR index links every record; numbering has no gaps or duplicates; each
+  record has a status in its front matter; superseded records name their
+  successor.
 - Read each ADR's history on `main` chronologically, using first-parent
   snapshots (including merge commits), following earlier paths if renamed.
   The baseline is the first commit on `main` where its status became accepted,
   rejected or, with no earlier decision, superseded. Compare every later
-  snapshot with that body, excluding only the status line; report body edits,
-  even if later reverted. Proposed drafts may be edited through pull requests
-  before that baseline without an immutability violation.
-- A status is read from its leading word: proposed, accepted, rejected or
+  snapshot with that body, excluding only the status and, when the status
+  changed with it, the date; report body edits, even if later reverted.
+  Proposed drafts may be edited through pull requests before that baseline
+  without an immutability violation.
+- The status is the `status` field of the record's YAML front matter (MADR 4),
+  read by its leading word: proposed, accepted, rejected, deprecated or
   superseded. What follows it, such as `amended by NNNN` or a named successor,
-  is an annotation. A record with no status line or no recognised leading word
-  is immutable from its merge. Compare subsequent bodies against that snapshot
-  and ask the human to normalise the status; normalisation does not unfreeze
-  its history.
+  is an annotation. A record with no front matter status or no recognised
+  leading word is immutable from its merge. Compare subsequent bodies against
+  that snapshot and ask the human to normalise the status; normalisation does
+  not unfreeze its history. Report a deprecated record whose base was not
+  accepted, and one that later moved anywhere but superseded.
+- The one-time migration of a legacy record into front matter is mechanical:
+  front matter added holding the legacy status and date, the legacy
+  `- Status:` or `Status:` line and `- Date:` line removed, every other line
+  identical. It is not a body edit; any other change in the same commit is.
 - Flag proposed records on `main` for more than 30 days, measured from their
   first appearance on `main`; editing a draft does not reset its age.
 - Flag references to proposed records from `CLAUDE.md`, code, or decided
-  (accepted, rejected or superseded) records: a draft must not serve as a
-  decided rule, so ask the human to accept or reject the record cited.
+  (accepted, rejected, deprecated or superseded) records: a draft must not
+  serve as a decided rule, so ask the human to accept or reject the record
+  cited.
 - `docs/ROADMAP.md` against GitHub: items marked done have merged pull requests
   or closed issues; open milestones and `next` issues appear in the roadmap
   (`gh issue list --state all`, `gh api repos/{owner}/{repo}/milestones`).
@@ -62,6 +71,18 @@ the result.
 Compare with the templates in `~/.claude/skills/repo-bootstrap/templates/`:
 
 - Pull request title check workflow present and equivalent.
+- ADR records not in the standard format (MADR 4 front matter with a `status`
+  field), such as records with a legacy `- Status:` or `Status:` line: list
+  them and say the ADR check cannot be installed until they are migrated, with
+  `scripts/migrate-adrs.mjs` from the templates, in a pull request of its own.
+- A `scripts/check-adrs.mjs` that differs from the template copy
+  `~/.claude/skills/repo-bootstrap/templates/common/scripts/check-adrs.mjs`
+  (`cmp` the two files): report it, since copies of the check drift.
+- A repository whose records are all in the standard format, or which has
+  none, without the ADR check: report a missing `scripts/check-adrs.mjs`, a
+  missing workflow running it (`.github/workflows/check-adrs.yml` or an
+  equivalent job named `Check ADRs`), or `Check ADRs` missing from the main
+  ruleset's required checks.
 - Dependabot, when configured, uses conventional commit prefixes, or its pull
   requests fail the title check.
 - Issue and pull request templates carry acceptance criteria and the

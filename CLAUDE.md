@@ -46,7 +46,10 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
 - Documentation diagrams use Mermaid and carry a short prose description.
 - Decisions that close an alternative are recorded in `docs/adr/`. Records are immutable from the commit on
   `main` where their status becomes accepted or rejected. Proposed records on `main` remain editable drafts;
-  a changed decision needs a new record, and superseded records change only in their status line.
+  a changed decision needs a new record, and superseded records change only in their front matter status.
+- A record's status is the `status` field of its YAML front matter (MADR 4, ADR 0020). The one-time migration
+  of a legacy record is mechanical: it adds front matter and removes the legacy status and date lines, every
+  other line identical, and `scripts/check-adrs.mjs` verifies it.
 
 ## Workflow
 

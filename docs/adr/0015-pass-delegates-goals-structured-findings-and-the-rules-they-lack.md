@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-10-06
+---
 # 0015. Give delegates goals, structured findings and the rules they lack
 
-- Status: accepted
-- Date: 2026-10-06
 - Amends: [0012](0012-keep-repository-instructions-in-claude-md-alone.md)
 
 ## Context

@@ -56,12 +56,17 @@ acceptance tests.
   machine values, such as `CODEX_BIN`, merged over the env of the shared servers.
 - `common/`: templates every repository receives through `repo-bootstrap`:
   a `CLAUDE.md` skeleton, issue and pull request templates, the
-  pull request title check, labels and GitHub rulesets.
+  pull request title check, an ADR template and the ADR check workflow,
+  labels and GitHub rulesets.
 - `android/`, `flutter/`, `node-mcp/`, `supabase/`: per-stack verify
   commands, test paths and the rules a repository of that stack should carry.
 - `scripts/install.mjs`: the installer.
 - `scripts/check-adrs.mjs`: the CI check that ADRs change only as ADR 0018
-  allows, with numbering and index (ADR 0019).
+  allows, with numbering and index (ADR 0019), reading the status from MADR 4
+  front matter (ADR 0020).
+- `scripts/migrate-adrs.mjs`: rewrites legacy ADRs into MADR 4 front matter,
+  mechanically, so the check admits the change. The installer copies both
+  scripts into the `repo-bootstrap` templates.
 - `CLAUDE.md`: this repository's own instructions, the only instruction file it has (ADR 0012).
 - `docs/`: the decisions (`adr/`), the roadmap and the research behind them.
 

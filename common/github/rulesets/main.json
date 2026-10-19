@@ -49,6 +49,9 @@
             "context": "Conventional PR title"
           },
           {
+            "context": "Check ADRs"
+          },
+          {
             "context": "{{each CI check name that must pass}}"
           }
         ]

@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-10-05
+---
 # 0013. Let guard-git keep subagents off GitHub
 
-- Status: accepted
-- Date: 2026-10-05
 - Amends: [0011](0011-delegate-through-subagents-interchangeable-with-codex.md)
 
 ## Context

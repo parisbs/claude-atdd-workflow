@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-09-29
+---
 # 0005. Use Conventional Commits and release from tags
 
-- Status: accepted
-- Date: 2026-09-29
 
 ## Context
 

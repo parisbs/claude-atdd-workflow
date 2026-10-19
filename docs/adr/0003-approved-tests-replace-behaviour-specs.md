@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-09-29
+---
 # 0003. Approved executable tests replace prose behaviour specifications
 
-- Status: accepted
-- Date: 2026-09-29
 
 ## Context
 

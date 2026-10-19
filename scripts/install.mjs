@@ -8,7 +8,9 @@
 // What it installs (ADR 0001):
 // - global/CLAUDE.md, global/hooks, global/skills and global/agents, copied, never linked:
 //   Cowork sessions skip a symlinked ~/.claude/CLAUDE.md;
-// - common/ and the stack directories, as templates of the repo-bootstrap skill;
+// - common/ and the stack directories, as templates of the repo-bootstrap skill, plus
+//   scripts/check-adrs.mjs and scripts/migrate-adrs.mjs as templates/common/scripts/ (ADR 0020):
+//   copied at install time, so the repository holds one copy of each and an install refreshes them;
 // - personal/preferences.md, when present, as rules/personal.md;
 // - settings: the existing settings.json, then global/settings.json, then
 //   personal/settings.json, merged in that order. Permission lists are unions,
@@ -91,6 +93,10 @@ function plannedFiles() {
   add(join(repo, 'global', 'skills'), 'skills');
   add(join(repo, 'global', 'agents'), 'agents');
   add(join(repo, 'common'), 'skills/repo-bootstrap/templates/common');
+  for (const script of ['check-adrs.mjs', 'migrate-adrs.mjs']) {
+    const source = join(repo, 'scripts', script);
+    if (existsSync(source)) files.set(`skills/repo-bootstrap/templates/common/scripts/${script}`, source);
+  }
   for (const stack of STACKS) add(join(repo, stack), `skills/repo-bootstrap/templates/${stack}`);
   const personal = join(repo, 'personal', 'preferences.md');
   if (existsSync(personal)) files.set('rules/personal.md', personal);

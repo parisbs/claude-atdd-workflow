@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-10-02
+---
 # 0012. Keep repository instructions in CLAUDE.md alone
 
-- Status: accepted
-- Date: 2026-10-02
 - Supersedes: [0006](0006-agents-md-is-the-canonical-repository-file.md)
 
 ## Context

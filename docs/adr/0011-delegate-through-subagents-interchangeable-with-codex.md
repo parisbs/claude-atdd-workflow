@@ -1,7 +1,9 @@
+---
+status: accepted, amended by [0013](0013-guard-git-keeps-subagents-off-github.md)
+date: 2026-10-02
+---
 # 0011. Delegate through Claude Code subagents, interchangeable with Codex
 
-- Status: accepted, amended by [0013](0013-guard-git-keeps-subagents-off-github.md)
-- Date: 2026-10-02
 
 ## Context
 

@@ -1,7 +1,9 @@
+---
+status: superseded by [0018](0018-adrs-are-immutable-once-accepted-or-rejected.md)
+date: 2026-09-29
+---
 # 0009. ADRs are immutable once merged
 
-- Status: superseded by [0018](0018-adrs-are-immutable-once-accepted-or-rejected.md)
-- Date: 2026-09-29
 
 ## Context
 

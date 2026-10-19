@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-10-07
+---
 # 0016. Bind a linked worktree to the nearest ancestor oracle tag
 
-- Status: accepted
-- Date: 2026-10-07
 - Amends: [0003](0003-approved-tests-replace-behaviour-specs.md)
 
 ## Context

@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-09-29
+---
 # 0007. User skill names never shadow project skills
 
-- Status: accepted
-- Date: 2026-09-29
 
 ## Context
 

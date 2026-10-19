@@ -131,6 +131,12 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   every rule is skipped for those forms.
 - Issue 28: Implemented: CI compares ADRs with the pull request base under
   ADR 0018, enforcing immutability, status transitions, numbering and the index.
+- Issue 66: the ADR check reads only legacy `- Status:` lines, so it cannot be
+  rolled out to other repositories. Implemented: ADR metadata is standardised
+  on MADR 4 front matter, read strictly (ADR 0020); `scripts/migrate-adrs.mjs`
+  migrates legacy records mechanically, which the check verifies, and
+  `repo-bootstrap` distributes the check, the migration script, the workflow
+  and the required check.
 - Issue 45: `guard-tests` keys the oracle on the branch name, so it does not
   freeze the tests inside a Claude subagent's worktree. Implemented: a linked
   worktree is bound by the nearest oracle tag that is an ancestor of `HEAD`

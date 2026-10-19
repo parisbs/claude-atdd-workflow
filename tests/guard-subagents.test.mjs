@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { frontStatus } from './front-matter.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const hook = join(root, 'global', 'hooks', 'guard-git.mjs');
@@ -346,6 +347,7 @@ describe('Delegation section and ADR 0013', () => {
     assert.match(text, /0011/);
     assert.match(readFileSync(join(adrs, 'README.md'), 'utf8'), new RegExp(`\\(${file.replace('.', '\\.')}\\)`));
     const eleven = readdirSync(adrs).find((name) => name.startsWith('0011-'));
-    assert.match(readFileSync(join(adrs, eleven), 'utf8'), /^- Status: .*0013/m);
+    // Issue #66 moved the status into MADR 4 front matter.
+    assert.match(frontStatus(readFileSync(join(adrs, eleven), 'utf8')), /0013/);
   });
 });

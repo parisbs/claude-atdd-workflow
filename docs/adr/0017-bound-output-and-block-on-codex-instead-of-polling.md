@@ -1,7 +1,9 @@
+---
+status: accepted
+date: 2026-10-08
+---
 # 0017. Bound tool output, block on Codex instead of polling, and derive the Codex registrations from one file
 
-- Status: accepted
-- Date: 2026-10-08
 - Supersedes in part: [0014](0014-run-codex-through-two-role-named-registrations.md) (the version range and the job-status permission)
 - Amends: [0015](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md) (where the package's rules live)
 

@@ -1,11 +1,12 @@
 // Issue #57: ADR 0017 records the decisions of the change and supersedes part of ADR 0014, which, being
 // merged, changes only in its status line (ADR 0009). That the body of ADR 0014 is otherwise unchanged is
-// AC-12, checked by hand against main.
+// AC-12, checked by hand against main. Issue #66 moved the status into MADR 4 front matter.
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { frontStatus } from './front-matter.mjs';
 
 const adrDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'adr');
 const recordOf = (number) => {
@@ -13,7 +14,7 @@ const recordOf = (number) => {
   assert.ok(file, `there is no ADR ${number}`);
   return { file, text: readFileSync(join(adrDir, file), 'utf8') };
 };
-const statusLine = (text) => /^- Status: (.*)$/m.exec(text)?.[1] ?? '';
+const statusLine = frontStatus;
 const section = (text, heading) => (text.split(`\n## ${heading}\n`)[1] ?? '').split('\n## ')[0];
 
 describe('ADR 0017 (#57)', () => {
