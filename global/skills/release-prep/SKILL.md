@@ -6,7 +6,7 @@ disable-model-invocation: true
 ---
 
 Prepare release $ARGUMENTS. A release is an annotated tag `vX.Y.Z` on `main`
-(claude-workflow ADR 0005). The release branch only prepares it and is deleted
+(claude-atdd-workflow ADR 0005). The release branch only prepares it and is deleted
 after merging. Follow the repository's own release procedure instead when its
 `CLAUDE.md` or a project skill defines one.
 

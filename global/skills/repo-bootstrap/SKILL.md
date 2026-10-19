@@ -9,7 +9,7 @@ Mode and arguments: $ARGUMENTS
 
 Templates live next to this file in `templates/`: `common/` for every
 repository, and one directory per stack (`android/`, `flutter/`, `node-mcp/`,
-`supabase/`) with a `stack.md`. The reasoning is in the claude-workflow ADRs
+`supabase/`) with a `stack.md`. The reasoning is in the claude-atdd-workflow ADRs
 0001, 0004, 0005 and 0012: whatever a repository needs to be worked on
 correctly is copied into it, so it never depends on this machine.
 
