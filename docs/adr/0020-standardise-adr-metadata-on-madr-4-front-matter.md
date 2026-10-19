@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; the added-record status rule and the index reading superseded in part by [0021](0021-require-recognised-statuses-on-added-adrs-and-ignore-commented-index-links.md)
 date: 2026-10-19
 ---
 # 0020. Standardise ADR metadata on MADR 4 front matter

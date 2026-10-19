@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-19
 ---
 # 0021. Require recognised statuses on added ADRs and ignore commented index links
@@ -30,6 +30,8 @@ nonexistent record can fail the check.
   the record and may only be normalised to accepted, rejected or superseded.
 - Remove HTML comments before reading index links, from `<!--` through the
   next `-->`, across lines; an unclosed comment runs to the end of the document.
+  `<!-->` and `<!--->` are complete empty comments, as in CommonMark, and a
+  `<!--` inside a code span or a fenced code block is text, not a comment.
   Links inside HTML comments do not index a record or require a target to
   exist. Text after a closed comment on the same line is still read, and
   diagnostic line numbers stay unchanged. Links inside code spans or fences
