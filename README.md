@@ -1,4 +1,4 @@
-# claude-workflow
+# claude-atdd-workflow
 
 Versioned user-level configuration for Claude Code, plus the templates that
 bring a repository into an agent-assisted workflow with human-approved

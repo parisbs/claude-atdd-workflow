@@ -1,5 +1,5 @@
 {
-  "name": "claude-workflow",
+  "name": "claude-atdd-workflow",
   "private": true,
   "type": "module",
   "engines": {

@@ -5,8 +5,8 @@ argument-hint: <issue number>
 ---
 
 Build the test oracle for issue $ARGUMENTS. The reasoning is in the
-claude-workflow ADR 0003: tests a human approved are both the instruction and
-the verification for phase 2, and nothing about them may be guessed.
+claude-atdd-workflow ADR 0003: tests a human approved are both the instruction
+and the verification for phase 2, and nothing about them may be guessed.
 
 ## 1. Inputs
 
