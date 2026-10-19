@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-16
+status: accepted
+date: 2026-10-19
 ---
 # 0020. Standardise ADR metadata on MADR 4 front matter
 

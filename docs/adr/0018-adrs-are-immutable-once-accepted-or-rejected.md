@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; where the status is read and which statuses are recognised superseded in part by [0020](0020-standardise-adr-metadata-on-madr-4-front-matter.md)
 date: 2026-10-16
 ---
 # 0018. ADRs are immutable once accepted or rejected

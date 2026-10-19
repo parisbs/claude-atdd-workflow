@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted; the legacy status reading, the status transitions, added records and the index check superseded in part by [0020](0020-standardise-adr-metadata-on-madr-4-front-matter.md)
 date: 2026-10-16
 ---
 # 0019. Check ADRs in CI against the base
