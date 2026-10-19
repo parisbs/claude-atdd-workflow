@@ -4,6 +4,11 @@ Versioned user-level configuration for Claude Code, plus the templates that
 bring a repository into an agent-assisted workflow with human-approved
 acceptance tests.
 
+This repository continues the private `claude-workflow` (ADR 0022). Issue and
+pull request numbers up to 74 in code, tests and documentation refer to that
+repository; commit messages write them as `claude-workflow#N`, and
+`docs/migration/claude-workflow-commits.csv` maps its commit ids to these.
+
 ## Layout
 
 - `global/`: generic configuration installed into `~/.claude`. Nothing in it
