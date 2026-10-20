@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-20
 ---
 # 0024. Merge without asking only the user's own pull requests from the base repository
