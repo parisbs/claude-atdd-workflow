@@ -37,7 +37,7 @@ export function validateReport(file, ref = 'main') {
     return true;
   };
   const integer = (value, where, minimum = 0) => {
-    if (!Number.isInteger(value) || value < minimum) fail(where, minimum ? 'must be a positive integer' : 'must be a non-negative integer');
+    if (!Number.isSafeInteger(value) || value < minimum) fail(where, minimum ? 'must be a positive safe integer' : 'must be a non-negative safe integer');
   };
   const string = (value, where, matches) => {
     if (typeof value !== 'string' || !matches(value)) fail(where, 'string outside enumeration or pattern');

@@ -31,7 +31,8 @@ export function allowlists() {
 
 const recordTypes = new Set(['user', 'assistant', 'attachment', 'system', 'custom-title', 'pr-link',
   'file-history-snapshot', 'bridge-session', 'queue-operation', 'last-prompt', 'relocated', 'atis-latch',
-  'agent-name', 'file-history-delta', 'cost-state', 'mode', 'summary']);
+  'agent-name', 'file-history-delta', 'cost-state', 'mode', 'summary', 'api-request-shape', 'api-request-blob',
+  'api-request', 'agent-setting']);
 const recordKeys = new Set(`type operation timestamp sessionId content parentUuid isSidechain promptId message uuid
   permissionMode origin promptSource turnOrigin turnPosition userType entrypoint cwd version gitBranch attachment
   rendered renderedRole lastPrompt leafUuid relocatedCwd messageId snapshot isSnapshotUpdate atis bridgeSessionId
@@ -43,7 +44,10 @@ const recordKeys = new Set(`type operation timestamp sessionId content parentUui
   deliveryId prNumber prUrl prRepository mcpMeta queueSkipAttachments totalCostUSD totalAPIDuration
   totalAPIDurationWithoutRetries totalToolDuration totalLinesAdded totalLinesRemoved totalDuration startTime modelUsage
   hasUnknownModelCost mode toolDenialKind isMeta turnCompanion sourceToolUseID attributionSkill apiError apiErrorParams
-  quotaLimits error isApiErrorMessage apiErrorStatus`.split(/\s+/));
+  quotaLimits error isApiErrorMessage apiErrorStatus slug agentId attributionAgent classifierMetaLines toolEndsTurn
+  queueSkipSlashCommands requestRef attributionPlugin logicalParentUuid compactMetadata isVisibleInTranscriptOnly
+  isCompactSummary retryInMs retryAttempt maxRetries source usageLimitNote shapeHash shape hash id querySource params keep
+  tail cacheControl requestDigest base agentSetting`.split(/\s+/));
 
 export const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const hashScript = (text) => createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex');
@@ -54,6 +58,18 @@ const counts = () => Object.fromEntries(COUNTS.map((key) => [key, 0]));
 const increment = (target, key) => { target[key] = (target[key] ?? 0) + 1; };
 const addCounts = (target, source) => { for (const key of COUNTS) target[key] += source[key]; };
 const skippedCounts = () => ({ invalid: 0, types: 0, keys: 0 });
+// Names in code-unit order: a locale's collation would make ownership of a copied message depend on the machine.
+const byName = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+// Only an explicit offset makes a timestamp a point in time; outside 1970 to 9999 it is corrupt, and an ISO
+// week could not even be written for it.
+const MIN_TIME = Date.UTC(1970, 0, 1);
+const MAX_TIME = Date.UTC(10000, 0, 1);
+const validTimestamp = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(value)) return false;
+  const time = Date.parse(value);
+  return time >= MIN_TIME && time < MAX_TIME;
+};
+const unreadable = { paths: 0 };
 
 export function isoWeek(date) {
   const day = new Date(date);
@@ -67,19 +83,19 @@ export function isoWeek(date) {
 }
 
 function transcript(file) {
-  let text;
-  try { text = readFileSync(file, 'utf8'); } catch { throw new Error('Cannot read a transcript file'); }
   const records = [];
   const skipped = skippedCounts();
+  let text;
+  try { text = readFileSync(file, 'utf8'); } catch { unreadable.paths++; return { records, skipped, unreadable: true }; }
   const lines = text.split(/\r?\n/);
   if (lines.at(-1) === '') lines.pop();
   for (const line of lines) {
     let record;
-    try { record = JSON.parse(line); } catch { skipped.invalid++; continue; }
-    if (!object(record) || (record.type === 'assistant' &&
+    try { record = JSON.parse(line.replace(/^\uFEFF/, '')); } catch { skipped.invalid++; continue; }
+    if (!object(record) || (record.timestamp !== undefined && !validTimestamp(record.timestamp)) || (record.type === 'assistant' &&
       (typeof record.message?.id !== 'string' || !record.message.id || TOKENS.some((key) =>
         record.message.usage?.[key] !== undefined &&
-        (!Number.isInteger(record.message.usage[key]) || record.message.usage[key] < 0))))) {
+        (!Number.isSafeInteger(record.message.usage[key]) || record.message.usage[key] < 0))))) {
       skipped.invalid++;
       continue;
     }
@@ -90,11 +106,13 @@ function transcript(file) {
   return { records, skipped };
 }
 
-function entries(directory, optional = false) {
-  try { return readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)); }
+// The projects folder must be readable; any other directory that cannot be read is skipped and counted.
+function entries(directory, required = false) {
+  try { return readdirSync(directory, { withFileTypes: true }).sort((a, b) => byName(a.name, b.name)); }
   catch (error) {
-    if (optional && error.code === 'ENOENT') return [];
-    throw new Error(error.code === 'ENOENT' ? 'Transcript directory does not exist' : 'Cannot read transcript directory');
+    if (required) throw new Error(error.code === 'ENOENT' ? 'Transcript directory does not exist' : 'Cannot read transcript directory');
+    if (error.code !== 'ENOENT') unreadable.paths++;
+    return [];
   }
 }
 
@@ -156,9 +174,10 @@ function sessionRow(session, seen, lists) {
     }
   }
   const subdir = join(dirname(session.file), session.file.split(sep).at(-1).slice(0, -6), 'subagents');
-  for (const entry of entries(subdir, true).filter((e) => e.isFile() && /^agent-.*\.jsonl$/.test(e.name))) {
+  for (const entry of entries(subdir).filter((e) => e.isFile() && /^agent-.*\.jsonl$/.test(e.name))) {
     const file = join(subdir, entry.name);
     const sub = transcript(file);
+    if (sub.unreadable) continue;
     addCounts(row.subagents, requests(sub.records, seen));
     row.subagents.count++;
     let type;
@@ -192,16 +211,17 @@ function main() {
   const opts = options(process.argv.slice(2));
   const projects = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'projects');
   const sessions = [];
-  for (const project of entries(projects).filter((e) => e.isDirectory())) {
+  for (const project of entries(projects, true).filter((e) => e.isDirectory())) {
     const directory = join(projects, project.name);
     for (const entry of entries(directory).filter((e) => e.isFile() && e.name.endsWith('.jsonl'))) {
       const file = join(directory, entry.name);
       const main = transcript(file);
+      if (main.unreadable) continue;
       const timestamps = main.records.map((r) => typeof r.timestamp === 'string' ? Date.parse(r.timestamp) : NaN).filter(Number.isFinite);
       sessions.push({ file, main, start: timestamps[0] ?? Infinity, end: timestamps.at(-1) ?? Infinity });
     }
   }
-  sessions.sort((a, b) => a.start - b.start || a.file.localeCompare(b.file));
+  sessions.sort((a, b) => a.start - b.start || byName(a.file, b.file));
   const lists = allowlists();
   const seen = new Set();
   const rows = [];
@@ -241,6 +261,7 @@ function main() {
     'Input tokens': totals.input_tokens, 'Output tokens': totals.output_tokens,
     'Cache creation tokens': totals.cache_creation_input_tokens, 'Cache read tokens': totals.cache_read_input_tokens,
     'Invalid lines skipped': skipped.invalid, 'Unknown record types skipped': skipped.types, 'Unknown keys skipped': skipped.keys,
+    'Unreadable paths skipped': unreadable.paths,
     Report: out, Reminder: 'Read the file before submitting it.',
   };
   for (const [label, value] of Object.entries(summary)) console.log(`${label}: ${value}`);
