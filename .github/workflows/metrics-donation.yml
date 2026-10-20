@@ -2,15 +2,21 @@ name: metrics-donation
 
 on:
   pull_request:
-    types: [assigned, unassigned, labeled, unlabeled, opened, edited, closed, reopened, synchronize, converted_to_draft, ready_for_review, locked, unlocked, review_requested, review_request_removed, auto_merge_enabled, auto_merge_disabled, enqueued, dequeued, milestoned, demilestoned]
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
+
+# A newer event, such as a second edit of the body, supersedes the run of an older one.
+concurrency:
+  group: metrics-donation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   donation:
     name: Check metrics donation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
