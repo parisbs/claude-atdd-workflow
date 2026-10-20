@@ -53,8 +53,10 @@ function repo() {
 const FAKE_GH = String.raw`#!/usr/bin/env node
 const fs = require('node:fs');
 const scenario = JSON.parse(fs.readFileSync(process.env.FAKE_GH, 'utf8'));
-const kind = process.argv[2] === 'pr' ? 'view' : process.argv[2] === 'api' ? 'api' : 'other';
-const step = scenario[kind] || { exit: 1, stderr: 'fake gh: unexpected call' };
+const args = process.argv.slice(2);
+const kind = args[0] === 'pr' ? 'view' : args[0] === 'api'
+  ? args.some((arg) => arg === 'user' || arg === '/user') ? 'user' : 'api' : 'other';
+const step = scenario[kind] || (kind === 'user' ? { stdout: { login: 'me' } } : { exit: 1, stderr: 'fake gh: unexpected call' });
 if (step.stderr) process.stderr.write(step.stderr);
 if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'string' ? step.stdout : JSON.stringify(step.stdout));
 process.exit(step.exit === undefined ? 0 : step.exit);
@@ -72,6 +74,10 @@ function green(overrides = {}) {
     labels: [],
     baseRefName: 'main',
     url: 'https://github.com/o/r/pull/12',
+    author: { login: 'me', is_bot: false },
+    isCrossRepository: false,
+    headRepositoryOwner: { login: 'o' },
+    headRepository: { name: 'r' },
     files: [{ path: 'src/app.ts' }],
     changedFiles: 1,
     statusCheckRollup: [PASSED],
