@@ -102,8 +102,11 @@ Mechanism, in the merge decision of `guard-git`:
   budget per hook run (`GUARD_GIT_GH_BUDGET_MS`, 10 s by default, counted from
   the start of the hook), so that slow calls cannot together outlast the 15 s
   that `global/settings.json` gives `guard-git` before it prints an answer. A
-  call never runs past what is left of the budget, and a spent budget asks
-  with a reason that says so.
+  call is stopped when what is left of the budget runs out, and a spent budget
+  asks with a reason that says so. The budget bounds only calls that exit when
+  stopped: a `gh` that ignores the termination signal, or an unbounded `git`
+  call elsewhere in the same command, can still outlast the hook timeout; that
+  gap predates this record and is left to issue #22.
 - A stricter gate asks more often, mostly where bots open pull requests.
   Donations of session metrics (ADR 0023) come from forks and are merged by a
   maintainer, which this rule now enforces.
