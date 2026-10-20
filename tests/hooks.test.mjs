@@ -401,6 +401,26 @@ describe('guard-git merge decision', () => {
     }), 'slow user lookup');
   });
 
+  // Review of #5: three serial gh calls must answer within the hook's own timeout, so
+  // the calls share one budget (GUARD_GIT_GH_BUDGET_MS) besides the limit of each.
+  test('AC-4 (#5) asks when the gh calls together exceed the time budget, though each is under its limit', () => {
+    const slow = { delayMs: 1500 };
+    const result = merge(SQUASH, {
+      view: { stdout: green(), ...slow },
+      api: { ...NOT_FOUND, ...slow },
+      user: { stdout: { login: 'me' }, ...slow },
+      env: { GUARD_GIT_GH_TIMEOUT_MS: '4000', GUARD_GIT_GH_BUDGET_MS: '2500' },
+    });
+    asks(result, 'calls over the shared budget', /time/i);
+  });
+
+  test('AC-2 (#5) reads CLAUDE.md of the base branch with --hostname of the pull request host', () => {
+    const result = merge(SQUASH, { env: { GH_HOST: 'elsewhere.example.com' } });
+    const call = result.calls.find((c) => c[0] === 'api' && c.some((arg) => arg.includes('contents/CLAUDE.md')));
+    assert.ok(call, 'gh api was not called to read CLAUDE.md');
+    assert.ok(call.some((arg, i) => arg === '--hostname' && call[i + 1] === 'github.com'), `missing --hostname github.com: ${call.join(' ')}`);
+  });
+
   test('AC-1 denies --admin and any merge that does not squash, even when gh is missing', () => {
     const env = { PATH: withoutGh() };
     for (const command of [
