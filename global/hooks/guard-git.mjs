@@ -7,7 +7,9 @@
 // - a force push asks, and is denied when it targets main;
 // - `gh pr merge` must squash and must never use --admin, and is decided from what
 //   GitHub shows about the pull request: checks, control-plane files, the label
-//   needs-human, draft state (ADR 0010). Anything that cannot be read asks;
+//   needs-human, draft state (ADR 0010), and that the authenticated gh user opened
+//   it from a branch in the base repository (ADR 0024). Anything that cannot be
+//   read asks;
 // - deploys to a linked Supabase project ask first;
 // - an ATDD oracle tag cannot be deleted or moved by the agent, and creating one
 //   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010);
@@ -200,7 +202,7 @@ function checkGit(args, cwd, verdict, branches) {
 }
 
 const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
-const PR_FIELDS = 'baseRefName,changedFiles,files,isDraft,labels,statusCheckRollup,url';
+const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
 const brief = (text) => (text ?? '').trim().split('\n')[0].slice(0, 200);
@@ -229,8 +231,48 @@ function checkIssue(check) {
   return `${name} (${check.conclusion || check.status})`;
 }
 
+// Who opened the pull request and where its head branch lives (ADR 0024). Only the
+// authenticated gh user is a trusted author, bots included in the rest; the user is
+// read on the pull request's own host, so GH_HOST cannot point the lookup elsewhere.
+// A head branch in another repository asks even when the user opened it.
+function provenanceReasons(pr, host, cwd) {
+  const reasons = [];
+  if (typeof pr.isCrossRepository !== 'boolean') {
+    reasons.push('Could not read where the head branch lives: gh returned no isCrossRepository.');
+  } else if (pr.isCrossRepository) {
+    // A deleted fork has no headRepository but keeps its owner.
+    const owner = pr.headRepositoryOwner?.login;
+    const name = pr.headRepository?.name;
+    const head = owner ? (name ? `${owner}/${name}` : owner) : 'an unnamed repository';
+    reasons.push(`The head branch lives in a fork, ${head}, not in the base repository.`);
+  }
+
+  const author = pr.author?.login;
+  if (typeof author !== 'string' || author === '') {
+    reasons.push('Could not read who opened the pull request: gh returned no author.');
+    return reasons;
+  }
+  if (!host) {
+    reasons.push('Could not read the authenticated gh user: the pull request URL has an unexpected shape.');
+    return reasons;
+  }
+  const lookup = gh(['api', '--hostname', host, 'user'], cwd);
+  let user;
+  try {
+    user = lookup.failure ? undefined : JSON.parse(lookup.stdout)?.login;
+  } catch {
+    user = undefined;
+  }
+  if (typeof user !== 'string' || user === '') {
+    reasons.push(`Could not read the authenticated gh user on ${host}: ${lookup.failure ?? 'gh returned no login'}.`);
+  } else if (user !== author) {
+    reasons.push(`The pull request was opened by ${author}, not by the authenticated gh user ${user} on ${host}.`);
+  }
+  return reasons;
+}
+
 // What the hook may say about a merge: reasons to ask, or none when every
-// condition of ADR 0010 holds. Never throws: a merge cannot be undone.
+// condition of ADR 0010 and ADR 0024 holds. Never throws: a merge cannot be undone.
 function mergeReasons(args, cwd) {
   const rest = args.slice(2);
   const { positional } = parseOptions(rest, {
@@ -265,9 +307,11 @@ function mergeReasons(args, cwd) {
     reasons.push(`GitHub lists only ${paths.length} of ${pr.changedFiles} changed files, so the control plane cannot be checked.`);
   }
 
+  const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
+  reasons.push(...provenanceReasons(pr, where?.[1], cwd));
+
   // The list a pull request is judged by comes from its base branch, never from its own copy.
   let extra = [];
-  const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
   if (!where) {
     reasons.push('Could not read CLAUDE.md of the base branch: the pull request URL has an unexpected shape.');
   } else {
@@ -436,7 +480,7 @@ try {
   // An explicit allow lifts the prompt for the whole command, so it is only given to a
   // command that is nothing but one plain merge, with no quotes, chains or redirections.
   if (merged && !subagent && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
-    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label (ADR 0010).');
+    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label, opened by the authenticated gh user from a branch in the base repository (ADR 0010, ADR 0024).');
   }
   verdict.emit();
 } catch (error) {
