@@ -205,13 +205,24 @@ const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
 const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
+// All gh calls of one hook run share this budget, counted from the start of the
+// process. global/settings.json kills guard-git after 15 s, and a merge decision
+// makes up to three serial calls; 10 s leaves 5 s for Node to start, for git, for
+// a timed-out gh to exit after its signal, and for the hook to print its ask.
+const ghBudget = () => Number(process.env.GUARD_GIT_GH_BUDGET_MS) || 10000;
 const brief = (text) => (text ?? '').trim().split('\n')[0].slice(0, 200);
 
-// Runs gh without a shell and says why when it could not give an answer.
+// Runs gh without a shell and says why when it could not give an answer. A call
+// never runs past what is left of the shared budget.
 function gh(args, cwd) {
-  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: ghLimit() });
+  const left = Math.floor(ghBudget() - performance.now());
+  const outOfBudget = { failure: `gh ran out of the time budget of ${ghBudget()} ms for this hook` };
+  // A timeout of 0 would mean no timeout at all, so a spent budget skips the call.
+  if (left < 1) return outOfBudget;
+  const limit = Math.min(ghLimit(), left);
+  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: limit });
   if (run.error?.code === 'ENOENT') return { failure: 'gh is not installed or not on PATH' };
-  if (run.error?.code === 'ETIMEDOUT') return { failure: `gh timed out after ${ghLimit()} ms` };
+  if (run.error?.code === 'ETIMEDOUT') return limit < ghLimit() ? outOfBudget : { failure: `gh timed out after ${limit} ms` };
   if (run.error) return { failure: `gh could not run (${run.error.message})` };
   if (run.status !== 0) return { failure: brief(run.stderr) || `gh exited with ${run.status}`, stderr: run.stderr ?? '' };
   return { stdout: run.stdout };
@@ -316,8 +327,10 @@ function mergeReasons(args, cwd) {
     reasons.push('Could not read CLAUDE.md of the base branch: the pull request URL has an unexpected shape.');
   } else {
     const [, host, owner, name] = where;
+    // An explicit host, github.com included: without it gh follows GH_HOST, and a 404
+    // from another host would read as no CLAUDE.md and drop its Human merge: paths.
     const file = gh([
-      'api', ...(host === 'github.com' ? [] : ['--hostname', host]),
+      'api', '--hostname', host,
       '-H', 'Accept: application/vnd.github.raw+json',
       `repos/${owner}/${name}/contents/CLAUDE.md?ref=${encodeURIComponent(pr.baseRefName)}`,
     ], cwd);
