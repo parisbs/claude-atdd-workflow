@@ -7,9 +7,10 @@ Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
 - Orchestration (below): done.
 - Delegation (below): decided in ADR 0014 and 0015. Issues 32, 34, 42 and 46 are implemented; 33, 38 and 43 are open. Milestone `delegation`.
 - Phase 3: started. One repository is migrated, one is pending.
-- Phase 4: not started. `docs/experiments/` holds three records, the delegation
-  probes and the Codex alignment probes of 2026-10-06 and the Claude worktree
-  probes of 2026-10-07; the workflow has been used
+- Phase 4: not started. `docs/experiments/` holds four records, the delegation
+  probes and the Codex alignment probes of 2026-10-06, the Claude worktree
+  probes of 2026-10-07 and the orchestrator context probes of 2026-10-08; the
+  workflow has been used
   on this repository only and nothing about it has been measured beyond those
   probes.
 
@@ -179,22 +180,28 @@ Run the workflow of ADR 0003 on real issues and record what happens in
 
 ## Measurement
 
-Status: designed on 2026-10-05, not started, no issue and no ADR yet. The aim is
-that other developers can inspect and replicate the evidence behind the workflow,
-within its limits; it is not to pool data from many people.
+Status: collection and donation decided in ADR 0023 on 2026-10-20, not
+implemented. The aim is that other developers can inspect and replicate the
+evidence behind the workflow, and, since the repository is public, donate
+de-identified metrics from their own sessions to it.
 
-- An optional local event log, off by default: counts, categories and
-  enumerations only, never prompts, code or paths. What each developer records
-  stays on their machine.
-- A baseline taken from the Claude Code transcripts and the git and GitHub
-  history that already exist, which needs a check of the transcript format first.
-- An analysis script anyone can run on their own log, and the maintainer's
-  dataset published in `docs/experiments/` with model, effort and CLI versions.
+- Donated session metrics (ADR 0023): a cross-platform script extracts one row
+  per session from the Claude Code transcripts through a field allowlist; the
+  contributor reviews the report and adds it to `docs/experiments/donated/`
+  through a pull request from a fork; CI validates its form; the data is
+  published under CC0 1.0. The transcript format was checked on 2026-10-20.
+- The maintainer's own dataset comes from the same script, with model, effort
+  and CLI versions.
+- An optional local event log of hook decisions, off by default: counts,
+  categories and enumerations only, never prompts, code or paths. Not decided.
+- A baseline from the git and GitHub history. Not decided.
 - A measurement protocol written before the data is read, as an ADR: metrics with
   operational definitions, hypotheses, covariates and limits.
-- The claim it can support is "this worked in one developer's context, and here
-  is how to check", not "the workflow is valid in general". With one developer the
-  effect of the developer and of the project type cannot be separated.
+- The claim it can support is "this worked in these contributors' contexts, and
+  here is how to check", not "the workflow is valid in general". Donors are
+  self-selected and their data is validated in form, not in origin, so the effect
+  of the developer, the project type and the model cannot be separated from the
+  effect of the workflow.
 
 ## Later: the full protocol
 
