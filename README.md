@@ -50,8 +50,17 @@ Read the JSON report before submitting it. By default the script creates
 `YYYY-Www-<8 random hex digits>.json` in the working directory and prints a
 plain-text summary. In a fork, add that one file to
 `docs/experiments/donated/`, preserving the generated filename, and open a pull
-request using the metrics-donation template. Change no other file and tick
-the CC0 checkbox. CI checks the report using the base branch's validator; a
+request with the metrics-donation template. GitHub applies it only through the
+`template` query parameter, so open the comparison of your branch with it, replacing
+the placeholders:
+
+```text
+https://github.com/parisbs/claude-atdd-workflow/compare/main...YOUR-USER:YOUR-BRANCH?quick_pull=1&template=metrics-donation.md
+```
+
+The [comparison with the template](https://github.com/parisbs/claude-atdd-workflow/compare?quick_pull=1&template=metrics-donation.md)
+is the same page before you choose your fork and branch. Change no other file
+and tick the CC0 checkbox. CI checks the report using the base branch's validator; a
 maintainer reviews and merges it. You can also validate locally with
 `node scripts/metrics-validate.mjs <report> --ref origin/main` once your local
 history includes the published script version.
