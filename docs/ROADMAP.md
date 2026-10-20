@@ -189,8 +189,8 @@ Run the workflow of ADR 0003 on real issues and record what happens in
 
 ## Measurement
 
-Status: collection and donation decided in ADR 0023 on 2026-10-20, not
-implemented. The aim is that other developers can inspect and replicate the
+Status: collection and donation implemented (ADR 0023, issue #19). The aim is
+that other developers can inspect and replicate the
 evidence behind the workflow, and, since the repository is public, donate
 de-identified metrics from their own sessions to it.
 

@@ -9,6 +9,67 @@ pull request numbers up to 74 in code, tests and documentation refer to that
 repository; commit messages write them as `claude-workflow#N`, and
 `docs/migration/claude-workflow-commits.csv` maps its commit ids to these.
 
+## Donating session metrics
+
+You can donate metrics from your own Claude Code sessions (ADR 0023). Donated
+data is published under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/):
+you dedicate it to the public domain by ticking the licence checkbox in the
+[metrics-donation template](.github/PULL_REQUEST_TEMPLATE/metrics-donation.md),
+confirming that you have the right to share it.
+
+The report collects one row per session: its UTC ISO week, CLI version,
+entrypoint, permission modes, models and efforts, request and token counts,
+duration rounded to minutes, tool and skill counts, and subagent counts and
+tokens. Skills, agents and MCP servers are named only when this repository
+ships them; other values become `other`. Subagent counts are separate from
+the main session totals. The header records the schema, script version and
+script hash, generation week and licence.
+
+It never collects prompts, responses, tool inputs or results, file snapshots,
+paths, branch names, session or account identifiers, pull request URLs, custom
+titles, or private MCP server names. Unknown records and keys are counted and
+discarded, never printed.
+
+With Node 22 or newer, run this command from a checkout of the repository on
+Windows (PowerShell), macOS or Linux (a terminal); no dependencies are needed:
+
+```sh
+node scripts/metrics-report.mjs --since 2026-10-05 --until 2026-10-11
+```
+
+Change the dates to your range, or omit either bound. Both UTC days are
+inclusive; sessions belong to the day of their first record and are reported
+whole. Transcripts come from `CLAUDE_CONFIG_DIR/projects` when that environment
+variable is set, otherwise `.claude/projects` under your home directory.
+Optionally add `--project "path/to/project"` (or `--project "C:\work\project"`
+on Windows) to include only that directory and its descendants. This filter
+path is not included in the report. `--out "report.json"` chooses an output
+file; an existing file is never overwritten.
+
+Read the JSON report before submitting it. By default the script creates
+`YYYY-Www-<8 random hex digits>.json` in the working directory and prints a
+plain-text summary. In a fork, add that one file to
+`docs/experiments/donated/`, preserving the generated filename, and open a pull
+request with the metrics-donation template. GitHub applies it only through the
+`template` query parameter, so open the comparison of your branch with it, replacing
+the placeholders:
+
+```text
+https://github.com/parisbs/claude-atdd-workflow/compare/main...YOUR-USER:YOUR-BRANCH?quick_pull=1&template=metrics-donation.md
+```
+
+The [comparison with the template](https://github.com/parisbs/claude-atdd-workflow/compare?quick_pull=1&template=metrics-donation.md)
+is the same page before you choose your fork and branch. Change no other file
+and tick the CC0 checkbox. CI checks the report using the base branch's validator; a
+maintainer reviews and merges it. You can also validate locally with
+`node scripts/metrics-validate.mjs <report> --ref origin/main` once your local
+history includes the published script version.
+
+Your GitHub account is public through the pull request, so the report is
+de-identified in content but not anonymous. The data is self-reported and
+validated in form, not in origin. Donors are self-selected; pooled counts
+cannot separate the effects of the workflow, developer, project and model.
+
 ## Layout
 
 - `global/`: generic configuration installed into `~/.claude`. Nothing in it
