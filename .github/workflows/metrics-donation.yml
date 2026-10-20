@@ -34,4 +34,5 @@ jobs:
       - name: Validate donation with the base scripts
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: node scripts/metrics-donation-check.mjs --base "$BASE_SHA" --head refs/heads/metrics-donation-head --event "$GITHUB_EVENT_PATH"
+        # Until the base holds the check (the pull request that adds it), there is no trusted code to run.
+        run: test -f scripts/metrics-donation-check.mjs || { echo "The base has no donation check yet; nothing to validate."; exit 0; }; node scripts/metrics-donation-check.mjs --base "$BASE_SHA" --head refs/heads/metrics-donation-head --event "$GITHUB_EVENT_PATH"
