@@ -4,14 +4,22 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { git, MAX_BYTES, validateReport, validWeek } from './metrics-validate.mjs';
+import { git, MAX_BYTES, shown, validateReport, validWeek } from './metrics-validate.mjs';
 
 const donated = 'docs/experiments/donated/';
-// Paths come from the fork. Escaping control characters keeps a name from starting a line, which the Actions
-// runner would read as a workflow command (::error:: and the like).
-const shown = (path) => JSON.stringify(path).slice(1, -1);
-// A box ticked inside an HTML comment is not shown to the reader, so it is not consent.
-const visible = (text) => text.replace(/<!--[\s\S]*?(-->|$)/g, '');
+// Boxes inside comments or fenced examples do not express consent.
+const visible = (text) => {
+  let fence;
+  return text.replace(/<!--[\s\S]*?(-->|$)/g, '').split(/\r?\n/).filter((line) => {
+    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fence) {
+      if (match && match[1][0] === fence[0] && match[1].length >= fence.length && /^[ \t]*$/.test(match[2])) fence = undefined;
+      return false;
+    }
+    if (match && (match[1][0] === '~' || !match[2].includes('`'))) { fence = match[1]; return false; }
+    return true;
+  }).join('\n');
+};
 
 function main() {
   const args = process.argv.slice(2);
@@ -69,11 +77,11 @@ function main() {
         const file = join(scratch, 'report.json');
         writeFileSync(file, git('show', `${head}:${path}`));
         errors.push(...validateReport(file, base).map((error) => `${shown(path)}: ${error}`));
-      } catch (error) { errors.push(`${shown(path)}: ${error.message.replace(/[\r\n]+/g, ' ')}`); }
+      } catch (error) { errors.push(`${shown(path)}: ${shown(error.message)}`); }
     }
   } finally { rmSync(scratch, { recursive: true, force: true }); }
   if (errors.length) { console.error(errors.join('\n')); process.exitCode = 1; }
   else console.log('Donation is valid in form and requires human review and merge.');
 }
 
-try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; }
+try { main(); } catch (error) { console.error(shown(error.message)); process.exitCode = 1; }

@@ -6,6 +6,10 @@ import { allowlists, COUNTS, EFFORTS, ENTRYPOINTS, hashScript, isMain, isoWeek, 
 
 export const MAX_BYTES = 2 * 1024 * 1024;
 
+// Quote donated values so neither control characters nor a leading :: can become workflow commands.
+export const shown = (value) => JSON.stringify(value)
+  .replace(/[\u007f-\u009f\u2028\u2029]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
 export function git(...args) {
   const result = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`Cannot read git data: ${result.error?.message ?? result.stderr.trim()}`);
@@ -22,7 +26,7 @@ export function validWeek(value) {
 
 export function validateReport(file, ref = 'main') {
   const errors = [];
-  const fail = (where, cause) => errors.push(`${where}: ${cause}`);
+  const fail = (where, cause) => errors.push(`${shown(where)}: ${shown(cause)}`);
   let report;
   try {
     if (statSync(file).size > MAX_BYTES) return ['Report exceeds 2 MiB (2097152 bytes)'];
@@ -114,5 +118,5 @@ if (isMain(import.meta.url)) {
     const errors = validateReport(file, ref);
     if (errors.length) { console.error(errors.join('\n')); process.exitCode = 1; }
     else console.log('Report is valid in form; origin is self-reported.');
-  } catch (error) { console.error(error.message); process.exitCode = 1; }
+  } catch (error) { console.error(shown(error.message)); process.exitCode = 1; }
 }

@@ -65,7 +65,10 @@ const byName = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const MIN_TIME = Date.UTC(1970, 0, 1);
 const MAX_TIME = Date.UTC(10000, 0, 1);
 const validTimestamp = (value) => {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(value)) return false;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/.test(value)) return false;
+  // Date.parse normalises impossible calendar days instead of rejecting them.
+  const day = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+  if (!(day >= MIN_TIME && day < MAX_TIME) || day.toISOString().slice(0, 10) !== value.slice(0, 10)) return false;
   const time = Date.parse(value);
   return time >= MIN_TIME && time < MAX_TIME;
 };
@@ -122,8 +125,7 @@ function canonical(path) {
   try { return realpathSync(absolute); } catch { return absolute; }
 }
 
-function requests(records, seen) {
-  const owned = new Map();
+function requests(records, seen, owned = new Map()) {
   for (const record of records) {
     if (record.type !== 'assistant' || record.message.model === '<synthetic>') continue;
     const { id, model, usage } = record.message;
@@ -150,7 +152,8 @@ function requests(records, seen) {
 
 function sessionRow(session, seen, lists) {
   const { records } = session.main;
-  const main = requests(records, seen);
+  const owned = new Map();
+  const main = requests(records, seen, owned);
   const first = (key) => records.find((record) => record[key] !== undefined)?.[key];
   const row = {
     week: Number.isFinite(session.start) ? isoWeek(session.start) : 'other',
@@ -163,6 +166,7 @@ function sessionRow(session, seen, lists) {
   };
   const toolIds = new Set();
   for (const record of records) {
+    if (record.type !== 'assistant' || record.message.model === '<synthetic>' || !owned.has(record.message.id)) continue;
     if (!Array.isArray(record.message?.content)) continue;
     for (const block of record.message.content) {
       if (block?.type !== 'tool_use' || typeof block.id !== 'string' || toolIds.has(block.id)) continue;
