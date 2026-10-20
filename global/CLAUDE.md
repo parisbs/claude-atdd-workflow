@@ -137,7 +137,9 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   green, `oracle-check` is clean, the review the repository declares with
   `Review:` ran with no open finding, no changed file is on the control plane
   (see the Control plane section), the pull request is not a draft and does not
-  carry `needs-human`, and the merge is `--squash --delete-branch`. Otherwise it
+  carry `needs-human`, its author is the authenticated `gh` user (collaborators
+  and bots ask), its head branch is in the base repository and not in a fork,
+  and the merge is `--squash --delete-branch` (ADR 0010, ADR 0024). Otherwise it
   reports what failed or could not run, and waits.
 - Routing: the `Implement:` line of the repository's `CLAUDE.md` says who writes
   code, `claude` (the `claude-implementer` subagent, ADR 0011) or `codex`; without

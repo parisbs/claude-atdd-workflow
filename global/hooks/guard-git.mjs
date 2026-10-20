@@ -7,7 +7,9 @@
 // - a force push asks, and is denied when it targets main;
 // - `gh pr merge` must squash and must never use --admin, and is decided from what
 //   GitHub shows about the pull request: checks, control-plane files, the label
-//   needs-human, draft state (ADR 0010). Anything that cannot be read asks;
+//   needs-human, draft state (ADR 0010), and that the authenticated gh user opened
+//   it from a branch in the base repository (ADR 0024). Anything that cannot be
+//   read asks;
 // - deploys to a linked Supabase project ask first;
 // - an ATDD oracle tag cannot be deleted or moved by the agent, and creating one
 //   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010);
@@ -200,16 +202,27 @@ function checkGit(args, cwd, verdict, branches) {
 }
 
 const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
-const PR_FIELDS = 'baseRefName,changedFiles,files,isDraft,labels,statusCheckRollup,url';
+const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
+// All gh calls of one hook run share this budget, counted from the start of the
+// process. global/settings.json kills guard-git after 15 s, and a merge decision
+// makes up to three serial calls; 10 s leaves 5 s for Node to start, for git, for
+// a timed-out gh to exit after its signal, and for the hook to print its ask.
+const ghBudget = () => Number(process.env.GUARD_GIT_GH_BUDGET_MS) || 10000;
 const brief = (text) => (text ?? '').trim().split('\n')[0].slice(0, 200);
 
-// Runs gh without a shell and says why when it could not give an answer.
+// Runs gh without a shell and says why when it could not give an answer. A call
+// never runs past what is left of the shared budget.
 function gh(args, cwd) {
-  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: ghLimit() });
+  const left = Math.floor(ghBudget() - performance.now());
+  const outOfBudget = { failure: `gh ran out of the time budget of ${ghBudget()} ms for this hook` };
+  // A timeout of 0 would mean no timeout at all, so a spent budget skips the call.
+  if (left < 1) return outOfBudget;
+  const limit = Math.min(ghLimit(), left);
+  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: limit });
   if (run.error?.code === 'ENOENT') return { failure: 'gh is not installed or not on PATH' };
-  if (run.error?.code === 'ETIMEDOUT') return { failure: `gh timed out after ${ghLimit()} ms` };
+  if (run.error?.code === 'ETIMEDOUT') return limit < ghLimit() ? outOfBudget : { failure: `gh timed out after ${limit} ms` };
   if (run.error) return { failure: `gh could not run (${run.error.message})` };
   if (run.status !== 0) return { failure: brief(run.stderr) || `gh exited with ${run.status}`, stderr: run.stderr ?? '' };
   return { stdout: run.stdout };
@@ -229,8 +242,48 @@ function checkIssue(check) {
   return `${name} (${check.conclusion || check.status})`;
 }
 
+// Who opened the pull request and where its head branch lives (ADR 0024). Only the
+// authenticated gh user is a trusted author, bots included in the rest; the user is
+// read on the pull request's own host, so GH_HOST cannot point the lookup elsewhere.
+// A head branch in another repository asks even when the user opened it.
+function provenanceReasons(pr, host, cwd) {
+  const reasons = [];
+  if (typeof pr.isCrossRepository !== 'boolean') {
+    reasons.push('Could not read where the head branch lives: gh returned no isCrossRepository.');
+  } else if (pr.isCrossRepository) {
+    // A deleted fork has no headRepository but keeps its owner.
+    const owner = pr.headRepositoryOwner?.login;
+    const name = pr.headRepository?.name;
+    const head = owner ? (name ? `${owner}/${name}` : owner) : 'an unnamed repository';
+    reasons.push(`The head branch lives in a fork, ${head}, not in the base repository.`);
+  }
+
+  const author = pr.author?.login;
+  if (typeof author !== 'string' || author === '') {
+    reasons.push('Could not read who opened the pull request: gh returned no author.');
+    return reasons;
+  }
+  if (!host) {
+    reasons.push('Could not read the authenticated gh user: the pull request URL has an unexpected shape.');
+    return reasons;
+  }
+  const lookup = gh(['api', '--hostname', host, 'user'], cwd);
+  let user;
+  try {
+    user = lookup.failure ? undefined : JSON.parse(lookup.stdout)?.login;
+  } catch {
+    user = undefined;
+  }
+  if (typeof user !== 'string' || user === '') {
+    reasons.push(`Could not read the authenticated gh user on ${host}: ${lookup.failure ?? 'gh returned no login'}.`);
+  } else if (user !== author) {
+    reasons.push(`The pull request was opened by ${author}, not by the authenticated gh user ${user} on ${host}.`);
+  }
+  return reasons;
+}
+
 // What the hook may say about a merge: reasons to ask, or none when every
-// condition of ADR 0010 holds. Never throws: a merge cannot be undone.
+// condition of ADR 0010 and ADR 0024 holds. Never throws: a merge cannot be undone.
 function mergeReasons(args, cwd) {
   const rest = args.slice(2);
   const { positional } = parseOptions(rest, {
@@ -265,15 +318,19 @@ function mergeReasons(args, cwd) {
     reasons.push(`GitHub lists only ${paths.length} of ${pr.changedFiles} changed files, so the control plane cannot be checked.`);
   }
 
+  const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
+  reasons.push(...provenanceReasons(pr, where?.[1], cwd));
+
   // The list a pull request is judged by comes from its base branch, never from its own copy.
   let extra = [];
-  const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
   if (!where) {
     reasons.push('Could not read CLAUDE.md of the base branch: the pull request URL has an unexpected shape.');
   } else {
     const [, host, owner, name] = where;
+    // An explicit host, github.com included: without it gh follows GH_HOST, and a 404
+    // from another host would read as no CLAUDE.md and drop its Human merge: paths.
     const file = gh([
-      'api', ...(host === 'github.com' ? [] : ['--hostname', host]),
+      'api', '--hostname', host,
       '-H', 'Accept: application/vnd.github.raw+json',
       `repos/${owner}/${name}/contents/CLAUDE.md?ref=${encodeURIComponent(pr.baseRefName)}`,
     ], cwd);
@@ -436,7 +493,7 @@ try {
   // An explicit allow lifts the prompt for the whole command, so it is only given to a
   // command that is nothing but one plain merge, with no quotes, chains or redirections.
   if (merged && !subagent && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
-    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label (ADR 0010).');
+    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label, opened by the authenticated gh user from a branch in the base repository (ADR 0010, ADR 0024).');
   }
   verdict.emit();
 } catch (error) {

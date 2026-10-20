@@ -4,7 +4,7 @@
 // hooks, not by this prose (ADR 0002).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -32,6 +32,26 @@ describe('Delegation section', () => {
     assert.match(delegation, /needs-human/);
     assert.match(delegation, /--squash --delete-branch/);
     assert.match(delegation, /Control plane/);
+  });
+
+  test('AC-5 (#5) lists the authenticated gh user and forks among the Delegation merge conditions', () => {
+    const conditions = delegation.split(/\n(?=- )/).find((bullet) => /merg[\s\S]*without\s+asking/i.test(bullet)) ?? '';
+    assert.match(conditions, /author|opened by/i);
+    assert.match(conditions, /authenticat[\s\S]{0,80}\bgh\b|\bgh\b[\s\S]{0,80}authenticat/i);
+    assert.match(conditions, /\bforks?\b/i);
+  });
+
+  test('AC-5 (#5) records the author and fork merge conditions in a new ADR citing ADR 0010', () => {
+    const adrs = join(repo, 'docs', 'adr');
+    const records = readdirSync(adrs)
+      .filter((name) => /^\d{4}-.*\.md$/.test(name) && Number(name.slice(0, 4)) > 22)
+      .map((name) => readFileSync(join(adrs, name), 'utf8'));
+    const record = records.find((text) => /\bisCrossRepository\b/.test(text));
+    assert.ok(record, 'no ADR numbered above 0022 mentions isCrossRepository');
+    assert.match(record, /\b0010\b/);
+    assert.match(record, /author|opened by/i);
+    assert.match(record, /authenticat[\s\S]{0,80}\bgh\b|\bgh\b[\s\S]{0,80}authenticat/i);
+    assert.match(record, /\bforks?\b/i);
   });
 
   test('AC-3 routes work by the Implement: line, with claude-implementer as the default and the human able to override', () => {

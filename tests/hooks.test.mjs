@@ -226,8 +226,10 @@ const FAKE_GH = String.raw`#!/usr/bin/env node
 const fs = require('node:fs');
 const scenario = JSON.parse(fs.readFileSync(process.env.FAKE_GH, 'utf8'));
 fs.appendFileSync(process.env.FAKE_GH + '.calls', JSON.stringify(process.argv.slice(2)) + '\n');
-const kind = process.argv[2] === 'pr' ? 'view' : process.argv[2] === 'api' ? 'api' : 'other';
-let step = scenario[kind] || { exit: 1, stderr: 'fake gh: unexpected call' };
+const args = process.argv.slice(2);
+const kind = args[0] === 'pr' ? 'view' : args[0] === 'api'
+  ? args.some((arg) => arg === 'user' || arg === '/user') ? 'user' : 'api' : 'other';
+let step = scenario[kind] || (kind === 'user' ? { stdout: { login: 'me' } } : { exit: 1, stderr: 'fake gh: unexpected call' });
 if (kind === 'api' && step.routes) {
   const line = process.argv.slice(2).join(' ');
   const key = Object.keys(step.routes).find((k) => line.includes(k));
@@ -252,6 +254,10 @@ function green({ files = ['src/app.ts'], ...rest } = {}) {
     labels: [],
     baseRefName: 'main',
     url: 'https://github.com/o/r/pull/12',
+    author: { login: 'me', is_bot: false },
+    isCrossRepository: false,
+    headRepositoryOwner: { login: 'o' },
+    headRepository: { name: 'r' },
     files: files.map((path) => ({ path })),
     changedFiles: files.length,
     statusCheckRollup: [PASSED],
@@ -277,9 +283,9 @@ describe('guard-git merge decision', () => {
 
   const withoutGh = () => process.env.PATH.split(delimiter).filter((d) => !existsSync(join(d, 'gh'))).join(delimiter);
 
-  function merge(command, { pr = green(), view = { stdout: pr }, api = NOT_FOUND, env = {} } = {}) {
+  function merge(command, { pr = green(), view = { stdout: pr }, api = NOT_FOUND, user = { stdout: { login: 'me' } }, env = {} } = {}) {
     const scenario = join(root, 'scenario.json');
-    writeFileSync(scenario, JSON.stringify({ view, api }));
+    writeFileSync(scenario, JSON.stringify({ view, api, user }));
     rmSync(`${scenario}.calls`, { force: true });
     const result = bash(dir, command, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...env });
     const calls = existsSync(`${scenario}.calls`)
@@ -297,6 +303,123 @@ describe('guard-git merge decision', () => {
     assert.equal(result.decision, 'ask', label);
     if (pattern) assert.match(result.reason, pattern, label);
   };
+
+  // Issue #5: passing checks do not authorize a fork or another author's pull request.
+  const userCalls = (result) => result.calls.filter((c) =>
+    c[0] === 'api' && c.some((arg) => arg === 'user' || arg === '/user'));
+
+  for (const [label, login, headRepository] of [
+    ["a stranger's fork", 'stranger', { name: 'r' }],
+    ["the user's own fork", 'me', { name: 'r' }],
+    ['a deleted fork', 'stranger', null],
+  ]) {
+    test(`AC-1 (#5) asks for ${label} and names the head repository`, () => {
+      const result = merge(SQUASH, {
+        pr: green({ isCrossRepository: true, headRepositoryOwner: { login }, headRepository }),
+      });
+      asks(result, label);
+      assert.match(result.reason, new RegExp(`\\b${login}\\b`), 'the reason must name the head owner');
+      if (headRepository) assert.ok(result.reason.includes(`${login}/r`), 'the reason must name the head repository as owner/name');
+    });
+  }
+
+  test('AC-1 (#5) asks for a fork even when gh names no head owner', () => {
+    asks(merge(SQUASH, { pr: green({ isCrossRepository: true, headRepositoryOwner: null }) }), 'fork without a head owner');
+  });
+
+  for (const [login, is_bot] of [['collaborator', false], ['app/dependabot', true], ['app/renovate', true]]) {
+    test(`AC-2 (#5) asks when the author is ${login} and names the author`, () => {
+      const result = merge(SQUASH, { pr: green({ author: { login, is_bot } }) });
+      asks(result, login);
+      assert.ok(result.reason.includes(login), `the reason must name ${login}`);
+    });
+  }
+
+  for (const host of ['github.com', 'ghe.example.com']) {
+    test(`AC-2 (#5) reads the authenticated user with --hostname ${host} from the pull request URL`, () => {
+      const result = merge(SQUASH, {
+        pr: green({ url: `https://${host}/o/r/pull/12` }),
+        env: { GH_HOST: 'elsewhere.example.com' },
+      });
+      const calls = userCalls(result);
+      assert.ok(calls.length > 0, 'gh api user was not called');
+      for (const call of calls) {
+        assert.ok(call.some((arg, i) => arg === '--hostname' && call[i + 1] === host), `missing --hostname ${host}: ${call.join(' ')}`);
+        assert.ok(!call.some((arg) => /^--jq(?:=|$)|^-q/.test(arg)), 'the user lookup must return the JSON body without --jq');
+      }
+      allowed(result, host);
+    });
+  }
+
+  test('AC-1/AC-2 (#5) asks gh pr view for author and head-repository fields', () => {
+    const call = merge(SQUASH).calls.find((c) => c[0] === 'pr' && c[1] === 'view');
+    assert.ok(call, 'gh pr view was not called');
+    const fields = call[call.indexOf('--json') + 1].split(',');
+    for (const field of ['author', 'isCrossRepository', 'headRepositoryOwner', 'headRepository']) {
+      assert.ok(fields.includes(field), `missing ${field}`);
+    }
+  });
+
+  test("AC-3 (#5) explicitly allows the user's own pull request in the base repository after looking up the user", () => {
+    const result = merge(SQUASH, {
+      pr: green({ author: { login: 'developer', is_bot: false } }),
+      user: { stdout: { login: 'developer' } },
+    });
+    allowed(result, 'own pull request in the base repository');
+    assert.ok(userCalls(result).length > 0, 'gh api user was not called');
+  });
+
+  for (const [label, author] of [['missing', undefined], ['null', null], ['without a login', { is_bot: false }], ['with an empty login', { login: '', is_bot: false }]]) {
+    test(`AC-4 (#5) asks when the author is ${label}`, () => {
+      asks(merge(SQUASH, { pr: green({ author }) }), `author ${label}`);
+    });
+  }
+
+  for (const [label, isCrossRepository] of [['missing', undefined], ['null', null], ['a string', 'false'], ['a number', 0]]) {
+    test(`AC-4 (#5) asks when isCrossRepository is ${label}`, () => {
+      asks(merge(SQUASH, { pr: green({ isCrossRepository }) }), `isCrossRepository ${label}`);
+    });
+  }
+
+  for (const [label, user] of [
+    ['fails with HTTP 403', { exit: 1, stderr: 'gh: Resource not accessible by integration (HTTP 403)' }],
+    ['returns non-JSON output', { stdout: '<html>oops</html>' }],
+    ['returns JSON without a login', { stdout: {} }],
+    ['returns empty output', { stdout: '' }],
+  ]) {
+    test(`AC-4 (#5) asks when the authenticated user lookup ${label}`, () => {
+      const result = merge(SQUASH, { user });
+      asks(result, label);
+      assert.ok(userCalls(result).length > 0, 'gh api user was not called');
+    });
+  }
+
+  test('AC-4 (#5) asks when the authenticated user lookup times out', () => {
+    asks(merge(SQUASH, {
+      user: { stdout: { login: 'me' }, delayMs: 1500 },
+      env: { GUARD_GIT_GH_TIMEOUT_MS: '300' },
+    }), 'slow user lookup');
+  });
+
+  // Review of #5: three serial gh calls must answer within the hook's own timeout, so
+  // the calls share one budget (GUARD_GIT_GH_BUDGET_MS) besides the limit of each.
+  test('AC-4 (#5) asks when the gh calls together exceed the time budget, though each is under its limit', () => {
+    const slow = { delayMs: 1500 };
+    const result = merge(SQUASH, {
+      view: { stdout: green(), ...slow },
+      api: { ...NOT_FOUND, ...slow },
+      user: { stdout: { login: 'me' }, ...slow },
+      env: { GUARD_GIT_GH_TIMEOUT_MS: '4000', GUARD_GIT_GH_BUDGET_MS: '2500' },
+    });
+    asks(result, 'calls over the shared budget', /time/i);
+  });
+
+  test('AC-2 (#5) reads CLAUDE.md of the base branch with --hostname of the pull request host', () => {
+    const result = merge(SQUASH, { env: { GH_HOST: 'elsewhere.example.com' } });
+    const call = result.calls.find((c) => c[0] === 'api' && c.some((arg) => arg.includes('contents/CLAUDE.md')));
+    assert.ok(call, 'gh api was not called to read CLAUDE.md');
+    assert.ok(call.some((arg, i) => arg === '--hostname' && call[i + 1] === 'github.com'), `missing --hostname github.com: ${call.join(' ')}`);
+  });
 
   test('AC-1 denies --admin and any merge that does not squash, even when gh is missing', () => {
     const env = { PATH: withoutGh() };
@@ -451,7 +574,7 @@ describe('guard-git merge decision', () => {
     asks(outcome('src/codex/args.ts'), 'listed file', /src\/codex\/args\.ts/);
     asks(outcome('server.json'), 'second listed file', /server\.json/);
     allowed(outcome('src/other.ts'), 'unlisted file');
-    const call = outcome('src/other.ts', 'develop').calls.find((c) => c[0] === 'api');
+    const call = outcome('src/other.ts', 'develop').calls.find((c) => c[0] === 'api' && c.some((arg) => arg.includes('contents/CLAUDE.md')));
     assert.ok(call, 'gh api was not called to read CLAUDE.md');
     const line = call.join(' ');
     assert.match(line, /repos\/o\/r\/contents\/CLAUDE\.md/);
