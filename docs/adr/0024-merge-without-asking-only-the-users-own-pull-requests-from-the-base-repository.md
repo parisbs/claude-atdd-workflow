@@ -50,9 +50,13 @@ Mechanism, in the merge decision of `guard-git`:
 - `gh pr view` also requests `author`, `isCrossRepository`,
   `headRepositoryOwner` and `headRepository`.
 - The authenticated user is read with `gh api --hostname <host> user`, where
-  `<host>` is the host of the pull request's URL, github.com included, so that
-  `GH_HOST` cannot point the lookup at another host. Its `login` is compared
-  with the author's `login`.
+  `<host>` is the host of the pull request's URL. Its `login` is compared with
+  the author's `login`.
+- Every `gh api` call of the merge decision names that host with `--hostname`,
+  github.com included: the user lookup and the read of `CLAUDE.md` of the base
+  branch. Without it `gh` follows `GH_HOST`, so the user could be read on
+  another host, and an HTTP 404 from another host would read as a base branch
+  without `CLAUDE.md` and drop its `Human merge:` paths.
 - Only the user is a trusted author. Collaborators ask, and so do bots such as
   Dependabot or Renovate: there is no exception by name.
 - A pull request from a fork asks even when the user opened it. The reason
@@ -77,7 +81,7 @@ Mechanism, in the merge decision of `guard-git`:
 - **Allow the user's own pull requests from a fork.** Rejected: the head branch
   then lives in a repository whose access and rules the base repository does
   not control, and the case is rare enough that asking costs little.
-- **Read the user without `--hostname` on github.com.** Rejected: `gh` then
+- **Call `gh api` without `--hostname` on github.com.** Rejected: `gh` then
   follows `GH_HOST`, which can name another host and another account than the
   pull request's.
 - **Also judge who pushed the commits, not only who opened the pull request.**
@@ -92,8 +96,14 @@ Mechanism, in the merge decision of `guard-git`:
   repository, and the merge is still allowed without a prompt. That needs write
   access the user granted; it is an accepted risk, and the repository's CI and
   rulesets remain the guarantee.
-- Every merge decision makes one more `gh` call, under the hook's existing
-  timeout.
+- Every merge decision makes one more `gh` call, three in series with
+  `gh pr view` and the read of `CLAUDE.md`. Each keeps its own limit
+  (`GUARD_GIT_GH_TIMEOUT_MS`, 6 s by default), and all of them share one time
+  budget per hook run (`GUARD_GIT_GH_BUDGET_MS`, 10 s by default, counted from
+  the start of the hook), so that slow calls cannot together outlast the 15 s
+  that `global/settings.json` gives `guard-git` before it prints an answer. A
+  call never runs past what is left of the budget, and a spent budget asks
+  with a reason that says so.
 - A stricter gate asks more often, mostly where bots open pull requests.
   Donations of session metrics (ADR 0023) come from forks and are merged by a
   maintainer, which this rule now enforces.
