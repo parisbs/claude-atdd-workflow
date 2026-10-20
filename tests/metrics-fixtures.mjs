@@ -17,8 +17,8 @@
 //   - stdout is the summary, plain text, one `Label: value` per line, no tables, box drawing or ANSI codes:
 //     `Sessions`, `Weeks`, `Models` (sorted, comma-separated), `Requests`, `Input tokens`, `Output tokens`,
 //     `Cache creation tokens`, `Cache read tokens`, `Invalid lines skipped`, `Unknown record types skipped`,
-//     `Unknown keys skipped`, `Report` (the output path), and a line asking to read the file before submitting
-//     it. It never shows a value the report does not hold, nor the --project path. Errors go to stderr with a
+//     `Unknown keys skipped`, `Unreadable paths skipped`, `Report` (the output path), and a line asking to read
+//     the file before submitting it. It never shows a value the report does not hold, nor the --project path. Errors go to stderr with a
 //     non-zero exit and no stack trace.
 //
 // The report, schema_version 1, every key required and no other:
@@ -55,18 +55,23 @@
 //     ^\d+\.\d+\.\d+$. models: ^claude-(opus|sonnet|haiku|fable)-\d+(-\d+)?(-\d{8})?$. Every value outside
 //     its enumeration or pattern is `other`.
 //   - Skipped input, counted over the transcripts of the sessions in the report, subagents included: an
-//     invalid line is one that is not JSON, not a JSON object, or an assistant record without `message.id` or
-//     with one of the four token fields of `message.usage` present and not a non-negative integer; such a
-//     record contributes nothing. A missing token field counts as zero. An unknown
+//     invalid line is one that is not JSON, not a JSON object, a record whose `timestamp` is present and is not
+//     an ISO 8601 date-time with a `Z` or `+hh:mm` offset between 1970 and 9999, or an assistant record without
+//     `message.id` or with one of the four token fields of `message.usage` present and not a non-negative safe
+//     integer; such a record contributes nothing. A missing token field counts as zero. A UTF-8 byte order mark
+//     at the start of a line is ignored. An unknown
 //     record type is a `type` the script does not know. An unknown key is a top-level key of a known record
-//     the script does not know, once per occurrence. Nested unknown keys are ignored.
+//     the script does not know, once per occurrence. Nested unknown keys are ignored. The known types and keys
+//     include those Claude Code writes today. An unreadable path (a transcript, a directory of subagents) is
+//     skipped and counted in `Unreadable paths skipped`, over the whole run; only an unreadable projects
+//     folder stops it. Files are read in code-unit order of their names, never a locale's.
 //   - totals sum the rows' main fields; totals.sessions is the number of rows.
 //
 // scripts/metrics-validate.mjs <report> [--ref <git ref>]   (working directory: a git repository)
 //   Exit 0 when the report is valid; otherwise non-zero, naming each cause on stderr. Valid means: the schema
 //   above with every key and no other, the enumerations and patterns of the script (the `other` value
-//   included), real ISO weeks, sorted distinct arrays, non-negative integer counts and positive integer
-//   counting entries, totals equal to the rows, at most 2 MiB (2,097,152 bytes), and a script_sha256 equal to
+//   included), real ISO weeks, sorted distinct arrays, non-negative safe integer counts and positive safe
+//   integer counting entries, totals equal to the rows, at most 2 MiB (2,097,152 bytes), and a script_sha256 equal to
 //   the hash of some version of scripts/metrics-report.mjs in the history of the ref.
 //
 // scripts/metrics-donation-check.mjs --base <ref> --head <ref> --event <GitHub event JSON>
@@ -74,7 +79,9 @@
 //   docs/experiments/donated/ changes it passes without validating anything. Otherwise it fails, naming every
 //   cause it finds, unless the pull request adds exactly one file, directly in that folder, named
 //   `YYYY-Www-<8 hex digits>.json`, which the base's validator accepts, changes nothing else, and its body
-//   ticks the CC0 1.0 checkbox of the metrics-donation template.
+//   ticks the CC0 1.0 checkbox of the metrics-donation template outside any HTML comment. Its messages quote
+//   that checkbox line when it is missing, and print every path with control characters escaped, so that a
+//   file name can never start a line or a workflow command.
 //
 // Every sensitive value below carries the word CANARY, which must never reach a report or a summary.
 import assert from 'node:assert/strict';
