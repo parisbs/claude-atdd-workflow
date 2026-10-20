@@ -176,6 +176,9 @@ describe('metrics hardening (#19)', () => {
     function check(files, body) {
       const dir = makeRepo();
       git(dir, 'checkout', '-q', '-b', 'donation');
+      // Git for Windows refuses a colon in a path by default; the file is never checked out here, and a fork
+      // made on another system can carry one.
+      git(dir, 'config', 'core.protectNTFS', 'false');
       for (const [path, content] of Object.entries(files)) {
         const blob = spawnSync('git', ['hash-object', '-w', '--stdin'], { cwd: dir, input: content, encoding: 'utf8' }).stdout.trim();
         git(dir, 'update-index', '--add', '--cacheinfo', `100644,${blob},${path}`);
