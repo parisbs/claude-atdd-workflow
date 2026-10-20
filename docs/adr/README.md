@@ -54,3 +54,4 @@ added, the legacy status and date lines removed, every other line identical.
 - [0020. Standardise ADR metadata on MADR 4 front matter](0020-standardise-adr-metadata-on-madr-4-front-matter.md)
 - [0021. Require recognised statuses on added ADRs and ignore commented index links](0021-require-recognised-statuses-on-added-adrs-and-ignore-commented-index-links.md)
 - [0022. Publish the project as claude-atdd-workflow from a rewritten history](0022-publish-as-claude-atdd-workflow-from-a-rewritten-history.md)
+- [0023. Collect donated session metrics through an allowlist script and fork pull requests](0023-collect-donated-session-metrics-through-an-allowlist-script-and-fork-pull-requests.md)
