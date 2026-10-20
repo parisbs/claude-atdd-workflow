@@ -42,7 +42,8 @@
 //     session is out of the range or of the project, and within a session in the main transcript before any
 //     subagent.
 //   - duration_minutes: first to last timestamped main record, rounded to the nearest minute.
-//   - tool_calls: distinct `tool_use` ids over all records of the main transcript, by name: a built-in tool by
+//   - tool_calls: distinct `tool_use` ids over the records of the main transcript whose message is a request
+//     counted in the row, so a copy of another session's message adds no tool call, by name: a built-in tool by
 //     its name, an `mcp__<server>__<tool>` as `mcp:<server>` when the server is a key of
 //     `global/mcp-servers.json` and `mcp:other` otherwise, anything else `other`. skills: `Skill` calls by the
 //     skill when it is a directory of `global/skills/`, `other` otherwise. subagents.types: by `agentType`
@@ -56,7 +57,8 @@
 //     its enumeration or pattern is `other`.
 //   - Skipped input, counted over the transcripts of the sessions in the report, subagents included: an
 //     invalid line is one that is not JSON, not a JSON object, a record whose `timestamp` is present and is not
-//     an ISO 8601 date-time with a `Z` or `+hh:mm` offset between 1970 and 9999, or an assistant record without
+//     an ISO 8601 date-time of a real calendar day and time of day (no 31 February, no 24:00) with a `Z` or
+//     `+hh:mm` offset between 1970 and 9999, or an assistant record without
 //     `message.id` or with one of the four token fields of `message.usage` present and not a non-negative safe
 //     integer; such a record contributes nothing. A missing token field counts as zero. A UTF-8 byte order mark
 //     at the start of a line is ignored. An unknown
@@ -79,9 +81,10 @@
 //   docs/experiments/donated/ changes it passes without validating anything. Otherwise it fails, naming every
 //   cause it finds, unless the pull request adds exactly one file, directly in that folder, named
 //   `YYYY-Www-<8 hex digits>.json`, which the base's validator accepts, changes nothing else, and its body
-//   ticks the CC0 1.0 checkbox of the metrics-donation template outside any HTML comment. Its messages quote
-//   that checkbox line when it is missing, and print every path with control characters escaped, so that a
-//   file name can never start a line or a workflow command.
+//   ticks the CC0 1.0 checkbox of the metrics-donation template outside any HTML comment or fenced code
+//   block. Its messages quote that checkbox line when it is missing. The check and the validator print every
+//   value that comes from the donation (paths, keys) with control characters escaped, so that nothing a fork
+//   controls can start a line or a workflow command.
 //
 // Every sensitive value below carries the word CANARY, which must never reach a report or a summary.
 import assert from 'node:assert/strict';
@@ -263,8 +266,12 @@ export function writeTranscripts(root) {
   put(join(dirA, 'CANARYSESSIONB.jsonl'), jsonl([
     { ...base, type: 'user', timestamp: '2026-10-11T23:59:30.000Z', uuid: 'CANARYUUID4', cwd: cwdB, version: '2.1.299-beta',
       entrypoint: 'CANARYENTRY', permissionMode: 'default', message: { role: 'user', content: 'CANARYPROMPTB' } },
-    // Copies of messages first written in A and in D: counted there, not here.
+    // Copies of messages first written in A and in D: counted there, not here, tool calls included.
     assistant('2026-10-11T23:59:40.000Z', 'msg_A1', 'claude-opus-5-5', [{ type: 'text', text: 'CANARYCOPY' }], usage(3, 412, 500, 1200)),
+    assistant('2026-10-11T23:59:41.000Z', 'msg_A1', 'claude-opus-5-5', [toolUse('toolu_A1', 'Bash', { command: 'cat CANARYTOOLINPUT' })],
+      usage(3, 412, 500, 1200)),
+    assistant('2026-10-11T23:59:42.000Z', 'msg_A2', 'claude-opus-5-5', [toolUse('toolu_A2', 'Skill', { skill: 'atdd-oracle' })],
+      usage(10, 20, 30, 2000)),
     assistant('2026-10-11T23:59:45.000Z', 'msg_D1', 'claude-opus-5-5', [{ type: 'text', text: 'CANARYCOPY' }], usage(1000, 1000, 1000, 1000)),
     assistant('2026-10-12T00:00:20.000Z', 'msg_B1', 'claude-haiku-4-5-20251001', [{ type: 'text', text: 'CANARYB' }],
       usage(1, 2, 0, 0), { effort: 'low' }),

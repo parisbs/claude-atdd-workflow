@@ -72,6 +72,33 @@ describe('metrics hardening (#19)', () => {
     assert.equal(v.status, 0, v.stderr);
   });
 
+  test('AC-4 a timestamp of an impossible day or time of day makes its record invalid', () => {
+    const { r } = run({
+      s: [user('2025-02-31T10:00:00.000Z'), user('2026-10-06T24:00:00.000Z'), user('2026-10-06T10:61:00Z'),
+        user('2026-10-06T10:00:00.000Z'), assistant('2026-10-06T10:00:01.000Z', 'm1')],
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(summary(r, 'Invalid lines skipped'), '3');
+  });
+
+  test('AC-1 a resumed session that copies earlier messages adds no tool or skill call of theirs', () => {
+    const call = (timestamp, id, name, input = {}) => ({ type: 'assistant', timestamp,
+      message: { id, model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'tool_use', id: `t_${id}`, name, input }], usage: usage(1) } });
+    const { r, report } = run({
+      a: [user('2026-10-06T10:00:00.000Z'), call('2026-10-06T10:00:01.000Z', 'm1', 'Bash'),
+        call('2026-10-06T10:00:02.000Z', 'm2', 'Skill', { skill: 'atdd-oracle' })],
+      // b copies m1 and m2 from a, then adds m3.
+      b: [user('2026-10-07T10:00:00.000Z'), call('2026-10-07T10:00:01.000Z', 'm1', 'Bash'),
+        call('2026-10-07T10:00:02.000Z', 'm2', 'Skill', { skill: 'atdd-oracle' }), call('2026-10-07T10:00:03.000Z', 'm3', 'Bash')],
+    });
+    assert.equal(r.status, 0, r.stderr);
+    const total = (field, key) => report.sessions.reduce((sum, row) => sum + (row[field][key] ?? 0), 0);
+    assert.equal(report.totals.requests, 3);
+    assert.equal(total('tool_calls', 'Bash'), 2);
+    assert.equal(total('tool_calls', 'Skill'), 1);
+    assert.equal(total('skills', 'atdd-oracle'), 1);
+  });
+
   test('AC-4 a token count that is not a safe integer makes its record invalid', () => {
     const { r, report } = run({
       s: [
@@ -128,6 +155,18 @@ describe('metrics hardening (#19)', () => {
     assert.match(v.stderr, /safe|integer/i);
   });
 
+  test('AC-10 a key the donation brings cannot start a line of the validator output', () => {
+    const report = JSON.parse(readFileSync(makeReport(), 'utf8'));
+    report['x\n::error::injected'] = 1;
+    report.sessions[0].tool_calls['y\n::warning::w'] = 1;
+    const file = join(tempDir(), 'report.json');
+    writeFileSync(file, JSON.stringify(report));
+    const v = validate(file);
+    assert.notEqual(v.status, 0);
+    for (const text of [v.stdout, v.stderr]) assert.doesNotMatch(text, /^::/m, 'a line that the runner reads as a command');
+    assert.match(v.stderr, /injected/);
+  });
+
   describe('AC-11 donation check', () => {
     const DONATED = 'docs/experiments/donated';
     const template = readFileSync(join(repo, '.github', 'PULL_REQUEST_TEMPLATE', 'metrics-donation.md'), 'utf8');
@@ -155,6 +194,22 @@ describe('metrics hardening (#19)', () => {
       assert.notEqual(r.status, 0);
       for (const text of [r.stdout, r.stderr]) assert.doesNotMatch(text, /^::/m, 'a line that the runner reads as a command');
       assert.match(r.stderr, /INJECTED/);
+    });
+
+    test('AC-11 a key inside the donated report cannot start a line of the check output', () => {
+      const report = JSON.parse(valid());
+      report['x\n::error::injected'] = 1;
+      const r = check({ [`${DONATED}/2026-W43-89abcdef.json`]: JSON.stringify(report) }, ticked());
+      assert.notEqual(r.status, 0);
+      for (const text of [r.stdout, r.stderr]) assert.doesNotMatch(text, /^::/m, 'a line that the runner reads as a command');
+      assert.match(r.stderr, /injected/);
+    });
+
+    test('AC-11 a licence box ticked inside a fenced code block does not count', () => {
+      const body = `${template}\n\`\`\`\n- [x] ${box[1]}\n\`\`\`\n`;
+      const r = check({ [`${DONATED}/2026-W43-89abcdef.json`]: valid() }, body);
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /licen[cs]e|CC0|checkbox|box/i);
     });
 
     test('AC-11 a licence box ticked inside an HTML comment does not count', () => {
