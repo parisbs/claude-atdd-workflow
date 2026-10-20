@@ -29,8 +29,10 @@ repository; commit messages write them as `claude-workflow#N`, and
     confirmation before remote Supabase actions, oracle tags created with
     confirmation and never moved or deleted, and the merge decision: squash
     only, never `--admin`, and a pull request is merged without a prompt only
-    when its checks passed and it touches no control-plane path; and for a
-    subagent's call, no `git push` and only read-only `gh` commands, ADR 0013),
+    when its checks passed, it touches no control-plane path, and the
+    authenticated `gh` user opened it from a branch in the base repository, not
+    a fork, ADR 0024; and for a subagent's call, no `git push` and only
+    read-only `gh` commands, ADR 0013),
     `controlplane.mjs` (those paths), `guard-tests.mjs` (frozen acceptance
     tests while an `oracle/<branch>` tag exists, and in a linked worktree while
     an oracle tag's commit is an ancestor of HEAD), `oracle-check.mjs` (the
