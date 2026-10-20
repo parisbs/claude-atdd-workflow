@@ -147,6 +147,15 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   so a subagent worktree shows as untracked in the main checkout. Implemented:
   this repository ignores it, `repo-bootstrap` adds it to the root `.gitignore`
   in both modes, and `drift-audit` reports a missing rule or tracked paths.
+- Issue 5: with the repository public, the merge decision would merge a
+  stranger's passing pull request without asking. Implemented: it also requires
+  the author to be the authenticated `gh` user and the head branch to live in
+  the base repository, reads every `gh api` call with an explicit host, and
+  shares one time budget among its `gh` calls (ADR 0024).
+- Issues 21 and 22, from the reviews of issue 5: the merge decision reads the
+  repository option differently from `gh` (attached, clustered, repeated, or
+  consumed by another option), and `guard-git` can outlast its hook timeout
+  when a subprocess ignores the termination signal or `git` stalls.
 
 ## Phase 3: integrate the existing repositories
 
