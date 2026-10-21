@@ -406,7 +406,7 @@ function checkSupabase(args, verdict) {
 // Subagents never act on GitHub (ADR 0010). A subagent file cannot say so: a Bash(...) entry in
 // disallowedTools removes the whole shell from it. So this hook enforces it for any event that
 // carries agent_id, which only a subagent's tool call has (ADR 0013). A gh command is denied unless
-// it is on this read-only list; a new gh command stays denied until it is added here.
+// it is on the read-only list in commands.mjs; a new gh command stays denied until it is added there.
 function checkSubagent(w, verdict) {
   const name = program(w[0]);
   if (name === 'git' && gitSubcommand(w.slice(1)) === 'push') {

@@ -29,12 +29,23 @@ export function ghApiIsRead(args) {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (['-f', '-F', '--field', '--raw-field', '--input'].includes(arg)) return false;
-    if (/^--(field|raw-field|input)=/.test(arg) || /^-[fF]./.test(arg)) return false;
-    let method;
-    if (arg === '-X' || arg === '--method') method = args[i + 1];
-    else if (arg.startsWith('--method=')) method = arg.slice('--method='.length);
-    else if (/^-X./.test(arg)) method = arg.slice(2);
-    if (method !== undefined && method.toUpperCase() !== 'GET') return false;
+    if (/^--(field|raw-field|input)=/.test(arg)) return false;
+    if (arg === '--method' || arg.startsWith('--method=')) {
+      const method = arg === '--method' ? args[++i] : arg.slice('--method='.length);
+      if (method?.toUpperCase() !== 'GET') return false;
+    } else if (/^-[^-]/.test(arg)) {
+      // A value-taking flag ends a cluster: -iXPOST writes, but the X in -HX is data.
+      for (let j = 1; j < arg.length; j += 1) {
+        const flag = arg[j];
+        if (flag === 'f' || flag === 'F') return false;
+        if (['X', 'H', 'q', 't'].includes(flag)) {
+          const value = j + 1 < arg.length ? arg.slice(j + 1).replace(/^=/, '') : args[++i];
+          if (value === undefined || (flag === 'X' && value.toUpperCase() !== 'GET')) return false;
+          break;
+        }
+        if (!['i', 'h'].includes(flag)) return false;
+      }
+    }
   }
   return true;
 }
