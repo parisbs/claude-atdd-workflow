@@ -2,9 +2,9 @@
 // PreToolUse hook for Bash. A machine-level safety net for the rules in the
 // global CLAUDE.md that must never break (ADR 0002, ADR 0004):
 //
-// - no commit on main or master, and no push to them;
+// - no commit on main, master or the branch origin/HEAD names, and no push to them;
 // - no --no-verify on commit or push;
-// - a force push asks, and is denied when it targets main;
+// - a force push asks, and is denied when it targets one of those branches;
 // - `gh pr merge` must squash and must never use --admin, and is decided from what
 //   GitHub shows about the pull request: checks, control-plane files, the label
 //   needs-human, draft state (ADR 0010), and that the authenticated gh user opened
@@ -38,7 +38,16 @@ const mode = process.argv[2];
 const mergeOnly = mode === '--merge-only';
 const skipMerge = mode === '--skip-merge';
 
-const PROTECTED = new Set(['main', 'master']);
+// main and master, and the branch origin/HEAD names: a repository may make develop
+// or trunk its default. Read once for each repository a command reaches.
+const defaultBranches = new Map();
+function protectedBranches(dir) {
+  if (!defaultBranches.has(dir)) {
+    const head = git(dir, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+    defaultBranches.set(dir, new Set(['main', 'master', ...(head ? [head.replace(/^origin\//, '')] : [])]));
+  }
+  return defaultBranches.get(dir);
+}
 
 function words(segment) {
   return (segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ''));
@@ -149,7 +158,7 @@ function checkGit(args, cwd, verdict, branches) {
     if (hasFlag(rest, '--no-verify', '-n')) {
       verdict.add('deny', 'Commits must not skip hooks with --no-verify.');
     }
-    if (PROTECTED.has(branch) && hasCommits) {
+    if (protectedBranches(dir).has(branch) && hasCommits) {
       verdict.add('deny', `Do not commit on ${branch}: create a branch from an updated ${branch} first.`);
     }
   }
@@ -167,8 +176,9 @@ function checkGit(args, cwd, verdict, branches) {
       || refspecs.some((r) => r.startsWith('+'));
     const deletes = hasFlag(rest, '--delete', '-d') || refspecs.some((r) => r.startsWith(':'));
 
+    const guarded = protectedBranches(dir);
     for (const target of targets) {
-      if (PROTECTED.has(target)) {
+      if (guarded.has(target)) {
         const remote = positional[0] ?? 'origin';
         const published = git(dir, ['rev-parse', '--verify', '-q', `refs/remotes/${remote}/${target}`]) !== undefined;
         if (force || deletes) {
@@ -180,7 +190,7 @@ function checkGit(args, cwd, verdict, branches) {
         }
       }
     }
-    if (force && !targets.some((t) => PROTECTED.has(t))) {
+    if (force && !targets.some((t) => guarded.has(t))) {
       verdict.add('ask', 'Force push: confirm that rewriting the remote branch is intended.');
     }
     if (deletes || refspecs.some((r) => r.includes('refs/tags/'))) {

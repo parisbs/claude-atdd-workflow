@@ -671,6 +671,67 @@ describe('guard-git merge decision', () => {
   });
 });
 
+// Issue #27: a repository may name another default branch, so the one origin/HEAD points to is protected
+// like main and master.
+describe('guard-git default branch of origin (#27)', () => {
+  let dir;
+  let plain;
+  before(() => {
+    dir = repo();
+    sh(dir, 'update-ref', 'refs/remotes/origin/develop', 'HEAD');
+    sh(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/develop');
+    sh(dir, 'checkout', '-q', '-b', 'develop');
+    plain = repo();
+    sh(plain, 'checkout', '-q', '-b', 'develop');
+  });
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(plain, { recursive: true, force: true });
+  });
+
+  test('AC-5 (#27) denies a commit on the branch origin/HEAD points to', () => {
+    const result = bash(dir, 'git commit -m "feat: x"');
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /Do not commit on develop/);
+  });
+
+  test('AC-5 (#27) denies a push to it, a force push and its deletion, as for main', () => {
+    for (const command of [
+      'git push origin develop',
+      'git push',
+      'git push origin feature/y:develop',
+      'git push origin HEAD:refs/heads/develop',
+      'git push --force origin develop',
+      'git push origin +feature/y:develop',
+      'git push origin --delete develop',
+      'git push origin :develop',
+    ]) {
+      assert.equal(bash(dir, command).decision, 'deny', command);
+    }
+  });
+
+  test('AC-5 (#27) keeps main and master protected beside it', () => {
+    sh(dir, 'checkout', '-q', 'main');
+    try {
+      assert.equal(bash(dir, 'git commit -m "feat: x"').decision, 'deny');
+    } finally {
+      sh(dir, 'checkout', '-q', 'develop');
+    }
+    assert.equal(bash(dir, 'git push origin master').decision, 'ask', 'a first publication of master asks');
+  });
+
+  test('AC-5 (#27) treats develop as an ordinary branch where origin/HEAD does not name it', () => {
+    assert.equal(bash(plain, 'git commit -m "feat: x"').decision, 'allow');
+    assert.equal(bash(plain, 'git push origin develop').decision, 'allow');
+  });
+
+  test('AC-5 (#27) reads origin/HEAD of the repository the command reaches through cd or git -C', () => {
+    assert.equal(bash(plain, `cd ${dir} && git commit -m "feat: x"`).decision, 'deny');
+    assert.equal(bash(plain, `git -C ${dir} commit -m "feat: x"`).decision, 'deny');
+    assert.equal(bash(dir, `git -C ${plain} commit -m "feat: x"`).decision, 'allow');
+  });
+});
+
 describe('guard-tests', () => {
   let dir;
   before(() => {
