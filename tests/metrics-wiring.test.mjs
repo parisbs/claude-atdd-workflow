@@ -103,7 +103,6 @@ describe('metrics wiring (#19)', () => {
 describe('CI runs each test file once per system and Node version (#25)', () => {
   test('AC-5 the metrics tests run on Windows only in the metrics job, and with the whole suite on Ubuntu and macOS', () => {
     const ci = yaml('.github/workflows/ci.yml');
-    assert.equal(ci.match(/run:\s*(npm (run )?test|node --test)\b/g)?.length, 2, 'two jobs run tests');
     const suite = job(ci, 'test');
     assert.match(suite, /run:\s*npm test\s*$/m);
     assert.deepEqual(items(suite, 'os'), ['macos-latest', 'ubuntu-latest']);
@@ -116,5 +115,98 @@ describe('CI runs each test file once per system and Node version (#25)', () => 
     const metrics = job(ci, 'metrics');
     assert.match(metrics, /run:\s*node --test [^\n]*tests\/metrics-/);
     assert.deepEqual(items(metrics, 'os'), ['windows-latest'], 'the test job already runs the metrics tests elsewhere');
+  });
+});
+
+// Issue #31: which test files each CI step runs, for every system and Node version of its job. A step runs
+// tests through `npm test`, `npm run <script>` or `node --test <globs>`, chained with && or ;.
+const testFiles = () => readdirSync(join(repo, 'tests'), { recursive: true })
+  .map((file) => `tests/${String(file).replaceAll('\\', '/')}`)
+  .filter((file) => file.endsWith('.test.mjs'));
+
+function filesOf(command, scripts, files) {
+  return command.split(/&&|;|\|\|/).map((part) => part.trim()).flatMap((part) => {
+    const npm = /^npm (?:run )?(test(?::[\w-]+)?)\b/.exec(part);
+    if (npm) return filesOf(scripts[npm[1]] ?? '', scripts, files);
+    if (!/^node --test\b/.test(part)) return [];
+    const globs = part.split(/\s+/).slice(2).filter((arg) => !arg.startsWith('-')).map((arg) => globToRegExp(arg.replace(/^["']|["']$/g, '')));
+    return files.filter((file) => globs.some((glob) => glob.test(file)));
+  });
+}
+
+// The names of the jobs of a workflow, in order.
+const jobNames = (workflow) => [...workflow.slice(workflow.search(/^jobs:/m)).matchAll(/^ {2}([\w-]+):\s*$/gm)].map((match) => match[1]);
+
+// Each test file that runs more than once for the same system and Node version, within a job or across
+// jobs, as [combination, file, times].
+function repeatedRuns(workflow, scripts, files = testFiles()) {
+  const runs = new Map();
+  for (const name of jobNames(workflow)) {
+    const block = job(workflow, name);
+    const systems = items(block, 'os') ?? [/runs-on:\s*(\S+)/.exec(block)?.[1]];
+    const nodes = items(block, 'node') ?? [/node-version:\s*["']?([^\s"']+)/.exec(block)?.[1]];
+    const ran = [...block.matchAll(/run:\s*(.+)$/gm)].flatMap((match) => filesOf(match[1].trim(), scripts, files));
+    for (const os of systems) {
+      for (const node of nodes) {
+        const key = `${os}, Node ${node}`;
+        if (!runs.has(key)) runs.set(key, new Map());
+        for (const file of ran) runs.get(key).set(file, (runs.get(key).get(file) ?? 0) + 1);
+      }
+    }
+  }
+  return [...runs].flatMap(([key, counts]) => [...counts].filter(([, times]) => times > 1).map(([file, times]) => [key, file, times]));
+}
+
+describe('CI keeps one run per test file and the Node floor of package.json (#31)', () => {
+  const ci = () => yaml('.github/workflows/ci.yml');
+  const scripts = () => JSON.parse(read('package.json')).scripts;
+  const replaceIn = (workflow, name, from, to) => {
+    const block = job(workflow, name);
+    assert.ok(block.includes(from), `${name} holds ${from}`);
+    return workflow.replace(block, block.replace(from, to));
+  };
+
+  test('AC-6 (#31) a CI job runs npm test on exactly the minimum Node version of engines', () => {
+    const engines = JSON.parse(read('package.json')).engines?.node ?? '';
+    const floor = /^>=\s*(\d+\.\d+\.\d+)$/.exec(engines);
+    assert.ok(floor, `engines.node is a minimum with major, minor and patch: ${engines}`);
+    const workflow = ci();
+    const runsOnFloor = jobNames(workflow).filter((name) => {
+      const block = job(workflow, name);
+      const nodes = items(block, 'node') ?? [/node-version:\s*["']?([^\s"']+)/.exec(block)?.[1]];
+      return nodes.includes(floor[1]) && /run:\s*npm test\s*$/m.test(block);
+    });
+    assert.equal(runsOnFloor.length, 1, `one job runs npm test on Node ${floor[1]}`);
+  });
+
+  test('AC-7 (#31) no CI step runs a test file more than once for the same system and Node version', () => {
+    assert.deepEqual(repeatedRuns(ci(), scripts()), []);
+  });
+
+  test('AC-7 (#31) the check fails when the metrics step runs its tests twice', () => {
+    const workflow = ci();
+    const step = /run:\s*(node --test [^\n]*tests\/metrics-[^\n]*)$/m.exec(job(workflow, 'metrics'))?.[1];
+    assert.ok(step, 'the metrics job runs node --test');
+    const twice = replaceIn(workflow, 'metrics', step, `${step} && ${step}`);
+    const repeated = repeatedRuns(twice, scripts());
+    assert.ok(repeated.some(([, file]) => file.startsWith('tests/metrics-')), JSON.stringify(repeated));
+  });
+
+  test('AC-7 (#31) the check fails when a job adds the whole suite where the metrics tests already run', () => {
+    const workflow = ci();
+    const step = /run:\s*(node --test [^\n]*tests\/metrics-[^\n]*)$/m.exec(job(workflow, 'metrics'))?.[1];
+    const both = replaceIn(workflow, 'metrics', step, `npm test && ${step}`);
+    assert.ok(repeatedRuns(both, scripts()).some(([, file]) => file.startsWith('tests/metrics-')));
+  });
+
+  test('AC-7 (#31) the check fails when two jobs run the suite on the same system and Node version', () => {
+    const workflow = ci();
+    const floor = /^>=\s*(\d+\.\d+\.\d+)$/.exec(JSON.parse(read('package.json')).engines?.node ?? '')?.[1];
+    assert.ok(floor, 'engines.node names a full version');
+    const name = jobNames(workflow).find((n) => job(workflow, n).includes(floor) && /run:\s*npm test\s*$/m.test(job(workflow, n)));
+    assert.ok(name, `a job runs on Node ${floor}`);
+    const line = /node-version:\s*["']?[^\s"']+["']?/.exec(job(workflow, name))?.[0] ?? `node: [${floor}]`;
+    const clash = replaceIn(workflow, name, line, line.replace(floor, items(job(workflow, 'test'), 'node')[0]));
+    assert.ok(repeatedRuns(clash, scripts()).length > 0, 'a second run of the suite on Node 22 is caught');
   });
 });
