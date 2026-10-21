@@ -131,25 +131,25 @@ describe('install permissions', () => {
   });
 
   describe('with a retired-permissions file', () => {
-    let fake;
+    let fakeRepo;
     const installFake = (target, ...args) => spawnSync(
       process.execPath,
-      [join(fake, 'scripts', 'install.mjs'), '--target', target, ...args],
-      { encoding: 'utf8' },
+      [join(fakeRepo, 'scripts', 'install.mjs'), '--target', target, ...args],
+      { encoding: 'utf8', env: { ...process.env, ...fake.env() } },
     );
     before(() => {
-      fake = mkdtempSync(join(tmpdir(), 'cw-fake-repo-'));
-      mkdirSync(join(fake, 'scripts'));
-      mkdirSync(join(fake, 'global'));
-      copyFileSync(join(repo, 'scripts', 'install.mjs'), join(fake, 'scripts', 'install.mjs'));
-      writeFileSync(join(fake, 'global', 'CLAUDE.md'), 'x\n');
-      writeFileSync(join(fake, 'global', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(a:*)'] } }));
-      writeFileSync(join(fake, 'global', 'retired-permissions.json'), JSON.stringify({
+      fakeRepo = mkdtempSync(join(tmpdir(), 'cw-fake-repo-'));
+      mkdirSync(join(fakeRepo, 'scripts'));
+      mkdirSync(join(fakeRepo, 'global'));
+      copyFileSync(join(repo, 'scripts', 'install.mjs'), join(fakeRepo, 'scripts', 'install.mjs'));
+      writeFileSync(join(fakeRepo, 'global', 'CLAUDE.md'), 'x\n');
+      writeFileSync(join(fakeRepo, 'global', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(a:*)'] } }));
+      writeFileSync(join(fakeRepo, 'global', 'retired-permissions.json'), JSON.stringify({
         ask: [OLD_ASK],
         allow: ['Bash(old:*)'],
       }));
     });
-    after(() => rmSync(fake, { recursive: true, force: true }));
+    after(() => rmSync(fakeRepo, { recursive: true, force: true }));
 
     test('AC-8 removes a retired rule from every list and keeps the rules the user added', () => {
       const target = seeded({ ask: [OLD_ASK, 'Bash(mine:*)'], allow: ['Bash(old:*)', 'Bash(keep:*)'] });
@@ -198,7 +198,8 @@ describe('install (#57)', () => {
 });
 
 // Issue #27: an install moves the merge decision to an entry of its own that blocks the call when the hook
-// fails, and keeps only the editing tools Claude Code has in the test guard's matcher.
+// fails, keeps only the editing tools Claude Code has in the test guard's matcher, and --check reports a
+// claude too old to honour onFailure.
 describe('install (#27)', () => {
   let target;
   before(() => {
@@ -229,5 +230,34 @@ describe('install (#27)', () => {
 
   test('AC-6 (#27) an install leaves the test guard matching Edit, Write and NotebookEdit', () => {
     assert.deepEqual(handlers('guard-tests.mjs').map((h) => h.matcher), ['Edit|Write|NotebookEdit']);
+  });
+
+  const check = (version) => spawnSync(
+    process.execPath,
+    [join(repo, 'scripts', 'install.mjs'), '--target', target, '--check'],
+    { encoding: 'utf8', env: { ...process.env, ...fake.env({ FAKE_CLAUDE_VERSION: version }) } },
+  );
+
+  // Compared as numbers: 2.1.99 is older than 2.1.295, and 2.1.1000 is not.
+  for (const version of ['2.1.294', '2.1.99', '2.0.999']) {
+    test(`AC-7 (#27) --check reports claude ${version} as drift, older than 2.1.295`, () => {
+      const r = check(version);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout, new RegExp(`claude ${version.replace(/\./g, '\\.')} is older than 2\\.1\\.295`));
+    });
+  }
+
+  for (const version of ['2.1.295', '2.1.1000', '3.0.0']) {
+    test(`AC-7 (#27) --check accepts claude ${version}`, () => {
+      const r = check(version);
+      assert.equal(r.status, 0, r.stdout);
+      assert.doesNotMatch(r.stdout, /older than/);
+    });
+  }
+
+  test('AC-7 (#27) --check says it cannot verify a claude that prints no version', () => {
+    const r = check('unknown');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /cannot verify the claude version/);
   });
 });

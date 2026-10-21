@@ -34,6 +34,8 @@
 // it writes. Everything it overwrites or removes, MCP registrations included
 // (as mcp-servers.json), is first copied to backups/claude-workflow/<timestamp>/
 // inside the target.
+//
+// --check also reports a claude on PATH older than MIN_CLAUDE.
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -46,6 +48,9 @@ const MANIFEST = '.claude-workflow-manifest.json';
 const MANAGED_HOOK = /\/\.claude\/hooks\/[a-z-]+\.mjs/;
 const CODEX_NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel'];
 const CODEX_ALLOW = new RegExp(`^mcp__.+__(?:${CODEX_NO_QUOTA.join('|')})$`);
+// The first Claude Code that honours onFailure on a hook. An older one ignores it, and the
+// merge decision of guard-git fails open when the hook does not finish.
+const MIN_CLAUDE = [2, 1, 295];
 
 const realOrResolved = (path) => {
   try {
@@ -248,8 +253,8 @@ function mcpPlan(stateDir) {
   };
 }
 
-// Found on PATH rather than run: asking claude for its version would be a call
-// even when there is nothing to change.
+// Found on PATH rather than run, so an install with nothing to change makes no
+// call; --check runs it once, for its version.
 function findClaude() {
   for (const dir of (process.env.PATH ?? '').split(delimiter)) {
     if (!dir) continue;
@@ -264,6 +269,18 @@ function findClaude() {
   }
   return null;
 }
+
+// The version claude reports, as numbers, or null when it prints none.
+function claudeVersion(claude) {
+  const run = spawnSync(claude, ['--version'], { encoding: 'utf8', timeout: 10000 });
+  const match = /(\d+)\.(\d+)\.(\d+)/.exec(run.stdout ?? '');
+  return match ? match.slice(1).map(Number) : null;
+}
+
+const olderThan = (version, minimum) => {
+  const at = version.findIndex((part, i) => part !== minimum[i]);
+  return at >= 0 && version[at] < minimum[at];
+};
 
 // Applies the plan through the CLI and returns how many servers failed.
 function registerServers(claude, configDir, plan) {
@@ -331,13 +348,14 @@ function main() {
 
   const plan = mcpPlan(configDir ?? homedir());
   const needed = [...plan.declared, ...plan.remove];
-  const claude = needed.length > 0 ? findClaude() : null;
+  const claude = check || needed.length > 0 ? findClaude() : null;
   const unverified = claude ? [] : needed;
   if (plan.ignored.length > 0) {
     console.log(`Ignored in personal/mcp-servers.json, not declared in global/mcp-servers.json: ${plan.ignored.join(', ')}`);
   }
 
   if (check) {
+    const version = claude ? claudeVersion(claude) : undefined;
     const drift = [
       ...changed.map((f) => `differs or missing: ${f}`),
       ...orphans.map((f) => `no longer shipped: ${f}`),
@@ -348,14 +366,18 @@ function main() {
         ...plan.add.map((name) => `mcp server missing: ${name}`),
         ...plan.remove.map((name) => `retired mcp server still registered: ${name}`),
       ] : []),
+      ...(version && olderThan(version, MIN_CLAUDE)
+        ? [`claude ${version.join('.')} is older than ${MIN_CLAUDE.join('.')}: it ignores onFailure, so the merge decision fails open`]
+        : []),
     ];
-    if (drift.length === 0 && unverified.length === 0) {
+    if (drift.length === 0 && unverified.length === 0 && version !== null) {
       console.log(`${target} matches the repository.`);
       return 0;
     }
     if (drift.length > 0) console.log(`Drift in ${target}:\n${drift.map((d) => `- ${d}`).join('\n')}`);
     // Not drift: the registrations may well match, but nothing can say so.
     if (unverified.length > 0) console.log(`cannot verify mcp servers (claude CLI unavailable): ${unverified.join(', ')}`);
+    if (version === null) console.log(`cannot verify the claude version: ${claude} --version printed none`);
     return 1;
   }
 

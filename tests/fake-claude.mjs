@@ -1,8 +1,9 @@
 // A fake `claude` CLI for the installer tests (issue #32, ADR 0014). It stands in for the part of
 // Claude Code that the installer drives: `claude mcp add-json <name> <json> -s user` and
 // `claude mcp remove <name> -s user`. Like the real CLI it keeps the user-scope servers under the
-// `mcpServers` key of `<CLAUDE_CONFIG_DIR or HOME>/.claude.json`. Any other subcommand, and any
-// call without `-s user`, exits 2: the installer must not reach for anything else.
+// `mcpServers` key of `<CLAUDE_CONFIG_DIR or HOME>/.claude.json`. `claude --version` prints
+// FAKE_CLAUDE_VERSION, 2.1.304 by default, which `--check` reads (issue #27). Any other subcommand,
+// and any call without `-s user`, exits 2: the installer must not reach for anything else.
 // Every call is logged, so a test can say what the installer ran and what it did not.
 // FAKE_CLAUDE_FAIL is a comma-separated list of `add:<name>` and `remove:<name>` that exit 1.
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -17,6 +18,10 @@ if (env.FAKE_CLAUDE_LOG) {
   appendFileSync(env.FAKE_CLAUDE_LOG, JSON.stringify({ argv, configDir: env.CLAUDE_CONFIG_DIR ?? null, home: env.HOME ?? null }) + '\\n');
 }
 const fail = (message, code) => { process.stderr.write(message + '\\n'); process.exit(code); };
+if (argv.length === 1 && argv[0] === '--version') {
+  process.stdout.write((env.FAKE_CLAUDE_VERSION ?? '2.1.304') + ' (Claude Code)\\n');
+  process.exit(0);
+}
 const [area, sub, name, ...rest] = argv;
 if (area !== 'mcp' || !['add-json', 'remove'].includes(sub)) fail('fake claude: unexpected call ' + argv.join(' '), 2);
 const scopeAt = argv.indexOf('-s');
@@ -56,6 +61,10 @@ export function fakeClaude(dir) {
       return existsSync(log)
         ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
         : [];
+    },
+    // The calls that could change a registration, without the version that --check reads.
+    mcpCalls() {
+      return this.calls().filter((call) => call.argv[0] === 'mcp');
     },
     reset() {
       writeFileSync(log, '');

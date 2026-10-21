@@ -140,7 +140,9 @@ cannot separate the effects of the workflow, developer, project and model.
 
 ## Install
 
-Requires Node 22 or later.
+Requires Node 22 or later and Claude Code 2.1.295 or later. Older versions of
+Claude Code ignore the `onFailure` setting that blocks a merge when its guard
+does not finish, and `--check` reports an older `claude` on `PATH`.
 
 ```bash
 cp personal/preferences.example.md personal/preferences.md

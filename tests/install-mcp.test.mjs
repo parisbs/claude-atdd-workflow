@@ -82,7 +82,7 @@ describe('AC-1 registers the declared servers in the user scope', () => {
     assert.match(r.stdout, /reload/i, 'open sessions keep the old process until they reload');
   });
 
-  test('AC-1 does not run claude at all when every registration already matches', () => {
+  test('AC-1 does not run claude at all when every registration already matches, and --check only reads its version', () => {
     const repoDir = makeRepo({ servers: DECLARED });
     const target = fresh('target');
     assert.equal(run(repoDir, target).status, 0);
@@ -94,7 +94,7 @@ describe('AC-1 registers the declared servers in the user scope', () => {
     assert.doesNotMatch(again.stdout, /Registered MCP server|Replaced MCP server/);
     const check = run(repoDir, target, ['--check']);
     assert.equal(check.status, 0, check.stdout);
-    assert.deepEqual(fake.calls(), []);
+    assert.deepEqual(fake.calls().map((c) => c.argv), [['--version']]);
   });
 
   test('AC-1 leaves a server it does not declare untouched', () => {
@@ -143,7 +143,7 @@ describe('AC-1 registers the declared servers in the user scope', () => {
     fake.reset();
     const check = run(repoDir, target, ['--check'], { home });
     assert.equal(check.status, 0, check.stdout);
-    assert.deepEqual(fake.calls(), []);
+    assert.deepEqual(fake.mcpCalls(), []);
   });
 
   test('AC-1 recognises the default directory when ~/.claude is a symbolic link to the --target', () => {
@@ -189,7 +189,7 @@ describe('AC-2 reports and repairs drift', () => {
       assert.equal(r.status, 1, `${what}: ${r.stdout}`);
       assert.match(r.stdout, /mcp server differs: codex-reviewer/, what);
       assert.doesNotMatch(r.stdout, /codex-implementer/, `${what}: the matching server is not drift`);
-      assert.deepEqual(fake.calls(), [], `${what}: --check must not run claude`);
+      assert.deepEqual(fake.mcpCalls(), [], `${what}: --check must not run claude mcp`);
       assert.deepEqual(fake.servers(target)['codex-reviewer'], wrong, `${what}: --check must not write`);
     }
     const target = fresh('target');
@@ -379,7 +379,7 @@ describe('AC-6 the shipped registrations', () => {
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stdout, /mcp server differs: codex-reviewer/);
     assert.doesNotMatch(r.stdout, /mcp server differs: codex-implementer/);
-    assert.deepEqual(fake.calls(), [], '--check must not run claude');
+    assert.deepEqual(fake.mcpCalls(), [], '--check must not run claude mcp');
   });
 
   test('AC-6 gives the reviewer a read-only ceiling and the implementer a workspace-write one, with no default sandbox', () => {
@@ -536,7 +536,7 @@ describe('AC-2 remote servers differ by url and headers', () => {
       assert.equal(r.status, 1, `${what}: ${r.stdout}`);
       const differs = [...r.stdout.matchAll(/mcp server differs: (\S+)/g)].map((m) => m[1]);
       assert.equal(differs.length, 1, `${what}: exactly one server differs: ${r.stdout}`);
-      assert.deepEqual(fake.calls(), [], `${what}: --check must not run claude`);
+      assert.deepEqual(fake.mcpCalls(), [], `${what}: --check must not run claude mcp`);
       assert.deepEqual(fake.servers(target), seeded, `${what}: --check must not write`);
     }
   });
@@ -563,7 +563,7 @@ describe('AC-2 remote servers differ by url and headers', () => {
     fake.reset();
     const r = run(repoDir, target, ['--check']);
     assert.equal(r.status, 0, r.stdout);
-    assert.deepEqual(fake.calls(), []);
+    assert.deepEqual(fake.mcpCalls(), []);
   });
 });
 
