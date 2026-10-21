@@ -20,10 +20,23 @@
 // shell operators, and each segment is read as words. It recognises the common
 // forms; an unusual form it cannot read is allowed, because the repository's
 // rulesets remain the real guarantee.
+//
+// global/settings.json runs it from two entries. With --skip-merge it
+// runs for every Bash command and fails open like the other hooks; of the merge
+// decision it keeps only the denials that need no network. With --merge-only it
+// decides merges and nothing else, and asks when it cannot decide. Its entry runs
+// it when the `if` matches gh pr merge, and for any command Claude Code cannot rule
+// out, such as one with $() or a loop, and declares onFailure "block": a merge never
+// goes ahead when the hook cannot start, fails or runs past its timeout. Without a
+// flag the hook applies every rule.
 import { spawnSync } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git, readEvent } from './lib.mjs';
+
+const mode = process.argv[2];
+const mergeOnly = mode === '--merge-only';
+const skipMerge = mode === '--skip-merge';
 
 const PROTECTED = new Set(['main', 'master']);
 
@@ -206,9 +219,10 @@ const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRepository,headRepo
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
 // All gh calls of one hook run share this budget, counted from the start of the
-// process. global/settings.json kills guard-git after 15 s, and a merge decision
-// makes up to three serial calls; 10 s leaves 5 s for Node to start, for git, for
-// a timed-out gh to exit after its signal, and for the hook to print its ask.
+// process. A merge decision makes up to three serial calls, and global/settings.json
+// blocks the merge when the hook runs past 30 s; 10 s leaves the rest for Node to
+// start, for git, for a timed-out gh to exit after its signal, and for the hook to
+// print its ask, so a slow GitHub ends in a question rather than in a block.
 const ghBudget = () => Number(process.env.GUARD_GIT_GH_BUDGET_MS) || 10000;
 const brief = (text) => (text ?? '').trim().split('\n')[0].slice(0, 200);
 
@@ -342,8 +356,15 @@ function mergeReasons(args, cwd) {
   return reasons;
 }
 
-// Returns true when a merge was verified end to end.
-function checkGh(args, verdict, cwd) {
+const couldNotDecide = (error) => `Could not decide this merge (${error?.message ?? error}).`;
+
+function askHuman(verdict, reasons) {
+  verdict.add('ask', `${reasons.join(' ')} The human decides this merge (ADR 0010).`);
+}
+
+// Returns true when a merge was verified end to end. Without readPullRequest only the
+// denials that need no network apply, and nothing is verified.
+function checkGh(args, verdict, cwd, readPullRequest) {
   if (args[0] !== 'pr' || args[1] !== 'merge') return false;
   if (hasFlag(args, '--admin')) {
     verdict.add('deny', 'Never merge with --admin: it bypasses every rule of the ruleset, required checks included.');
@@ -351,15 +372,15 @@ function checkGh(args, verdict, cwd) {
   if (!hasFlag(args, '--squash', '-s')) {
     verdict.add('deny', 'Merge with --squash: main keeps a linear history.');
   }
-  if (verdict.decision === 'deny') return false;
+  if (verdict.decision === 'deny' || !readPullRequest) return false;
   let reasons;
   try {
     reasons = mergeReasons(args, cwd);
   } catch (error) {
-    reasons = [`Could not decide this merge (${error.message}).`];
+    reasons = [couldNotDecide(error)];
   }
   if (reasons.length === 0) return true;
-  verdict.add('ask', `${reasons.join(' ')} The human decides this merge (ADR 0010).`);
+  askHuman(verdict, reasons);
   return false;
 }
 
@@ -460,15 +481,20 @@ function checkWrappers(command, verdict) {
   }
 }
 
+const isMerge = (w) => program(w[0]) === 'gh' && w[1] === 'pr' && w[2] === 'merge';
+
 try {
   const event = readEvent();
   const command = event?.tool_input?.command;
-  if (typeof command !== 'string') process.exit(0);
+  if (typeof command !== 'string') {
+    if (mergeOnly) throw new Error('the event carries no Bash command');
+    process.exit(0);
+  }
 
   // Only a subagent's call carries agent_id; the main session's carries none.
   const subagent = typeof event.agent_id === 'string' && event.agent_id !== '';
   const verdict = new Verdict();
-  if (subagent) checkWrappers(command, verdict);
+  if (subagent && !mergeOnly) checkWrappers(command, verdict);
   let cwd = event.cwd ?? process.cwd();
   const branches = new Map();
   const parts = segments(command);
@@ -477,16 +503,16 @@ try {
     const w = words(segment);
     // Skip leading environment assignments such as FOO=1 git push.
     while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
-    if (subagent) checkSubagent(w, verdict);
+    if (subagent && (!mergeOnly || isMerge(w))) checkSubagent(w, verdict);
     if (w[0] === 'cd' && w[1]) {
       cwd = isAbsolute(w[1]) ? w[1] : resolve(cwd, w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
-    } else if (w[0] === 'git') {
+    } else if (w[0] === 'git' && !mergeOnly) {
       checkGit(w.slice(1), cwd, verdict, branches);
     } else if (w[0] === 'gh' && !subagent) {
       // A subagent's gh is decided by the read-only list alone, so it never reaches the
       // merge decision and never earns its explicit allow.
-      merged = checkGh(w.slice(1), verdict, cwd) || merged;
-    } else if (w[0] === 'supabase' || (w[0] === 'npx' && w[1] === 'supabase')) {
+      merged = checkGh(w.slice(1), verdict, cwd, !skipMerge) || merged;
+    } else if (!mergeOnly && (w[0] === 'supabase' || (w[0] === 'npx' && w[1] === 'supabase'))) {
       checkSupabase(w.slice(w[0] === 'npx' ? 2 : 1), verdict);
     }
   }
@@ -497,5 +523,11 @@ try {
   }
   verdict.emit();
 } catch (error) {
+  if (mergeOnly) {
+    // A merge cannot be undone, so the merge entry asks rather than letting the call through.
+    const verdict = new Verdict();
+    askHuman(verdict, [couldNotDecide(error)]);
+    verdict.emit();
+  }
   failOpen('guard-git', error);
 }

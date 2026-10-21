@@ -69,7 +69,9 @@ describe('install', () => {
     assert.ok(!(s.permissions.ask ?? []).includes('Bash(gh pr merge:*)'), 'the merge decision moved to guard-git (ADR 0010)');
     const commands = s.hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command));
     assert.ok(commands.includes('/usr/local/bin/my-own-hook'), 'a hook the user added is kept');
-    assert.equal(commands.filter((c) => c.includes('guard-git.mjs')).length, 1, 'managed hooks are not duplicated');
+    const shipped = JSON.parse(readFileSync(join(repo, 'global', 'settings.json'), 'utf8'));
+    const guardGit = shipped.hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command)).filter((c) => c.includes('guard-git.mjs'));
+    assert.deepEqual(commands.filter((c) => c.includes('guard-git.mjs')), guardGit, 'managed hooks are not duplicated');
   });
 
   test('is idempotent', () => {
@@ -192,5 +194,36 @@ describe('install (#57)', () => {
     for (const f of ['skills/task-package/SKILL.md', 'skills/task-package/codex.md', 'skills/task-package/worktree.md']) {
       assert.ok(existsSync(join(target, f)), f);
     }
+  });
+});
+
+// Issue #27: an install moves the merge decision to an entry of its own that blocks the call when the hook
+// fails.
+describe('install (#27)', () => {
+  let target;
+  before(() => {
+    target = mkdtempSync(join(tmpdir(), 'cw-install-27-'));
+    writeFileSync(join(target, 'settings.json'), JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/guard-git.mjs"', timeout: 15 }] },
+          { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/guard-tests.mjs"', timeout: 15 }] },
+        ],
+      },
+    }));
+    const r = install(target);
+    assert.equal(r.status, 0, r.stderr);
+  });
+  after(() => rmSync(target, { recursive: true, force: true }));
+
+  const handlers = (script) => settingsOf(target).hooks.PreToolUse
+    .flatMap((entry) => entry.hooks.map((hook) => ({ matcher: entry.matcher, ...hook })))
+    .filter((hook) => hook.command.includes(script));
+
+  test('AC-1 (#27) an install replaces the single guard-git entry with a general one and a merge one that blocks when it fails', () => {
+    assert.deepEqual(handlers('guard-git.mjs').map((h) => [h.matcher, h.command.split(' ').pop(), h.if, h.onFailure]), [
+      ['Bash', '--skip-merge', undefined, undefined],
+      ['Bash', '--merge-only', 'Bash(gh pr merge *)', 'block'],
+    ]);
   });
 });

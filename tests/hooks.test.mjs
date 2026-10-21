@@ -1,5 +1,9 @@
 // Tests for the user-level hooks. Each case runs the hook as Claude Code would:
-// a JSON event on stdin, the decision on stdout.
+// a JSON event on stdin, the decision on stdout. guard-git runs through the Bash
+// entries of global/settings.json (claude-hooks.mjs), so its cases check the
+// configuration that is installed; the merge-decision cases run the entry that
+// decides merges, and guard-git-entries.test.mjs checks both entries together
+// (issue #27).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -7,11 +11,12 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { runConfigured } from './claude-hooks.mjs';
 
 const hooks = join(dirname(fileURLToPath(import.meta.url)), '..', 'global', 'hooks');
 
-function run(hook, event, env = {}) {
-  const result = spawnSync(process.execPath, [join(hooks, hook)], {
+function run(hook, event, env = {}, args = []) {
+  const result = spawnSync(process.execPath, [join(hooks, hook), ...args], {
     input: JSON.stringify(event),
     encoding: 'utf8',
     env: { ...process.env, ...env },
@@ -40,7 +45,14 @@ function repo() {
   return dir;
 }
 
-const bash = (cwd, command, env) => run('guard-git.mjs', { cwd, tool_name: 'Bash', tool_input: { command } }, env);
+// A Bash call through every entry of global/settings.json that applies to it; none may fail.
+function bash(cwd, command, env = {}) {
+  const result = runConfigured({ cwd, tool_name: 'Bash', tool_input: { command } }, { env });
+  assert.deepEqual(result.failures, [], result.stderr);
+  return result;
+}
+// guard-git run directly, with a mode or without one.
+const guardGit = (event, env, ...args) => run('guard-git.mjs', { tool_name: 'Bash', ...event }, env, args);
 const edit = (cwd, file_path) => run('guard-tests.mjs', { cwd, tool_name: 'Edit', tool_input: { file_path } });
 
 describe('guard-git', () => {
@@ -287,7 +299,8 @@ describe('guard-git merge decision', () => {
     const scenario = join(root, 'scenario.json');
     writeFileSync(scenario, JSON.stringify({ view, api, user }));
     rmSync(`${scenario}.calls`, { force: true });
-    const result = bash(dir, command, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...env });
+    // The entry that decides merges; AC-4 (#27) checks it together with the general one.
+    const result = guardGit({ cwd: dir, tool_input: { command } }, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...env }, '--merge-only');
     const calls = existsSync(`${scenario}.calls`)
       ? readFileSync(`${scenario}.calls`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
       : [];
