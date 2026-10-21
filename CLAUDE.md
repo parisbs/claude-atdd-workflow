@@ -7,6 +7,12 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
 ## Commands
 
 - Verify: `npm test`
+- Narrow runs while a change stays in one area. `npm test` still runs before a pull request, and after any
+  change to instructions, skills, agents or templates, which tests in several areas read.
+  - `npm run test:hooks`: `global/hooks/`.
+  - `npm run test:install`: `scripts/install.mjs` and the JSON files in `global/`.
+  - `npm run test:adr`: `scripts/check-adrs.mjs`, `scripts/migrate-adrs.mjs` and `docs/adr/`.
+  - `npm run test:metrics`: `scripts/metrics-*.mjs`, `.github/` and the README section on donating metrics.
 - Install: `node scripts/install.mjs`; `--check` reports drift and writes nothing. Run it after changing
   anything under `global/` or `personal/`.
 

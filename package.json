@@ -7,6 +7,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test \"tests/**/*.test.mjs\""
+    "test": "node --test --test-reporter=dot \"tests/**/*.test.mjs\"",
+    "test:verbose": "node --test --test-reporter=spec \"tests/**/*.test.mjs\"",
+    "test:hooks": "node --test --test-reporter=dot \"tests/hooks.test.mjs\" \"tests/guard-*.test.mjs\" \"tests/codex-integrate.test.mjs\" \"tests/task-package-script.test.mjs\"",
+    "test:install": "node --test --test-reporter=dot \"tests/install*.test.mjs\" \"tests/agents.test.mjs\"",
+    "test:adr": "node --test --test-reporter=dot \"tests/*adr*.test.mjs\"",
+    "test:metrics": "node --test --test-reporter=dot \"tests/metrics-*.test.mjs\""
   }
 }

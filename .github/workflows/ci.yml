@@ -51,13 +51,15 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm test
 
+  # The test job already runs the metrics tests on Ubuntu and macOS; this job
+  # adds Windows, where the POSIX-only hook tests cannot run (ADR 0023).
   metrics:
     name: Metrics (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest]
         node: [22, 24]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
