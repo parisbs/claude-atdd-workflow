@@ -1,0 +1,4792 @@
+{
+  "schema_version": 1,
+  "script_version": "1.0.0",
+  "script_sha256": "255c1fc99d58834b616f016d64365cad0cf3b60745b43340927b807bf253fd48",
+  "generated_week": "2026-W43",
+  "license": "CC0-1.0",
+  "totals": {
+    "sessions": 123,
+    "requests": 8440,
+    "input_tokens": 23172,
+    "output_tokens": 7940274,
+    "cache_creation_input_tokens": 28627296,
+    "cache_read_input_tokens": 1972197501
+  },
+  "sessions": [
+    {
+      "week": "2026-W37",
+      "cli_version": "2.1.260",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto",
+        "plan"
+      ],
+      "requests": 1199,
+      "input_tokens": 7802,
+      "output_tokens": 1347281,
+      "cache_creation_input_tokens": 5053926,
+      "cache_read_input_tokens": 429036530,
+      "models": [
+        "claude-opus-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 15568,
+      "tool_calls": {
+        "Bash": 1009,
+        "Read": 46,
+        "AskUserQuestion": 8,
+        "Write": 21,
+        "ToolSearch": 15,
+        "ExitPlanMode": 1,
+        "mcp:other": 72,
+        "WebSearch": 21,
+        "WebFetch": 38,
+        "Edit": 111,
+        "TaskStop": 1,
+        "Monitor": 14,
+        "SendUserFile": 8
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 94,
+      "cache_creation_input_tokens": 30392,
+      "cache_read_input_tokens": 0,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 135,
+      "cache_creation_input_tokens": 5493,
+      "cache_read_input_tokens": 24927,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.286",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 131,
+      "input_tokens": 262,
+      "output_tokens": 150298,
+      "cache_creation_input_tokens": 357183,
+      "cache_read_input_tokens": 31241112,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 407,
+      "tool_calls": {
+        "Bash": 94,
+        "ToolSearch": 4,
+        "mcp:other": 7,
+        "Edit": 3,
+        "Read": 2,
+        "WebSearch": 3,
+        "WebFetch": 8,
+        "Write": 6,
+        "Skill": 1
+      },
+      "skills": {
+        "other": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "bypassPermissions"
+      ],
+      "requests": 2,
+      "input_tokens": 18,
+      "output_tokens": 245,
+      "cache_creation_input_tokens": 11767,
+      "cache_read_input_tokens": 61013,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 2,
+        "output_tokens": 13,
+        "cache_creation_input_tokens": 13673,
+        "cache_read_input_tokens": 16471,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "bypassPermissions"
+      ],
+      "requests": 2,
+      "input_tokens": 18,
+      "output_tokens": 980,
+      "cache_creation_input_tokens": 12336,
+      "cache_read_input_tokens": 61135,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 2,
+        "output_tokens": 445,
+        "cache_creation_input_tokens": 30173,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "bypassPermissions"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 396,
+      "cache_creation_input_tokens": 12523,
+      "cache_read_input_tokens": 98209,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 10,
+        "output_tokens": 114,
+        "cache_creation_input_tokens": 20795,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "bypassPermissions"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 355,
+      "cache_creation_input_tokens": 12481,
+      "cache_read_input_tokens": 98170,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 10,
+        "output_tokens": 242,
+        "cache_creation_input_tokens": 19224,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "bypassPermissions"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 512,
+      "cache_creation_input_tokens": 12627,
+      "cache_read_input_tokens": 98203,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 10,
+        "output_tokens": 367,
+        "cache_creation_input_tokens": 21462,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "bypassPermissions"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 405,
+      "cache_creation_input_tokens": 12498,
+      "cache_read_input_tokens": 98190,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 10,
+        "output_tokens": 197,
+        "cache_creation_input_tokens": 7863,
+        "cache_read_input_tokens": 13600,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W40",
+      "cli_version": "2.1.285",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "bypassPermissions"
+      ],
+      "requests": 4,
+      "input_tokens": 36,
+      "output_tokens": 1459,
+      "cache_creation_input_tokens": 13403,
+      "cache_read_input_tokens": 135250,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Bash": 1,
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 18,
+        "output_tokens": 312,
+        "cache_creation_input_tokens": 26325,
+        "cache_read_input_tokens": 23020,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.286",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 124,
+      "input_tokens": 258,
+      "output_tokens": 141293,
+      "cache_creation_input_tokens": 528267,
+      "cache_read_input_tokens": 27813341,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 1328,
+      "tool_calls": {
+        "Bash": 89,
+        "ToolSearch": 2,
+        "Read": 13,
+        "WebSearch": 7,
+        "Write": 1,
+        "Agent": 1,
+        "Edit": 10,
+        "mcp:other": 4,
+        "Skill": 1
+      },
+      "skills": {
+        "drift-audit": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 22,
+        "input_tokens": 44,
+        "output_tokens": 816,
+        "cache_creation_input_tokens": 102210,
+        "cache_read_input_tokens": 1869617,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 1073,
+      "cache_creation_input_tokens": 43428,
+      "cache_read_input_tokens": 39657,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 990,
+      "cache_creation_input_tokens": 19699,
+      "cache_read_input_tokens": 65586,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 1485,
+      "cache_creation_input_tokens": 20893,
+      "cache_read_input_tokens": 65881,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 4,
+        "output_tokens": 1891,
+        "cache_creation_input_tokens": 36069,
+        "cache_read_input_tokens": 32324,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 1209,
+      "cache_creation_input_tokens": 20603,
+      "cache_read_input_tokens": 65824,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 2,
+        "output_tokens": 581,
+        "cache_creation_input_tokens": 31643,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 6,
+      "output_tokens": 936,
+      "cache_creation_input_tokens": 20630,
+      "cache_read_input_tokens": 108942,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Bash": 1,
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 5,
+        "input_tokens": 10,
+        "output_tokens": 829,
+        "cache_creation_input_tokens": 8712,
+        "cache_read_input_tokens": 30801,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.288",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 180,
+      "input_tokens": 362,
+      "output_tokens": 207945,
+      "cache_creation_input_tokens": 379923,
+      "cache_read_input_tokens": 48824640,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 151,
+      "tool_calls": {
+        "Bash": 132,
+        "Agent": 6,
+        "ReadNotifications": 4,
+        "ToolSearch": 6,
+        "mcp:other": 9,
+        "WebSearch": 1,
+        "WebFetch": 3,
+        "Read": 1,
+        "Skill": 3,
+        "Write": 9,
+        "Edit": 1,
+        "mcp:codex-reviewer": 1,
+        "mcp:codex-implementer": 1
+      },
+      "skills": {
+        "issue-draft": 1,
+        "adr-draft": 1,
+        "atdd-oracle": 1
+      },
+      "subagents": {
+        "count": 6,
+        "requests": 24,
+        "input_tokens": 80,
+        "output_tokens": 731,
+        "cache_creation_input_tokens": 298137,
+        "cache_read_input_tokens": 1354569,
+        "types": {
+          "claude-implementer": 1,
+          "other": 4,
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 18,
+      "output_tokens": 542,
+      "cache_creation_input_tokens": 38300,
+      "cache_read_input_tokens": 37266,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 2,
+        "output_tokens": 20,
+        "cache_creation_input_tokens": 34063,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 680,
+      "cache_creation_input_tokens": 13916,
+      "cache_read_input_tokens": 100643,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 2,
+        "output_tokens": 23,
+        "cache_creation_input_tokens": 28400,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 388,
+      "cache_creation_input_tokens": 13618,
+      "cache_read_input_tokens": 100380,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 2,
+        "output_tokens": 20,
+        "cache_creation_input_tokens": 3971,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 1978,
+      "cache_creation_input_tokens": 41474,
+      "cache_read_input_tokens": 77963,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 4,
+        "output_tokens": 2164,
+        "cache_creation_input_tokens": 22720,
+        "cache_read_input_tokens": 5935,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 1027,
+      "cache_creation_input_tokens": 17615,
+      "cache_read_input_tokens": 98721,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 5,
+        "input_tokens": 10,
+        "output_tokens": 1538,
+        "cache_creation_input_tokens": 10403,
+        "cache_read_input_tokens": 33824,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 44,
+      "input_tokens": 90,
+      "output_tokens": 83111,
+      "cache_creation_input_tokens": 215369,
+      "cache_read_input_tokens": 7109362,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 90,
+      "tool_calls": {
+        "Bash": 28,
+        "Skill": 2,
+        "Agent": 8,
+        "ToolSearch": 1,
+        "Write": 4
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 8,
+        "requests": 48,
+        "input_tokens": 96,
+        "output_tokens": 6794,
+        "cache_creation_input_tokens": 481850,
+        "cache_read_input_tokens": 4078868,
+        "types": {
+          "claude-implementer": 3,
+          "claude-researcher": 3,
+          "other": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 28,
+      "input_tokens": 56,
+      "output_tokens": 23891,
+      "cache_creation_input_tokens": 84562,
+      "cache_read_input_tokens": 3010483,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 17,
+      "tool_calls": {
+        "Bash": 23,
+        "Read": 2,
+        "Agent": 10,
+        "Skill": 1,
+        "ToolSearch": 1,
+        "mcp:other": 1
+      },
+      "skills": {
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 10,
+        "requests": 14,
+        "input_tokens": 28,
+        "output_tokens": 464,
+        "cache_creation_input_tokens": 131888,
+        "cache_read_input_tokens": 27615,
+        "types": {
+          "claude-implementer": 4,
+          "claude-researcher": 4,
+          "other": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 26,
+      "input_tokens": 52,
+      "output_tokens": 16109,
+      "cache_creation_input_tokens": 80287,
+      "cache_read_input_tokens": 2668466,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 5,
+      "tool_calls": {
+        "Bash": 21,
+        "Edit": 3,
+        "ToolSearch": 1,
+        "mcp:other": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 55,
+      "input_tokens": 110,
+      "output_tokens": 34975,
+      "cache_creation_input_tokens": 127337,
+      "cache_read_input_tokens": 7102262,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 28,
+      "tool_calls": {
+        "Bash": 48,
+        "Skill": 2,
+        "AskUserQuestion": 1,
+        "Write": 1,
+        "ToolSearch": 1,
+        "mcp:other": 2
+      },
+      "skills": {
+        "drift-audit": 1,
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 26,
+      "input_tokens": 52,
+      "output_tokens": 13650,
+      "cache_creation_input_tokens": 71443,
+      "cache_read_input_tokens": 2611308,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 8,
+      "tool_calls": {
+        "Bash": 20,
+        "Edit": 2,
+        "ToolSearch": 1,
+        "mcp:other": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 107,
+      "input_tokens": 214,
+      "output_tokens": 77822,
+      "cache_creation_input_tokens": 218970,
+      "cache_read_input_tokens": 20562851,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 39,
+      "tool_calls": {
+        "Bash": 81,
+        "Read": 4,
+        "mcp:other": 15,
+        "ToolSearch": 3,
+        "WebSearch": 2,
+        "WebFetch": 5,
+        "Edit": 2,
+        "Write": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 6,
+      "input_tokens": 12,
+      "output_tokens": 3892,
+      "cache_creation_input_tokens": 47262,
+      "cache_read_input_tokens": 211842,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "ToolSearch": 2,
+        "Bash": 3,
+        "Skill": 1,
+        "mcp:other": 2
+      },
+      "skills": {
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 6,
+      "input_tokens": 12,
+      "output_tokens": 2874,
+      "cache_creation_input_tokens": 21198,
+      "cache_read_input_tokens": 229814,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "Bash": 5,
+        "Skill": 1,
+        "mcp:codex-implementer": 1
+      },
+      "skills": {
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 6,
+      "output_tokens": 741,
+      "cache_creation_input_tokens": 15195,
+      "cache_read_input_tokens": 97592,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:codex-implementer": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 893,
+      "cache_creation_input_tokens": 38884,
+      "cache_read_input_tokens": 74947,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:codex-reviewer": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 1818,
+      "cache_creation_input_tokens": 22525,
+      "cache_read_input_tokens": 105376,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:codex-reviewer": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 74,
+      "input_tokens": 148,
+      "output_tokens": 50889,
+      "cache_creation_input_tokens": 156009,
+      "cache_read_input_tokens": 11164388,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 31,
+      "tool_calls": {
+        "Bash": 51,
+        "Skill": 4,
+        "ToolSearch": 3,
+        "mcp:codex-reviewer": 2,
+        "Write": 1,
+        "Read": 1,
+        "Edit": 4,
+        "mcp:codex-implementer": 2,
+        "mcp:other": 1
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "adr-draft": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 110,
+      "input_tokens": 226,
+      "output_tokens": 95009,
+      "cache_creation_input_tokens": 234536,
+      "cache_read_input_tokens": 21627083,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 79,
+      "tool_calls": {
+        "Bash": 69,
+        "Skill": 3,
+        "ToolSearch": 4,
+        "Write": 4,
+        "Edit": 2,
+        "Agent": 3,
+        "mcp:codex-reviewer": 12,
+        "mcp:codex-implementer": 2,
+        "AskUserQuestion": 3,
+        "mcp:other": 1
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 3,
+        "requests": 50,
+        "input_tokens": 100,
+        "output_tokens": 1763,
+        "cache_creation_input_tokens": 147294,
+        "cache_read_input_tokens": 1779571,
+        "types": {
+          "claude-implementer": 3
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 13,
+      "input_tokens": 26,
+      "output_tokens": 8653,
+      "cache_creation_input_tokens": 53420,
+      "cache_read_input_tokens": 1118539,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 4,
+      "tool_calls": {
+        "Bash": 11
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 6,
+      "output_tokens": 677,
+      "cache_creation_input_tokens": 24181,
+      "cache_read_input_tokens": 109568,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:codex-reviewer": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 76,
+      "input_tokens": 158,
+      "output_tokens": 55031,
+      "cache_creation_input_tokens": 189895,
+      "cache_read_input_tokens": 10660182,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 73,
+      "tool_calls": {
+        "Bash": 47,
+        "Skill": 4,
+        "ToolSearch": 4,
+        "WebFetch": 2,
+        "AskUserQuestion": 4,
+        "mcp:codex-reviewer": 6,
+        "Agent": 1,
+        "Write": 1,
+        "mcp:other": 3
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "pr-prep": 1,
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 12,
+        "input_tokens": 24,
+        "output_tokens": 295,
+        "cache_creation_input_tokens": 29343,
+        "cache_read_input_tokens": 240182,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 86,
+      "input_tokens": 172,
+      "output_tokens": 76715,
+      "cache_creation_input_tokens": 167267,
+      "cache_read_input_tokens": 13832854,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 91,
+      "tool_calls": {
+        "Bash": 58,
+        "Skill": 4,
+        "ToolSearch": 2,
+        "mcp:codex-reviewer": 2,
+        "Agent": 4,
+        "Write": 2,
+        "Read": 1,
+        "Edit": 6,
+        "mcp:other": 2
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "issue-draft": 1,
+        "atdd-implement": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 4,
+        "requests": 31,
+        "input_tokens": 62,
+        "output_tokens": 526,
+        "cache_creation_input_tokens": 60801,
+        "cache_read_input_tokens": 408295,
+        "types": {
+          "claude-implementer": 3,
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 108,
+      "input_tokens": 216,
+      "output_tokens": 103043,
+      "cache_creation_input_tokens": 326263,
+      "cache_read_input_tokens": 19171185,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 173,
+      "tool_calls": {
+        "Bash": 68,
+        "Skill": 2,
+        "Write": 11,
+        "Read": 10,
+        "Edit": 16,
+        "ToolSearch": 2,
+        "mcp:other": 2,
+        "AskUserQuestion": 1,
+        "mcp:codex-reviewer": 2
+      },
+      "skills": {
+        "adr-draft": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 503,
+      "cache_creation_input_tokens": 38940,
+      "cache_read_input_tokens": 74164,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 3,
+        "input_tokens": 26,
+        "output_tokens": 757,
+        "cache_creation_input_tokens": 9429,
+        "cache_read_input_tokens": 15461,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 523,
+      "cache_creation_input_tokens": 13738,
+      "cache_read_input_tokens": 100506,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 18,
+        "output_tokens": 496,
+        "cache_creation_input_tokens": 8794,
+        "cache_read_input_tokens": 6718,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 782,
+      "cache_creation_input_tokens": 17284,
+      "cache_read_input_tokens": 94927,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 18,
+        "output_tokens": 510,
+        "cache_creation_input_tokens": 8007,
+        "cache_read_input_tokens": 5945,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 1006,
+      "cache_creation_input_tokens": 17558,
+      "cache_read_input_tokens": 94946,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 9,
+        "input_tokens": 74,
+        "output_tokens": 2348,
+        "cache_creation_input_tokens": 10536,
+        "cache_read_input_tokens": 70828,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.289",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 125,
+      "input_tokens": 258,
+      "output_tokens": 75633,
+      "cache_creation_input_tokens": 185365,
+      "cache_read_input_tokens": 20343797,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 121,
+      "tool_calls": {
+        "Bash": 67,
+        "ToolSearch": 3,
+        "Skill": 3,
+        "mcp:codex-reviewer": 30,
+        "WebFetch": 2,
+        "Write": 3,
+        "Agent": 1,
+        "Edit": 1,
+        "mcp:other": 5,
+        "AskUserQuestion": 1
+      },
+      "skills": {
+        "task-package": 1,
+        "atdd-oracle": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 14,
+        "input_tokens": 28,
+        "output_tokens": 175,
+        "cache_creation_input_tokens": 30173,
+        "cache_read_input_tokens": 292784,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 175,
+      "input_tokens": 350,
+      "output_tokens": 262638,
+      "cache_creation_input_tokens": 480870,
+      "cache_read_input_tokens": 53673969,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 213,
+      "tool_calls": {
+        "Bash": 126,
+        "Skill": 4,
+        "ToolSearch": 4,
+        "mcp:codex-reviewer": 8,
+        "Write": 13,
+        "mcp:other": 3,
+        "Edit": 1,
+        "Read": 1,
+        "mcp:codex-implementer": 6
+      },
+      "skills": {
+        "task-package": 1,
+        "adr-draft": 1,
+        "atdd-oracle": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 29,
+      "input_tokens": 58,
+      "output_tokens": 37537,
+      "cache_creation_input_tokens": 91323,
+      "cache_read_input_tokens": 2974773,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 15,
+      "tool_calls": {
+        "Bash": 22,
+        "Write": 8,
+        "Skill": 1,
+        "SendUserFile": 1
+      },
+      "skills": {
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 174,
+      "input_tokens": 348,
+      "output_tokens": 253822,
+      "cache_creation_input_tokens": 865900,
+      "cache_read_input_tokens": 50801854,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 1306,
+      "tool_calls": {
+        "Bash": 133,
+        "Skill": 5,
+        "ToolSearch": 5,
+        "mcp:codex-reviewer": 7,
+        "WebFetch": 1,
+        "Write": 11,
+        "Edit": 2,
+        "mcp:other": 2,
+        "Read": 2,
+        "mcp:codex-implementer": 1,
+        "AskUserQuestion": 1
+      },
+      "skills": {
+        "task-package": 1,
+        "adr-draft": 1,
+        "atdd-oracle": 1,
+        "pr-prep": 1,
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 551,
+      "cache_creation_input_tokens": 32982,
+      "cache_read_input_tokens": 64324,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:other": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 484,
+      "cache_creation_input_tokens": 7665,
+      "cache_read_input_tokens": 89315,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:other": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 450,
+      "cache_creation_input_tokens": 7624,
+      "cache_read_input_tokens": 89298,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:other": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 4,
+      "input_tokens": 38,
+      "output_tokens": 949,
+      "cache_creation_input_tokens": 9515,
+      "cache_read_input_tokens": 124387,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 2,
+        "requests": 6,
+        "input_tokens": 56,
+        "output_tokens": 814,
+        "cache_creation_input_tokens": 29943,
+        "cache_read_input_tokens": 103018,
+        "types": {
+          "other": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 28,
+      "output_tokens": 350,
+      "cache_creation_input_tokens": 7398,
+      "cache_read_input_tokens": 89207,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:other": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 211,
+      "input_tokens": 422,
+      "output_tokens": 248624,
+      "cache_creation_input_tokens": 1401624,
+      "cache_read_input_tokens": 70406012,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 1316,
+      "tool_calls": {
+        "Bash": 161,
+        "Read": 3,
+        "ToolSearch": 8,
+        "mcp:other": 10,
+        "WebFetch": 5,
+        "Edit": 3,
+        "WebSearch": 1,
+        "TaskStop": 2,
+        "Write": 5,
+        "Skill": 3,
+        "mcp:codex-reviewer": 1,
+        "mcp:codex-implementer": 2
+      },
+      "skills": {
+        "issue-draft": 1,
+        "atdd-oracle": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 293,
+      "cache_creation_input_tokens": 14288,
+      "cache_read_input_tokens": 20913,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 119,
+      "cache_creation_input_tokens": 7991,
+      "cache_read_input_tokens": 25031,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 80,
+      "cache_creation_input_tokens": 6826,
+      "cache_read_input_tokens": 25031,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 263,
+      "cache_creation_input_tokens": 36473,
+      "cache_read_input_tokens": 0,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 62,
+      "cache_creation_input_tokens": 11497,
+      "cache_read_input_tokens": 25031,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 422,
+      "cache_creation_input_tokens": 6832,
+      "cache_read_input_tokens": 25031,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 110,
+      "cache_creation_input_tokens": 11492,
+      "cache_read_input_tokens": 25031,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 190,
+      "cache_creation_input_tokens": 6829,
+      "cache_read_input_tokens": 25031,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 6,
+      "output_tokens": 1097,
+      "cache_creation_input_tokens": 44118,
+      "cache_read_input_tokens": 86516,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1,
+        "ToolSearch": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 333,
+      "cache_creation_input_tokens": 20359,
+      "cache_read_input_tokens": 66288,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 10,
+        "output_tokens": 427,
+        "cache_creation_input_tokens": 24624,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 367,
+      "cache_creation_input_tokens": 20343,
+      "cache_read_input_tokens": 66288,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 10,
+        "output_tokens": 55,
+        "cache_creation_input_tokens": 4399,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 449,
+      "cache_creation_input_tokens": 20346,
+      "cache_read_input_tokens": 66294,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 1,
+        "input_tokens": 10,
+        "output_tokens": 55,
+        "cache_creation_input_tokens": 4421,
+        "cache_read_input_tokens": 0,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 859,
+      "cache_creation_input_tokens": 20850,
+      "cache_read_input_tokens": 66293,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 4,
+        "output_tokens": 1163,
+        "cache_creation_input_tokens": 8084,
+        "cache_read_input_tokens": 5272,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 8,
+      "output_tokens": 918,
+      "cache_creation_input_tokens": 21677,
+      "cache_read_input_tokens": 110252,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 4,
+        "output_tokens": 703,
+        "cache_creation_input_tokens": 3871,
+        "cache_read_input_tokens": 9191,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 8,
+      "output_tokens": 829,
+      "cache_creation_input_tokens": 21627,
+      "cache_read_input_tokens": 110212,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "Agent": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 1,
+        "requests": 2,
+        "input_tokens": 4,
+        "output_tokens": 401,
+        "cache_creation_input_tokens": 3547,
+        "cache_read_input_tokens": 9655,
+        "types": {
+          "other": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 92,
+      "cache_creation_input_tokens": 12109,
+      "cache_read_input_tokens": 20913,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 10,
+      "output_tokens": 621,
+      "cache_creation_input_tokens": 8325,
+      "cache_read_input_tokens": 25031,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 4,
+      "output_tokens": 12,
+      "cache_creation_input_tokens": 40980,
+      "cache_read_input_tokens": 44907,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "low",
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 1,
+      "input_tokens": 2,
+      "output_tokens": 4,
+      "cache_creation_input_tokens": 19434,
+      "cache_read_input_tokens": 23384,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 0,
+      "tool_calls": {},
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 2,
+      "input_tokens": 18,
+      "output_tokens": 457,
+      "cache_creation_input_tokens": 17369,
+      "cache_read_input_tokens": 57490,
+      "models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "efforts": [],
+      "duration_minutes": 0,
+      "tool_calls": {
+        "Bash": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.291",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "default"
+      ],
+      "requests": 3,
+      "input_tokens": 6,
+      "output_tokens": 482,
+      "cache_creation_input_tokens": 36412,
+      "cache_read_input_tokens": 71974,
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "efforts": [
+        "medium"
+      ],
+      "duration_minutes": 1,
+      "tool_calls": {
+        "ToolSearch": 1,
+        "mcp:other": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 146,
+      "input_tokens": 300,
+      "output_tokens": 137984,
+      "cache_creation_input_tokens": 339738,
+      "cache_read_input_tokens": 34145833,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 177,
+      "tool_calls": {
+        "Bash": 99,
+        "ToolSearch": 5,
+        "Skill": 4,
+        "mcp:codex-reviewer": 11,
+        "mcp:other": 4,
+        "Write": 2,
+        "Edit": 3,
+        "Read": 5,
+        "mcp:codex-implementer": 3,
+        "Agent": 1
+      },
+      "skills": {
+        "task-package": 1,
+        "adr-draft": 1,
+        "atdd-oracle": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 7,
+        "input_tokens": 14,
+        "output_tokens": 61,
+        "cache_creation_input_tokens": 24987,
+        "cache_read_input_tokens": 109335,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 229,
+      "input_tokens": 458,
+      "output_tokens": 280289,
+      "cache_creation_input_tokens": 552911,
+      "cache_read_input_tokens": 74814606,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 285,
+      "tool_calls": {
+        "Bash": 184,
+        "mcp:other": 7,
+        "TaskStop": 1,
+        "ToolSearch": 3,
+        "mcp:codex-implementer": 4,
+        "Write": 17,
+        "Skill": 5,
+        "Read": 7,
+        "Edit": 3,
+        "mcp:codex-reviewer": 2
+      },
+      "skills": {
+        "task-package": 1,
+        "atdd-oracle": 1,
+        "atdd-implement": 1,
+        "pr-prep": 1,
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 12,
+      "input_tokens": 24,
+      "output_tokens": 13399,
+      "cache_creation_input_tokens": 77753,
+      "cache_read_input_tokens": 1124892,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 3,
+      "tool_calls": {
+        "Bash": 11,
+        "Read": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 120,
+      "input_tokens": 242,
+      "output_tokens": 91495,
+      "cache_creation_input_tokens": 208952,
+      "cache_read_input_tokens": 20303029,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 148,
+      "tool_calls": {
+        "Bash": 102,
+        "Skill": 2,
+        "Read": 1,
+        "Write": 7,
+        "AskUserQuestion": 3,
+        "ToolSearch": 1,
+        "mcp:other": 2,
+        "Agent": 1
+      },
+      "skills": {
+        "repo-bootstrap": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 26,
+        "input_tokens": 52,
+        "output_tokens": 962,
+        "cache_creation_input_tokens": 83241,
+        "cache_read_input_tokens": 1408283,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.293",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 39,
+      "input_tokens": 80,
+      "output_tokens": 26822,
+      "cache_creation_input_tokens": 100350,
+      "cache_read_input_tokens": 4131518,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 7,
+      "tool_calls": {
+        "Bash": 37,
+        "Skill": 1,
+        "Agent": 1,
+        "SendMessage": 1
+      },
+      "skills": {
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 15,
+        "input_tokens": 30,
+        "output_tokens": 108,
+        "cache_creation_input_tokens": 94466,
+        "cache_read_input_tokens": 447719,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W41",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 363,
+      "input_tokens": 744,
+      "output_tokens": 411120,
+      "cache_creation_input_tokens": 2004249,
+      "cache_read_input_tokens": 99121741,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 5569,
+      "tool_calls": {
+        "Bash": 253,
+        "ToolSearch": 6,
+        "mcp:other": 17,
+        "Read": 9,
+        "Skill": 3,
+        "Agent": 6,
+        "Edit": 7,
+        "Write": 10,
+        "WebSearch": 6,
+        "WebFetch": 3,
+        "SendMessage": 3
+      },
+      "skills": {
+        "task-package": 1,
+        "adr-draft": 1,
+        "other": 1
+      },
+      "subagents": {
+        "count": 6,
+        "requests": 159,
+        "input_tokens": 326,
+        "output_tokens": 14796,
+        "cache_creation_input_tokens": 485746,
+        "cache_read_input_tokens": 8782527,
+        "types": {
+          "claude-researcher": 6
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 180,
+      "input_tokens": 368,
+      "output_tokens": 124372,
+      "cache_creation_input_tokens": 261746,
+      "cache_read_input_tokens": 34382142,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 162,
+      "tool_calls": {
+        "Bash": 135,
+        "AskUserQuestion": 2,
+        "Write": 4,
+        "Skill": 3,
+        "ToolSearch": 3,
+        "mcp:other": 2,
+        "WebFetch": 13,
+        "WebSearch": 5,
+        "Read": 1,
+        "mcp:codex-reviewer": 4
+      },
+      "skills": {
+        "pr-prep": 1,
+        "adr-draft": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 157,
+      "input_tokens": 314,
+      "output_tokens": 135814,
+      "cache_creation_input_tokens": 285525,
+      "cache_read_input_tokens": 28066823,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 396,
+      "tool_calls": {
+        "Bash": 113,
+        "Write": 5,
+        "ToolSearch": 2,
+        "mcp:other": 1,
+        "Skill": 2,
+        "Edit": 6,
+        "WebFetch": 4
+      },
+      "skills": {
+        "issue-draft": 1,
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 124,
+      "input_tokens": 266,
+      "output_tokens": 97724,
+      "cache_creation_input_tokens": 429307,
+      "cache_read_input_tokens": 23187934,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 179,
+      "tool_calls": {
+        "mcp:other": 48,
+        "Bash": 77,
+        "Write": 8,
+        "Edit": 9,
+        "Skill": 3,
+        "ToolSearch": 3,
+        "mcp:codex-implementer": 3,
+        "Agent": 2,
+        "Read": 2,
+        "mcp:codex-reviewer": 2
+      },
+      "skills": {
+        "atdd-implement": 1,
+        "task-package": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 2,
+        "requests": 9,
+        "input_tokens": 18,
+        "output_tokens": 63,
+        "cache_creation_input_tokens": 33751,
+        "cache_read_input_tokens": 88532,
+        "types": {
+          "claude-researcher": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 26,
+      "input_tokens": 52,
+      "output_tokens": 11914,
+      "cache_creation_input_tokens": 165372,
+      "cache_read_input_tokens": 2579072,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 93,
+      "tool_calls": {
+        "mcp:other": 11,
+        "Bash": 17,
+        "Read": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 64,
+      "input_tokens": 132,
+      "output_tokens": 62007,
+      "cache_creation_input_tokens": 255527,
+      "cache_read_input_tokens": 9023507,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 929,
+      "tool_calls": {
+        "mcp:other": 28,
+        "Bash": 41,
+        "Write": 2,
+        "Skill": 1,
+        "AskUserQuestion": 1,
+        "Edit": 1
+      },
+      "skills": {
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 74,
+      "input_tokens": 154,
+      "output_tokens": 54660,
+      "cache_creation_input_tokens": 155015,
+      "cache_read_input_tokens": 12025530,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 88,
+      "tool_calls": {
+        "mcp:other": 30,
+        "Bash": 43,
+        "Skill": 3,
+        "Read": 2,
+        "Agent": 1,
+        "AskUserQuestion": 1,
+        "Write": 3,
+        "ToolSearch": 1
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 65,
+        "input_tokens": 130,
+        "output_tokens": 7456,
+        "cache_creation_input_tokens": 157039,
+        "cache_read_input_tokens": 6678654,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 146,
+      "input_tokens": 292,
+      "output_tokens": 99688,
+      "cache_creation_input_tokens": 235633,
+      "cache_read_input_tokens": 28362739,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 170,
+      "tool_calls": {
+        "mcp:other": 39,
+        "Bash": 92,
+        "AskUserQuestion": 6,
+        "Write": 2,
+        "Edit": 6,
+        "ToolSearch": 2,
+        "WebSearch": 2,
+        "Read": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 58,
+      "input_tokens": 124,
+      "output_tokens": 35047,
+      "cache_creation_input_tokens": 120634,
+      "cache_read_input_tokens": 7857883,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 41,
+      "tool_calls": {
+        "mcp:other": 13,
+        "Bash": 41,
+        "Skill": 1,
+        "Agent": 1,
+        "Write": 1,
+        "ToolSearch": 1
+      },
+      "skills": {
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 33,
+        "input_tokens": 66,
+        "output_tokens": 1137,
+        "cache_creation_input_tokens": 98118,
+        "cache_read_input_tokens": 2395571,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 198,
+      "input_tokens": 398,
+      "output_tokens": 183989,
+      "cache_creation_input_tokens": 1451218,
+      "cache_read_input_tokens": 47169160,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 5868,
+      "tool_calls": {
+        "mcp:other": 82,
+        "Bash": 87,
+        "AskUserQuestion": 4,
+        "Skill": 8,
+        "Write": 9,
+        "Edit": 21,
+        "ToolSearch": 5,
+        "mcp:codex-implementer": 3,
+        "Read": 16,
+        "Agent": 2,
+        "other": 1
+      },
+      "skills": {
+        "issue-draft": 3,
+        "atdd-oracle": 2,
+        "task-package": 1,
+        "pr-prep": 2
+      },
+      "subagents": {
+        "count": 2,
+        "requests": 20,
+        "input_tokens": 40,
+        "output_tokens": 429,
+        "cache_creation_input_tokens": 74271,
+        "cache_read_input_tokens": 411134,
+        "types": {
+          "claude-researcher": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 17,
+      "input_tokens": 34,
+      "output_tokens": 12448,
+      "cache_creation_input_tokens": 68573,
+      "cache_read_input_tokens": 1694769,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 3,
+      "tool_calls": {
+        "mcp:other": 5,
+        "Bash": 14,
+        "Write": 1,
+        "Edit": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 26,
+      "input_tokens": 52,
+      "output_tokens": 11455,
+      "cache_creation_input_tokens": 64589,
+      "cache_read_input_tokens": 2718901,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 189,
+      "tool_calls": {
+        "mcp:other": 13,
+        "Bash": 18,
+        "Edit": 1,
+        "Skill": 1,
+        "Write": 1,
+        "ToolSearch": 1
+      },
+      "skills": {
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 29,
+      "input_tokens": 60,
+      "output_tokens": 13498,
+      "cache_creation_input_tokens": 73210,
+      "cache_read_input_tokens": 3253863,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 15,
+      "tool_calls": {
+        "mcp:other": 11,
+        "Bash": 18,
+        "Read": 1,
+        "Skill": 1,
+        "Agent": 1,
+        "Write": 1,
+        "ToolSearch": 1
+      },
+      "skills": {
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 15,
+        "input_tokens": 30,
+        "output_tokens": 636,
+        "cache_creation_input_tokens": 42676,
+        "cache_read_input_tokens": 431428,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 24,
+      "input_tokens": 48,
+      "output_tokens": 10161,
+      "cache_creation_input_tokens": 59117,
+      "cache_read_input_tokens": 2194279,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 50,
+      "tool_calls": {
+        "mcp:other": 12,
+        "Bash": 15,
+        "ToolSearch": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 35,
+      "input_tokens": 70,
+      "output_tokens": 17945,
+      "cache_creation_input_tokens": 87718,
+      "cache_read_input_tokens": 4079856,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 11,
+      "tool_calls": {
+        "mcp:other": 14,
+        "Bash": 20,
+        "Skill": 1,
+        "Agent": 1,
+        "Read": 2,
+        "Edit": 2,
+        "ToolSearch": 2
+      },
+      "skills": {
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 28,
+        "input_tokens": 56,
+        "output_tokens": 518,
+        "cache_creation_input_tokens": 62263,
+        "cache_read_input_tokens": 1113492,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 213,
+      "input_tokens": 426,
+      "output_tokens": 189072,
+      "cache_creation_input_tokens": 902493,
+      "cache_read_input_tokens": 57390125,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 1539,
+      "tool_calls": {
+        "mcp:other": 85,
+        "Bash": 132,
+        "Read": 2,
+        "Skill": 4,
+        "Write": 9,
+        "ToolSearch": 3,
+        "WebFetch": 2,
+        "Edit": 3,
+        "mcp:codex-implementer": 4,
+        "mcp:codex-reviewer": 3
+      },
+      "skills": {
+        "issue-draft": 1,
+        "adr-draft": 1,
+        "atdd-oracle": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 62,
+      "input_tokens": 136,
+      "output_tokens": 34440,
+      "cache_creation_input_tokens": 260693,
+      "cache_read_input_tokens": 8159097,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 249,
+      "tool_calls": {
+        "mcp:other": 15,
+        "Bash": 36,
+        "AskUserQuestion": 2,
+        "Skill": 2,
+        "Agent": 1,
+        "Read": 1,
+        "SendMessage": 3,
+        "ToolSearch": 2,
+        "mcp:codex-reviewer": 3,
+        "Write": 1
+      },
+      "skills": {
+        "task-package": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 68,
+        "input_tokens": 142,
+        "output_tokens": 11865,
+        "cache_creation_input_tokens": 364720,
+        "cache_read_input_tokens": 4731200,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.295",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 123,
+      "input_tokens": 262,
+      "output_tokens": 99507,
+      "cache_creation_input_tokens": 618983,
+      "cache_read_input_tokens": 24161447,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 1373,
+      "tool_calls": {
+        "mcp:other": 39,
+        "Bash": 75,
+        "Skill": 3,
+        "Write": 5,
+        "Edit": 8,
+        "ToolSearch": 3,
+        "mcp:codex-implementer": 2,
+        "Read": 1,
+        "mcp:codex-reviewer": 2
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 191,
+      "input_tokens": 400,
+      "output_tokens": 176689,
+      "cache_creation_input_tokens": 427125,
+      "cache_read_input_tokens": 43758786,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 1261,
+      "tool_calls": {
+        "mcp:other": 59,
+        "Bash": 131,
+        "Skill": 3,
+        "Write": 7,
+        "Edit": 1,
+        "ToolSearch": 4,
+        "mcp:codex-implementer": 5,
+        "Agent": 3,
+        "Read": 1
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 3,
+        "requests": 86,
+        "input_tokens": 172,
+        "output_tokens": 1016,
+        "cache_creation_input_tokens": 192832,
+        "cache_read_input_tokens": 3578888,
+        "types": {
+          "claude-implementer": 1,
+          "claude-researcher": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 13,
+      "input_tokens": 26,
+      "output_tokens": 13475,
+      "cache_creation_input_tokens": 61660,
+      "cache_read_input_tokens": 1145857,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 3,
+      "tool_calls": {
+        "mcp:other": 5,
+        "Skill": 1,
+        "Bash": 10,
+        "Write": 2
+      },
+      "skills": {
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 130,
+      "input_tokens": 276,
+      "output_tokens": 101491,
+      "cache_creation_input_tokens": 215717,
+      "cache_read_input_tokens": 23258721,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 142,
+      "tool_calls": {
+        "mcp:other": 55,
+        "Bash": 80,
+        "Write": 9,
+        "Skill": 1,
+        "ToolSearch": 5,
+        "WebFetch": 2,
+        "Read": 1
+      },
+      "skills": {
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 18,
+      "input_tokens": 36,
+      "output_tokens": 7612,
+      "cache_creation_input_tokens": 60690,
+      "cache_read_input_tokens": 1656501,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 6,
+      "tool_calls": {
+        "mcp:other": 8,
+        "Bash": 11,
+        "Read": 1,
+        "Edit": 1,
+        "ToolSearch": 2
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 230,
+      "input_tokens": 468,
+      "output_tokens": 255202,
+      "cache_creation_input_tokens": 746715,
+      "cache_read_input_tokens": 80647558,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 4322,
+      "tool_calls": {
+        "mcp:other": 83,
+        "Bash": 138,
+        "Read": 5,
+        "Skill": 5,
+        "Write": 8,
+        "Edit": 2,
+        "ToolSearch": 6,
+        "mcp:codex-implementer": 2,
+        "Agent": 3,
+        "SendMessage": 9,
+        "mcp:codex-reviewer": 1
+      },
+      "skills": {
+        "atdd-oracle": 2,
+        "task-package": 1,
+        "pr-prep": 1,
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 3,
+        "requests": 132,
+        "input_tokens": 264,
+        "output_tokens": 3326,
+        "cache_creation_input_tokens": 362086,
+        "cache_read_input_tokens": 10583817,
+        "types": {
+          "claude-implementer": 1,
+          "claude-researcher": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W42",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 122,
+      "input_tokens": 244,
+      "output_tokens": 116359,
+      "cache_creation_input_tokens": 374949,
+      "cache_read_input_tokens": 25153853,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 4330,
+      "tool_calls": {
+        "mcp:other": 47,
+        "Bash": 87,
+        "Write": 11,
+        "Skill": 5,
+        "Edit": 4,
+        "ToolSearch": 4,
+        "mcp:codex-implementer": 4,
+        "Read": 2
+      },
+      "skills": {
+        "issue-draft": 1,
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "atdd-implement": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 64,
+      "input_tokens": 134,
+      "output_tokens": 58546,
+      "cache_creation_input_tokens": 184895,
+      "cache_read_input_tokens": 8993110,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 130,
+      "tool_calls": {
+        "mcp:other": 17,
+        "Bash": 35,
+        "AskUserQuestion": 3,
+        "Skill": 1,
+        "Write": 2,
+        "ToolSearch": 1
+      },
+      "skills": {
+        "issue-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 97,
+      "input_tokens": 198,
+      "output_tokens": 69903,
+      "cache_creation_input_tokens": 175954,
+      "cache_read_input_tokens": 15053433,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 63,
+      "tool_calls": {
+        "mcp:other": 25,
+        "Bash": 65,
+        "Read": 5,
+        "Skill": 1,
+        "ToolSearch": 3,
+        "mcp:codex-reviewer": 6,
+        "WebFetch": 7,
+        "WebSearch": 1,
+        "Write": 2,
+        "Edit": 2
+      },
+      "skills": {
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 94,
+      "input_tokens": 194,
+      "output_tokens": 46088,
+      "cache_creation_input_tokens": 139040,
+      "cache_read_input_tokens": 12687376,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 125,
+      "tool_calls": {
+        "mcp:other": 33,
+        "Bash": 58,
+        "Skill": 3,
+        "ToolSearch": 3,
+        "mcp:codex-reviewer": 5,
+        "Write": 1
+      },
+      "skills": {
+        "pr-prep": 1,
+        "task-package": 1,
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 57,
+      "input_tokens": 118,
+      "output_tokens": 28229,
+      "cache_creation_input_tokens": 134279,
+      "cache_read_input_tokens": 7202141,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 124,
+      "tool_calls": {
+        "mcp:other": 16,
+        "Bash": 39,
+        "Write": 1,
+        "Skill": 2,
+        "ToolSearch": 2,
+        "mcp:codex-reviewer": 3
+      },
+      "skills": {
+        "pr-prep": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 98,
+      "input_tokens": 210,
+      "output_tokens": 50480,
+      "cache_creation_input_tokens": 145465,
+      "cache_read_input_tokens": 14121316,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 128,
+      "tool_calls": {
+        "mcp:other": 41,
+        "Bash": 70,
+        "Skill": 2,
+        "Write": 2,
+        "ToolSearch": 2
+      },
+      "skills": {
+        "adr-draft": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 106,
+      "input_tokens": 226,
+      "output_tokens": 82801,
+      "cache_creation_input_tokens": 197273,
+      "cache_read_input_tokens": 17656980,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 100,
+      "tool_calls": {
+        "mcp:other": 22,
+        "Bash": 73,
+        "Skill": 4,
+        "Write": 1,
+        "ReadNotifications": 1,
+        "Agent": 1,
+        "ToolSearch": 5,
+        "mcp:codex-reviewer": 2
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "atdd-implement": 1,
+        "task-package": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 23,
+        "input_tokens": 46,
+        "output_tokens": 352,
+        "cache_creation_input_tokens": 54157,
+        "cache_read_input_tokens": 860082,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 44,
+      "input_tokens": 88,
+      "output_tokens": 32859,
+      "cache_creation_input_tokens": 115088,
+      "cache_read_input_tokens": 5366037,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 14,
+      "tool_calls": {
+        "mcp:other": 4,
+        "Bash": 36,
+        "ToolSearch": 1,
+        "WebFetch": 1,
+        "Edit": 1,
+        "Write": 1,
+        "Monitor": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 34,
+      "input_tokens": 68,
+      "output_tokens": 22073,
+      "cache_creation_input_tokens": 96897,
+      "cache_read_input_tokens": 3901748,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 9,
+      "tool_calls": {
+        "mcp:other": 10,
+        "Bash": 26,
+        "Edit": 2,
+        "ToolSearch": 1
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 152,
+      "input_tokens": 314,
+      "output_tokens": 120235,
+      "cache_creation_input_tokens": 251545,
+      "cache_read_input_tokens": 30535968,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 145,
+      "tool_calls": {
+        "mcp:other": 36,
+        "Bash": 108,
+        "Read": 1,
+        "Write": 2,
+        "Skill": 2,
+        "ToolSearch": 5,
+        "mcp:codex-implementer": 3,
+        "Agent": 1
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 10,
+        "input_tokens": 20,
+        "output_tokens": 137,
+        "cache_creation_input_tokens": 31839,
+        "cache_read_input_tokens": 161906,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 144,
+      "input_tokens": 288,
+      "output_tokens": 190600,
+      "cache_creation_input_tokens": 363443,
+      "cache_read_input_tokens": 35172557,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 230,
+      "tool_calls": {
+        "mcp:other": 64,
+        "Bash": 86,
+        "ToolSearch": 6,
+        "Write": 17,
+        "Skill": 3,
+        "Read": 3,
+        "mcp:codex-reviewer": 5,
+        "mcp:codex-implementer": 4,
+        "Agent": 1
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 8,
+        "input_tokens": 16,
+        "output_tokens": 3897,
+        "cache_creation_input_tokens": 24617,
+        "cache_read_input_tokens": 105889,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 162,
+      "input_tokens": 330,
+      "output_tokens": 143465,
+      "cache_creation_input_tokens": 325757,
+      "cache_read_input_tokens": 38111428,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 1608,
+      "tool_calls": {
+        "mcp:other": 53,
+        "Bash": 117,
+        "Skill": 5,
+        "Write": 3,
+        "ToolSearch": 3,
+        "Read": 2,
+        "mcp:codex-implementer": 3,
+        "Edit": 4,
+        "Agent": 1
+      },
+      "skills": {
+        "issue-draft": 1,
+        "adr-draft": 1,
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 5,
+        "input_tokens": 10,
+        "output_tokens": 49,
+        "cache_creation_input_tokens": 28162,
+        "cache_read_input_tokens": 67735,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 190,
+      "input_tokens": 384,
+      "output_tokens": 139293,
+      "cache_creation_input_tokens": 508380,
+      "cache_read_input_tokens": 38810107,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 1242,
+      "tool_calls": {
+        "mcp:other": 57,
+        "Bash": 142,
+        "Write": 12,
+        "ToolSearch": 3,
+        "Read": 5,
+        "Edit": 3,
+        "Skill": 1
+      },
+      "skills": {
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 143,
+      "input_tokens": 288,
+      "output_tokens": 85703,
+      "cache_creation_input_tokens": 563524,
+      "cache_read_input_tokens": 26555682,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 1311,
+      "tool_calls": {
+        "mcp:other": 48,
+        "Bash": 105,
+        "Write": 4,
+        "Read": 1,
+        "Skill": 2,
+        "ToolSearch": 2,
+        "Agent": 1
+      },
+      "skills": {
+        "issue-draft": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 35,
+        "input_tokens": 70,
+        "output_tokens": 625,
+        "cache_creation_input_tokens": 57447,
+        "cache_read_input_tokens": 1209347,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 155,
+      "input_tokens": 310,
+      "output_tokens": 139929,
+      "cache_creation_input_tokens": 556614,
+      "cache_read_input_tokens": 36444974,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 1065,
+      "tool_calls": {
+        "mcp:other": 33,
+        "Bash": 125,
+        "Read": 5,
+        "Write": 3,
+        "Skill": 5,
+        "Edit": 1,
+        "ToolSearch": 3,
+        "mcp:codex-implementer": 2,
+        "Agent": 1,
+        "mcp:codex-reviewer": 1
+      },
+      "skills": {
+        "adr-draft": 1,
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "atdd-implement": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 27,
+        "input_tokens": 54,
+        "output_tokens": 1265,
+        "cache_creation_input_tokens": 93100,
+        "cache_read_input_tokens": 1619752,
+        "types": {
+          "claude-implementer": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 172,
+      "input_tokens": 346,
+      "output_tokens": 250676,
+      "cache_creation_input_tokens": 879471,
+      "cache_read_input_tokens": 48607311,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 371,
+      "tool_calls": {
+        "Bash": 114,
+        "AskUserQuestion": 2,
+        "Skill": 4,
+        "Write": 16,
+        "Read": 8,
+        "Edit": 7,
+        "ToolSearch": 4,
+        "mcp:other": 2,
+        "mcp:codex-reviewer": 2,
+        "mcp:codex-implementer": 2,
+        "Agent": 2
+      },
+      "skills": {
+        "adr-draft": 1,
+        "issue-draft": 1,
+        "atdd-oracle": 1,
+        "task-package": 1
+      },
+      "subagents": {
+        "count": 2,
+        "requests": 33,
+        "input_tokens": 66,
+        "output_tokens": 1974,
+        "cache_creation_input_tokens": 99430,
+        "cache_read_input_tokens": 1114225,
+        "types": {
+          "claude-researcher": 2
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 26,
+      "input_tokens": 52,
+      "output_tokens": 27374,
+      "cache_creation_input_tokens": 83212,
+      "cache_read_input_tokens": 2754111,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high"
+      ],
+      "duration_minutes": 21,
+      "tool_calls": {
+        "Bash": 17,
+        "Read": 3,
+        "AskUserQuestion": 4
+      },
+      "skills": {},
+      "subagents": {
+        "count": 0,
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "types": {}
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.299",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 138,
+      "input_tokens": 296,
+      "output_tokens": 109026,
+      "cache_creation_input_tokens": 499782,
+      "cache_read_input_tokens": 29223033,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 318,
+      "tool_calls": {
+        "Bash": 84,
+        "Read": 8,
+        "Write": 2,
+        "Skill": 5,
+        "ToolSearch": 5,
+        "mcp:codex-implementer": 2,
+        "Agent": 3,
+        "Edit": 7,
+        "mcp:other": 3,
+        "mcp:codex-reviewer": 2
+      },
+      "skills": {
+        "atdd-oracle": 1,
+        "task-package": 1,
+        "atdd-implement": 1,
+        "issue-draft": 1,
+        "pr-prep": 1
+      },
+      "subagents": {
+        "count": 3,
+        "requests": 48,
+        "input_tokens": 96,
+        "output_tokens": 1501,
+        "cache_creation_input_tokens": 136387,
+        "cache_read_input_tokens": 1655418,
+        "types": {
+          "claude-implementer": 2,
+          "claude-researcher": 1
+        }
+      }
+    },
+    {
+      "week": "2026-W43",
+      "cli_version": "2.1.304",
+      "entrypoint": "claude-desktop",
+      "permission_mode": [
+        "auto"
+      ],
+      "requests": 160,
+      "input_tokens": 324,
+      "output_tokens": 113906,
+      "cache_creation_input_tokens": 368954,
+      "cache_read_input_tokens": 35602062,
+      "models": [
+        "claude-opus-5-5"
+      ],
+      "efforts": [
+        "high",
+        "medium"
+      ],
+      "duration_minutes": 60,
+      "tool_calls": {
+        "mcp:other": 16,
+        "Bash": 120,
+        "Read": 6,
+        "Skill": 4,
+        "Agent": 1,
+        "Edit": 7,
+        "ReadNotifications": 1,
+        "ToolSearch": 5,
+        "Write": 11,
+        "WebFetch": 1
+      },
+      "skills": {
+        "drift-audit": 1,
+        "task-package": 1,
+        "other": 1,
+        "adr-draft": 1
+      },
+      "subagents": {
+        "count": 1,
+        "requests": 42,
+        "input_tokens": 84,
+        "output_tokens": 361,
+        "cache_creation_input_tokens": 105598,
+        "cache_read_input_tokens": 2624817,
+        "types": {
+          "claude-researcher": 1
+        }
+      }
+    }
+  ]
+}
