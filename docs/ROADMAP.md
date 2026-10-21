@@ -156,6 +156,10 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   repository option differently from `gh` (attached, clustered, repeated, or
   consumed by another option), and `guard-git` can outlast its hook timeout
   when a subprocess ignores the termination signal or `git` stalls.
+- Issue 29: `claude-researcher` reads untrusted pages with an unrestricted
+  shell. Implemented: `guard-readonly`, declared in its own frontmatter with
+  `onFailure: "block"`, allows a closed list of reads named by bare programs and
+  denies everything else, unread forms included.
 
 ## Phase 3: integrate the existing repositories
 
