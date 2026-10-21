@@ -5,7 +5,7 @@
 // options that run code are denied. Reads print nothing, preserving permissions.
 // The researcher's frontmatter fails closed if this hook cannot start or finish;
 // an unread event or an evaluation error also denies the call here.
-import { ghIsRead, gitSubcommand, program } from './commands.mjs';
+import { ghIsRead, gitSubcommand } from './commands.mjs';
 import { readEvent, Verdict } from './lib.mjs';
 
 // Read a small shell grammar rather than splitting quoted pipes and redirects.
@@ -38,7 +38,10 @@ function commands(command) {
       started = true;
       continue;
     }
-    if (ch === '$' || ch === '`') throw new Error('shell expansion');
+    // A trailing dollar is literal (for example a grep anchor), not an expansion.
+    const next = command[i + 1];
+    if (ch === '`' || (ch === '$' && !(next === undefined
+      || (quote === '"' ? next === '"' : /[\s;|&]/.test(next))))) throw new Error('shell expansion');
     if (quote === '"') {
       if (ch === quote) quote = undefined;
       else word += ch;
@@ -78,6 +81,13 @@ function commands(command) {
 const GIT_READS = new Set(['log', 'show', 'diff', 'status', 'ls-files', 'rev-parse', 'grep', 'blame']);
 const SIMPLE_READS = new Set(['ls', 'cat', 'head', 'tail', 'wc', 'grep', 'cut', 'diff', 'echo', 'pwd', 'stat', 'cd']);
 
+// Some parsers accept unambiguous long-option prefixes. Deny even ambiguous
+// prefixes so adding an option cannot turn a denied spelling into a bypass.
+function longOptionIs(arg, options) {
+  return arg.startsWith('--') && arg !== '--'
+    && options.some((option) => option.startsWith(arg.split('=')[0]));
+}
+
 function gitIsRead(args) {
   let i = 0;
   while (args[i]?.startsWith('-')) {
@@ -88,8 +98,8 @@ function gitIsRead(args) {
   const sub = gitSubcommand(args);
   if (!GIT_READS.has(sub)) return false;
   const rest = args.slice(i + 1);
-  return !rest.some((arg) => /^--(?:output|ext-diff|textconv)(?:=|$)/.test(arg)
-    || (sub === 'grep' && (/^-[^-]*O/.test(arg) || /^--open-files-in-pager(?:=|$)/.test(arg))));
+  return !rest.some((arg) => longOptionIs(arg, ['--output', '--ext-diff', '--textconv', '--open-files-in-pager'])
+    || (sub === 'grep' && /^-[^-]*O/.test(arg)));
 }
 
 // Only sed's explicit print form is needed for research. Script files and other
@@ -114,15 +124,15 @@ function sedIsRead(args) {
   return quiet && scripts.length > 0 && scripts.every((script) => typeof script === 'string' && print.test(script));
 }
 
-// curl has many ways to write files or send bodies. Accept known GET options
+// curl has many ways to write files or send bodies. Accept known GET/HEAD options
 // instead of trying to enumerate every writing option and its abbreviations.
 function curlIsRead(args) {
   let url = false;
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (/^https?:\/\//.test(arg)) url = true;
-    else if (/^-[sSLfivq]+$/.test(arg)) continue;
-    else if (['--silent', '--show-error', '--location', '--fail', '--include', '--verbose', '--disable'].includes(arg)) continue;
+    else if (/^-[sSLfivqI]+$/.test(arg)) continue;
+    else if (['--silent', '--show-error', '--location', '--fail', '--include', '--verbose', '--disable', '--head'].includes(arg)) continue;
     else if (arg === '-X' || arg === '--request') {
       if (args[++i] !== 'GET') return false;
     } else if (arg === '-XGET' || arg === '--request=GET') continue;
@@ -134,25 +144,26 @@ function curlIsRead(args) {
 }
 
 function isRead(words) {
-  const name = program(words[0]);
+  const name = words[0];
+  // A path could name a repository's executable; an assignment is not a program.
+  if (name.includes('/') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(name)) return false;
   const args = words.slice(1);
   if (SIMPLE_READS.has(name)) return true;
   if (name === 'git') return gitIsRead(args);
-  if (name === 'gh') return ghIsRead(args) && !args.some((arg) => /^(?:--web|--cache)(?:=|$)/.test(arg) || arg === '-w');
+  if (name === 'gh') return ghIsRead(args) && !args.some((arg) => longOptionIs(arg, ['--web', '--cache']) || arg === '-w');
   if (name === 'curl') return curlIsRead(args);
   if (name === 'sed') return sedIsRead(args);
   if (name === 'find') return !args.some((arg) => /^-(?:exec|execdir|ok|okdir|delete|fprint|fprint0|fprintf|fls)$/.test(arg));
-  if (name === 'rg') return !args.some((arg) => /^--(?:pre|hostname-bin|search-zip)(?:=|$)/.test(arg) || /^-[^-]*z/.test(arg));
-  if (name === 'sort') return !args.some((arg) => (arg.startsWith('--') && arg !== '--'
-    && ['--output', '--compress-program'].some((option) => option.startsWith(arg.split('=')[0]))) || /^-[^-]*o/.test(arg));
-  if (name === 'jq') return !args.some((arg) => /^--(?:run-tests|in-place)(?:=|$)/.test(arg));
+  if (name === 'rg') return !args.some((arg) => longOptionIs(arg, ['--pre', '--hostname-bin', '--search-zip']) || /^-[^-]*z/.test(arg));
+  if (name === 'sort') return !args.some((arg) => longOptionIs(arg, ['--output', '--compress-program']) || /^-[^-]*o/.test(arg));
+  if (name === 'jq') return !args.some((arg) => longOptionIs(arg, ['--run-tests', '--in-place']));
   if (name === 'uniq') {
     // A second operand names an output file, unlike the other text readers.
     let operands = 0;
     for (let i = 0; i < args.length; i += 1) {
       if (['-f', '-s', '-w', '--skip-fields', '--skip-chars', '--check-chars'].includes(args[i])) i += 1;
       else if (!args[i].startsWith('-')) operands += 1;
-      else if (!/^(?:-[cdu]+|-[fsw]\d+|--(?:count|repeated|unique)|--(?:skip-fields|skip-chars|check-chars)=\d+)$/.test(args[i])) return false;
+      else if (!/^(?:-[cduiDz]+|-[fsw]\d+|--(?:count|repeated|unique|ignore-case)|--(?:skip-fields|skip-chars|check-chars)=\d+)$/.test(args[i])) return false;
     }
     return operands <= 1;
   }
