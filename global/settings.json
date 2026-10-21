@@ -41,14 +41,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$HOME/.claude/hooks/guard-git.mjs\"",
+            "command": "node \"$HOME/.claude/hooks/guard-git.mjs\" --skip-merge",
             "timeout": 15,
             "statusMessage": "Checking git and deploy safety rules"
           }
         ]
       },
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh pr merge *)",
+            "command": "node \"$HOME/.claude/hooks/guard-git.mjs\" --merge-only",
+            "timeout": 30,
+            "onFailure": "block",
+            "statusMessage": "Checking the merge conditions"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           {
             "type": "command",

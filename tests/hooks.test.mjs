@@ -1,5 +1,9 @@
 // Tests for the user-level hooks. Each case runs the hook as Claude Code would:
-// a JSON event on stdin, the decision on stdout.
+// a JSON event on stdin, the decision on stdout. guard-git runs through the Bash
+// entries of global/settings.json (claude-hooks.mjs), so its cases check the
+// configuration that is installed; the merge-decision cases run the entry that
+// decides merges, and guard-git-entries.test.mjs checks both entries together
+// (issue #27).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -7,11 +11,12 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { runConfigured } from './claude-hooks.mjs';
 
 const hooks = join(dirname(fileURLToPath(import.meta.url)), '..', 'global', 'hooks');
 
-function run(hook, event, env = {}) {
-  const result = spawnSync(process.execPath, [join(hooks, hook)], {
+function run(hook, event, env = {}, args = []) {
+  const result = spawnSync(process.execPath, [join(hooks, hook), ...args], {
     input: JSON.stringify(event),
     encoding: 'utf8',
     env: { ...process.env, ...env },
@@ -40,7 +45,14 @@ function repo() {
   return dir;
 }
 
-const bash = (cwd, command, env) => run('guard-git.mjs', { cwd, tool_name: 'Bash', tool_input: { command } }, env);
+// A Bash call through every entry of global/settings.json that applies to it; none may fail.
+function bash(cwd, command, env = {}) {
+  const result = runConfigured({ cwd, tool_name: 'Bash', tool_input: { command } }, { env });
+  assert.deepEqual(result.failures, [], result.stderr);
+  return result;
+}
+// guard-git run directly, with a mode or without one.
+const guardGit = (event, env, ...args) => run('guard-git.mjs', { tool_name: 'Bash', ...event }, env, args);
 const edit = (cwd, file_path) => run('guard-tests.mjs', { cwd, tool_name: 'Edit', tool_input: { file_path } });
 
 describe('guard-git', () => {
@@ -287,7 +299,8 @@ describe('guard-git merge decision', () => {
     const scenario = join(root, 'scenario.json');
     writeFileSync(scenario, JSON.stringify({ view, api, user }));
     rmSync(`${scenario}.calls`, { force: true });
-    const result = bash(dir, command, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...env });
+    // The entry that decides merges; AC-4 (#27) checks it together with the general one.
+    const result = guardGit({ cwd: dir, tool_input: { command } }, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...env }, '--merge-only');
     const calls = existsSync(`${scenario}.calls`)
       ? readFileSync(`${scenario}.calls`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
       : [];
@@ -655,6 +668,67 @@ describe('guard-git merge decision', () => {
     const fails = (stderr) => ({ routes: { 'contents/CLAUDE.md': { exit: 1, stderr } } });
     asks(merge(SQUASH, { api: fails('gh: Internal Server Error (HTTP 500)') }), 'server error', /CLAUDE\.md/);
     asks(merge(SQUASH, { api: fails('dial tcp: lookup api.github.com: no such host') }), 'network', /CLAUDE\.md/);
+  });
+});
+
+// Issue #27: a repository may name another default branch, so the one origin/HEAD points to is protected
+// like main and master.
+describe('guard-git default branch of origin (#27)', () => {
+  let dir;
+  let plain;
+  before(() => {
+    dir = repo();
+    sh(dir, 'update-ref', 'refs/remotes/origin/develop', 'HEAD');
+    sh(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/develop');
+    sh(dir, 'checkout', '-q', '-b', 'develop');
+    plain = repo();
+    sh(plain, 'checkout', '-q', '-b', 'develop');
+  });
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(plain, { recursive: true, force: true });
+  });
+
+  test('AC-5 (#27) denies a commit on the branch origin/HEAD points to', () => {
+    const result = bash(dir, 'git commit -m "feat: x"');
+    assert.equal(result.decision, 'deny');
+    assert.match(result.reason, /Do not commit on develop/);
+  });
+
+  test('AC-5 (#27) denies a push to it, a force push and its deletion, as for main', () => {
+    for (const command of [
+      'git push origin develop',
+      'git push',
+      'git push origin feature/y:develop',
+      'git push origin HEAD:refs/heads/develop',
+      'git push --force origin develop',
+      'git push origin +feature/y:develop',
+      'git push origin --delete develop',
+      'git push origin :develop',
+    ]) {
+      assert.equal(bash(dir, command).decision, 'deny', command);
+    }
+  });
+
+  test('AC-5 (#27) keeps main and master protected beside it', () => {
+    sh(dir, 'checkout', '-q', 'main');
+    try {
+      assert.equal(bash(dir, 'git commit -m "feat: x"').decision, 'deny');
+    } finally {
+      sh(dir, 'checkout', '-q', 'develop');
+    }
+    assert.equal(bash(dir, 'git push origin master').decision, 'ask', 'a first publication of master asks');
+  });
+
+  test('AC-5 (#27) treats develop as an ordinary branch where origin/HEAD does not name it', () => {
+    assert.equal(bash(plain, 'git commit -m "feat: x"').decision, 'allow');
+    assert.equal(bash(plain, 'git push origin develop').decision, 'allow');
+  });
+
+  test('AC-5 (#27) reads origin/HEAD of the repository the command reaches through cd or git -C', () => {
+    assert.equal(bash(plain, `cd ${dir} && git commit -m "feat: x"`).decision, 'deny');
+    assert.equal(bash(plain, `git -C ${dir} commit -m "feat: x"`).decision, 'deny');
+    assert.equal(bash(dir, `git -C ${plain} commit -m "feat: x"`).decision, 'allow');
   });
 });
 

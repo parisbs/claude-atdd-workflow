@@ -24,8 +24,11 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   installer copies and never links, because Cowork sessions skip a symlinked `~/.claude/CLAUDE.md`
   (ADR 0001).
 - What must always hold is a hook, a permission rule or CI; prose is for judgement (ADR 0002). Hooks fail
-  open with a visible message, except the merge decision, which asks when it cannot read the pull request
-  (ADR 0010).
+  open with a visible message, except the merge decision, which fails closed: it asks when it cannot read the
+  pull request (ADR 0010), and its own entry in `global/settings.json` blocks the merge when the hook cannot
+  start, fails or times out (`onFailure: "block"`, Claude Code 2.1.295 or later). Claude Code also runs that
+  entry for commands its `if` cannot rule out, such as any with `$()`, so `--merge-only` must stay fast and
+  silent for everything that is not a merge.
 - The hooks are a safety net for one machine, not a boundary: they read a command as words and allow a form
   they cannot read. The repository's CI and rulesets are the guarantee (ADR 0002, 0008).
 - A hook that prints `allow` lifts the permission prompt for the whole command, and `Verdict` prints nothing

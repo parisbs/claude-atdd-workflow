@@ -69,7 +69,9 @@ describe('install', () => {
     assert.ok(!(s.permissions.ask ?? []).includes('Bash(gh pr merge:*)'), 'the merge decision moved to guard-git (ADR 0010)');
     const commands = s.hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command));
     assert.ok(commands.includes('/usr/local/bin/my-own-hook'), 'a hook the user added is kept');
-    assert.equal(commands.filter((c) => c.includes('guard-git.mjs')).length, 1, 'managed hooks are not duplicated');
+    const shipped = JSON.parse(readFileSync(join(repo, 'global', 'settings.json'), 'utf8'));
+    const guardGit = shipped.hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command)).filter((c) => c.includes('guard-git.mjs'));
+    assert.deepEqual(commands.filter((c) => c.includes('guard-git.mjs')), guardGit, 'managed hooks are not duplicated');
   });
 
   test('is idempotent', () => {
@@ -129,25 +131,25 @@ describe('install permissions', () => {
   });
 
   describe('with a retired-permissions file', () => {
-    let fake;
+    let fakeRepo;
     const installFake = (target, ...args) => spawnSync(
       process.execPath,
-      [join(fake, 'scripts', 'install.mjs'), '--target', target, ...args],
-      { encoding: 'utf8' },
+      [join(fakeRepo, 'scripts', 'install.mjs'), '--target', target, ...args],
+      { encoding: 'utf8', env: { ...process.env, ...fake.env() } },
     );
     before(() => {
-      fake = mkdtempSync(join(tmpdir(), 'cw-fake-repo-'));
-      mkdirSync(join(fake, 'scripts'));
-      mkdirSync(join(fake, 'global'));
-      copyFileSync(join(repo, 'scripts', 'install.mjs'), join(fake, 'scripts', 'install.mjs'));
-      writeFileSync(join(fake, 'global', 'CLAUDE.md'), 'x\n');
-      writeFileSync(join(fake, 'global', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(a:*)'] } }));
-      writeFileSync(join(fake, 'global', 'retired-permissions.json'), JSON.stringify({
+      fakeRepo = mkdtempSync(join(tmpdir(), 'cw-fake-repo-'));
+      mkdirSync(join(fakeRepo, 'scripts'));
+      mkdirSync(join(fakeRepo, 'global'));
+      copyFileSync(join(repo, 'scripts', 'install.mjs'), join(fakeRepo, 'scripts', 'install.mjs'));
+      writeFileSync(join(fakeRepo, 'global', 'CLAUDE.md'), 'x\n');
+      writeFileSync(join(fakeRepo, 'global', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(a:*)'] } }));
+      writeFileSync(join(fakeRepo, 'global', 'retired-permissions.json'), JSON.stringify({
         ask: [OLD_ASK],
         allow: ['Bash(old:*)'],
       }));
     });
-    after(() => rmSync(fake, { recursive: true, force: true }));
+    after(() => rmSync(fakeRepo, { recursive: true, force: true }));
 
     test('AC-8 removes a retired rule from every list and keeps the rules the user added', () => {
       const target = seeded({ ask: [OLD_ASK, 'Bash(mine:*)'], allow: ['Bash(old:*)', 'Bash(keep:*)'] });
@@ -192,5 +194,70 @@ describe('install (#57)', () => {
     for (const f of ['skills/task-package/SKILL.md', 'skills/task-package/codex.md', 'skills/task-package/worktree.md']) {
       assert.ok(existsSync(join(target, f)), f);
     }
+  });
+});
+
+// Issue #27: an install moves the merge decision to an entry of its own that blocks the call when the hook
+// fails, keeps only the editing tools Claude Code has in the test guard's matcher, and --check reports a
+// claude too old to honour onFailure.
+describe('install (#27)', () => {
+  let target;
+  before(() => {
+    target = mkdtempSync(join(tmpdir(), 'cw-install-27-'));
+    writeFileSync(join(target, 'settings.json'), JSON.stringify({
+      hooks: {
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/guard-git.mjs"', timeout: 15 }] },
+          { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/guard-tests.mjs"', timeout: 15 }] },
+        ],
+      },
+    }));
+    const r = install(target);
+    assert.equal(r.status, 0, r.stderr);
+  });
+  after(() => rmSync(target, { recursive: true, force: true }));
+
+  const handlers = (script) => settingsOf(target).hooks.PreToolUse
+    .flatMap((entry) => entry.hooks.map((hook) => ({ matcher: entry.matcher, ...hook })))
+    .filter((hook) => hook.command.includes(script));
+
+  test('AC-1 (#27) an install replaces the single guard-git entry with a general one and a merge one that blocks when it fails', () => {
+    assert.deepEqual(handlers('guard-git.mjs').map((h) => [h.matcher, h.command.split(' ').pop(), h.if, h.onFailure]), [
+      ['Bash', '--skip-merge', undefined, undefined],
+      ['Bash', '--merge-only', 'Bash(gh pr merge *)', 'block'],
+    ]);
+  });
+
+  test('AC-6 (#27) an install leaves the test guard matching Edit, Write and NotebookEdit', () => {
+    assert.deepEqual(handlers('guard-tests.mjs').map((h) => h.matcher), ['Edit|Write|NotebookEdit']);
+  });
+
+  const check = (version) => spawnSync(
+    process.execPath,
+    [join(repo, 'scripts', 'install.mjs'), '--target', target, '--check'],
+    { encoding: 'utf8', env: { ...process.env, ...fake.env({ FAKE_CLAUDE_VERSION: version }) } },
+  );
+
+  // Compared as numbers: 2.1.99 is older than 2.1.295, and 2.1.1000 is not.
+  for (const version of ['2.1.294', '2.1.99', '2.0.999']) {
+    test(`AC-7 (#27) --check reports claude ${version} as drift, older than 2.1.295`, () => {
+      const r = check(version);
+      assert.equal(r.status, 1, r.stdout);
+      assert.match(r.stdout, new RegExp(`claude ${version.replace(/\./g, '\\.')} is older than 2\\.1\\.295`));
+    });
+  }
+
+  for (const version of ['2.1.295', '2.1.1000', '3.0.0']) {
+    test(`AC-7 (#27) --check accepts claude ${version}`, () => {
+      const r = check(version);
+      assert.equal(r.status, 0, r.stdout);
+      assert.doesNotMatch(r.stdout, /older than/);
+    });
+  }
+
+  test('AC-7 (#27) --check says it cannot verify a claude that prints no version', () => {
+    const r = check('unknown');
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stdout, /cannot verify the claude version/);
   });
 });

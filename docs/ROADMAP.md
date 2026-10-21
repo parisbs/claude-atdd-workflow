@@ -7,10 +7,10 @@ Status as of 2026-10-06, checked against GitHub and the machine, not remembered:
 - Orchestration (below): done.
 - Delegation (below): decided in ADR 0014 and 0015. Issues 32, 34, 42 and 46 are implemented; 33, 38 and 43 are open. Milestone `delegation`.
 - Phase 3: started. One repository is migrated, one is pending.
-- Phase 4: not started. `docs/experiments/` holds four records, the delegation
+- Phase 4: not started. `docs/experiments/` holds five records, the delegation
   probes and the Codex alignment probes of 2026-10-06, the Claude worktree
-  probes of 2026-10-07 and the orchestrator context probes of 2026-10-08; the
-  workflow has been used
+  probes of 2026-10-07, the orchestrator context probes of 2026-10-08 and the
+  hook `if` and `onFailure` probes of 2026-10-21; the workflow has been used
   on this repository only and nothing about it has been measured beyond those
   probes.
 
