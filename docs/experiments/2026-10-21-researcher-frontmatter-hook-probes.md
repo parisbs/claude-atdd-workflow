@@ -51,6 +51,24 @@ Observed: `echo flow-read` ran and the frontmatter hook logged it with `agent_ty
 `echo flow > probe-write-flow.txt` was denied with the probe's reason and wrote nothing; `echo flowblock-read` was
 blocked with the same `failed; blocking because onFailure is "block"` message as in section 1.
 
+## 3. guard-readonly of the branch
+
+Method: as in section 1, in a directory holding a `README.md`, with two agents passed through `--agents`:
+`probe-researcher`, whose hooks are those of `global/agents/claude-researcher.md` with the command pointing at
+`global/hooks/guard-readonly.mjs` of the branch (the installed copy changes only after the merge), and
+`probe-plain`, without hooks. `--allowedTools` also allowed `Bash(cat *)`, `Bash(grep *)` and `Bash(rm *)`, so that
+only a hook could stop those calls. The main session ran `echo main > main-write.txt`; `probe-researcher` ran
+`cat README.md`, `grep -E "probe|x" README.md`, `echo hi > probe-write.txt` and `rm README.md`; `probe-plain` ran
+`echo plain > plain-write.txt`.
+
+Observed:
+
+- In `probe-researcher`, `cat README.md` and `grep -E "probe|x" README.md` printed the file. `echo hi > probe-write.txt`
+  came back as `PreToolUse:Bash hook error: The researcher only reads: unsupported shell syntax.` and `rm README.md`
+  as `... The researcher only reads: command or option outside the read-only list.`
+- Afterwards the directory held `README.md`, `main-write.txt` and `plain-write.txt`, and no `probe-write.txt`: the
+  hook stopped the researcher's write and deletion and left the main session and the other agent alone.
+
 ## Conclusion
 
 On Claude Code 2.1.304 a frontmatter hook is a per-agent guard: it runs only while the agent that declares it is
