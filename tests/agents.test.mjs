@@ -144,3 +144,20 @@ describe('the shipped agents', () => {
     assert.match(body, /not verified|unverified/i);
   });
 });
+
+// Issue #29: the researcher's shell only reads, enforced by guard-readonly from a hook in its own frontmatter.
+// The hooks are one line of JSON, valid YAML, so this file can read them; guard-subagents.test.mjs runs them.
+describe('the read-only shell of claude-researcher (#29)', () => {
+  test('AC-6 (#29) claude-researcher keeps its shell and declares a PreToolUse hook on one line of JSON', () => {
+    const a = agent('claude-researcher');
+    assert.ok(a.tools.includes('Bash'), 'the researcher keeps Bash');
+    assert.ok(a.fields.hooks, 'claude-researcher.md declares no hooks');
+    const hooks = JSON.parse(a.fields.hooks);
+    const commands = (hooks.PreToolUse ?? []).flatMap((entry) => entry.hooks ?? []).map((h) => h.command);
+    assert.ok(commands.some((command) => /guard-readonly\.mjs/.test(command)), 'no PreToolUse hook runs guard-readonly');
+  });
+
+  test('AC-7 (#29) claude-implementer declares no hooks', () => {
+    assert.equal(agent('claude-implementer').fields.hooks, undefined);
+  });
+});
