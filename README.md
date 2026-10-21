@@ -198,6 +198,15 @@ next.
 npm test
 ```
 
+It prints one dot per test and, at the end, each failure with its message and stack. To see every test by
+name:
+
+```bash
+npm run test:verbose
+```
+
+`CLAUDE.md` lists the scripts that run only the tests of one area.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
