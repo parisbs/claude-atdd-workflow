@@ -93,7 +93,9 @@ cannot separate the effects of the workflow, developer, project and model.
     when its checks passed, it touches no control-plane path, and the
     authenticated `gh` user opened it from a branch in the base repository, not
     a fork, ADR 0024; and for a subagent's call, no `git push` and only
-    read-only `gh` commands, ADR 0013),
+    read-only `gh` commands, ADR 0013), `guard-readonly.mjs` (the researcher's
+    closed list of shell reads; denies writes, execution and unread forms, and
+    fails closed), `commands.mjs` (command knowledge shared by both guards),
     `controlplane.mjs` (those paths), `guard-tests.mjs` (frozen acceptance
     tests while an `oracle/<branch>` tag exists, and in a linked worktree while
     an oracle tag's commit is an ancestor of HEAD), `oracle-check.mjs` (the
@@ -113,7 +115,8 @@ cannot separate the effects of the workflow, developer, project and model.
     never collide with project skills (ADR 0007).
   - `agents/`: the subagents the orchestrator delegates to (ADR 0011):
     `claude-implementer` (Opus, writes code against a task package) and
-    `claude-researcher` (Sonnet, read-only). Both set `omitClaudeMd`, so the
+    `claude-researcher` (Sonnet, read-only, with `guard-readonly` enforced by its
+    own Bash hook and `onFailure: "block"`). Both set `omitClaudeMd`, so the
     package is all they know, list their tools as an allowlist that leaves out
     `Agent`, and end with the shared report (ADR 0015). That neither acts on
     GitHub is enforced by `guard-git` (ADR 0013), not by the agent files. A
