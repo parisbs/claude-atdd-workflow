@@ -65,7 +65,9 @@ function commands(command) {
     } else if (/\s/.test(ch)) {
       finishWord();
     } else {
-      if (/[<>(){}#*?\[\]]/.test(ch)) throw new Error('unsupported shell syntax');
+      // An attached rg glob keeps its -g prefix even after pathname expansion.
+      const rgGlob = words[0] === 'rg' && word.startsWith('-g') && /[*?\[\]]/.test(ch);
+      if (/[<>(){}#*?\[\]]/.test(ch) && !rgGlob) throw new Error('unsupported shell syntax');
       word += ch;
       started = true;
     }
@@ -98,8 +100,27 @@ function gitIsRead(args) {
   const sub = gitSubcommand(args);
   if (!GIT_READS.has(sub)) return false;
   const rest = args.slice(i + 1);
-  return !rest.some((arg) => longOptionIs(arg, ['--output', '--ext-diff', '--textconv', '--open-files-in-pager'])
+  // Git resolves the exact read option --text before abbreviating --textconv.
+  return !rest.some((arg) => (arg !== '--text' && longOptionIs(arg, ['--output', '--ext-diff', '--textconv', '--open-files-in-pager']))
     || (sub === 'grep' && /^-[^-]*O/.test(arg)));
+}
+
+function rgIsRead(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (longOptionIs(arg, ['--pre', '--hostname-bin', '--search-zip'])) return false;
+    if (!/^-[^-]/.test(arg)) continue;
+    for (let j = 1; j < arg.length; j += 1) {
+      const flag = arg[j];
+      if (flag === 'z') return false;
+      // A value-taking flag ends the cluster: the z in -tzig is data.
+      if ('ABCEMdefgjmrtT'.includes(flag)) {
+        if (j + 1 === arg.length && args[++i] === undefined) return false;
+        break;
+      }
+    }
+  }
+  return true;
 }
 
 // Only sed's explicit print form is needed for research. Script files and other
@@ -120,8 +141,9 @@ function sedIsRead(args) {
     }
   }
   const address = String.raw`(?:\d+|\$|/(?:\\.|[^/\\])*/)`;
-  const print = new RegExp(`^\\s*(?:${address}(?:,${address})?)?p\\s*$`);
-  return quiet && scripts.length > 0 && scripts.every((script) => typeof script === 'string' && print.test(script));
+  const print = `\\s*(?:${address}(?:,${address})?)?p\\s*`;
+  const prints = new RegExp(`^${print}(?:;${print})*$`);
+  return quiet && scripts.length > 0 && scripts.every((script) => typeof script === 'string' && prints.test(script));
 }
 
 // curl has many ways to write files or send bodies. Accept known GET/HEAD options
@@ -150,11 +172,11 @@ function isRead(words) {
   const args = words.slice(1);
   if (SIMPLE_READS.has(name)) return true;
   if (name === 'git') return gitIsRead(args);
-  if (name === 'gh') return ghIsRead(args) && !args.some((arg) => longOptionIs(arg, ['--web', '--cache']) || arg === '-w');
+  if (name === 'gh') return ghIsRead(args) && !args.some((arg) => longOptionIs(arg, ['--web', '--cache']) || /^-[^-]*w/.test(arg));
   if (name === 'curl') return curlIsRead(args);
   if (name === 'sed') return sedIsRead(args);
   if (name === 'find') return !args.some((arg) => /^-(?:exec|execdir|ok|okdir|delete|fprint|fprint0|fprintf|fls)$/.test(arg));
-  if (name === 'rg') return !args.some((arg) => longOptionIs(arg, ['--pre', '--hostname-bin', '--search-zip']) || /^-[^-]*z/.test(arg));
+  if (name === 'rg') return rgIsRead(args);
   if (name === 'sort') return !args.some((arg) => longOptionIs(arg, ['--output', '--compress-program']) || /^-[^-]*o/.test(arg));
   if (name === 'jq') return !args.some((arg) => longOptionIs(arg, ['--run-tests', '--in-place']));
   if (name === 'uniq') {
@@ -163,7 +185,7 @@ function isRead(words) {
     for (let i = 0; i < args.length; i += 1) {
       if (['-f', '-s', '-w', '--skip-fields', '--skip-chars', '--check-chars'].includes(args[i])) i += 1;
       else if (!args[i].startsWith('-')) operands += 1;
-      else if (!/^(?:-[cduiDz]+|-[fsw]\d+|--(?:count|repeated|unique|ignore-case)|--(?:skip-fields|skip-chars|check-chars)=\d+)$/.test(args[i])) return false;
+      else if (!/^(?:-[cduiDz]+|-[fsw]\d+|--(?:count|repeated|unique|ignore-case)|--all-repeated(?:=(?:none|prepend|separate))?|--(?:skip-fields|skip-chars|check-chars)=\d+)$/.test(args[i])) return false;
     }
     return operands <= 1;
   }
