@@ -1,9 +1,10 @@
 // Issue #19 (ADR 0023): the wiring around the metrics scripts, read from this repository: the CI jobs, the
 // donation workflow, the README section, the pull request template and the human merge of donations. These
 // are static checks; the manual run of a donation from a fork, recorded in the pull request, is the check of
-// the workflow's behaviour.
+// the workflow's behaviour. Issue #25 kept the metrics job on Windows only, so that CI runs each test file
+// once per system and Node version; on Ubuntu and macOS the metrics tests then run only through `npm test`.
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { controlPlaneFiles, humanMergeMatchers } from '../global/hooks/controlplane.mjs';
@@ -16,6 +17,22 @@ const read = (path) => {
 
 // YAML without comment lines or trailing comments, so that a comment never satisfies a check.
 const yaml = (path) => read(path).split(/\r?\n/).filter((line) => !/^\s*#/.test(line)).map((line) => line.replace(/\s+#.*$/, '')).join('\n');
+
+// The lines of a job in a workflow, from its key under `jobs:` up to the next job.
+function job(workflow, name) {
+  const start = new RegExp(`^ {2}${name}:\\s*$`, 'm').exec(workflow);
+  assert.ok(start, `a ${name} job`);
+  const rest = workflow.slice(start.index + start[0].length);
+  const next = /^ {2}\S/m.exec(rest);
+  return rest.slice(0, next ? next.index : undefined);
+}
+
+// The sorted items of a flow sequence such as `os: [ubuntu-latest, macos-latest]`.
+const items = (block, key) => new RegExp(`^\\s*${key}:\\s*\\[([^\\]]*)\\]`, 'm').exec(block)?.[1].split(',').map((item) => item.trim()).sort();
+
+// A glob as the npm scripts pass it to node --test, as a regular expression: `**/` spans any number of
+// directories and `*` stays within one.
+const globToRegExp = (glob) => new RegExp(`^${glob.split('**/').map((part) => part.split('*').map((text) => text.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('(?:[^/]+/)*')}$`);
 
 // The text of the README section whose heading names donating metrics, up to the next heading of its level.
 function readmeSection() {
@@ -80,5 +97,24 @@ describe('metrics wiring (#19)', () => {
     const matchers = humanMergeMatchers(read('CLAUDE.md'));
     const files = ['docs/experiments/donated/2026-W43-89abcdef.json', 'docs/experiments/donated/2027-W01-00ff00ff.json'];
     assert.deepEqual(controlPlaneFiles(files, matchers), files);
+  });
+});
+
+describe('CI runs each test file once per system and Node version (#25)', () => {
+  test('AC-5 the metrics tests run on Windows only in the metrics job, and with the whole suite on Ubuntu and macOS', () => {
+    const ci = yaml('.github/workflows/ci.yml');
+    assert.equal(ci.match(/run:\s*(npm (run )?test|node --test)\b/g)?.length, 2, 'two jobs run tests');
+    const suite = job(ci, 'test');
+    assert.match(suite, /run:\s*npm test\s*$/m);
+    assert.deepEqual(items(suite, 'os'), ['macos-latest', 'ubuntu-latest']);
+    const npmTest = JSON.parse(read('package.json')).scripts.test;
+    assert.match(npmTest, /^node --test /);
+    const globs = [...npmTest.matchAll(/"([^"]+)"/g)].map((match) => globToRegExp(match[1]));
+    const files = readdirSync(join(repo, 'tests'), { recursive: true }).map((file) => `tests/${String(file).replaceAll('\\', '/')}`).filter((file) => file.endsWith('.test.mjs'));
+    assert.ok(files.some((file) => file.startsWith('tests/metrics-')), 'metrics tests exist');
+    for (const file of files) assert.ok(globs.some((glob) => glob.test(file)), `npm test runs ${file}`);
+    const metrics = job(ci, 'metrics');
+    assert.match(metrics, /run:\s*node --test [^\n]*tests\/metrics-/);
+    assert.deepEqual(items(metrics, 'os'), ['windows-latest'], 'the test job already runs the metrics tests elsewhere');
   });
 });
