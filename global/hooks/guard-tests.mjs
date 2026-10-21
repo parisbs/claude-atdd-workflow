@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PreToolUse hook for Edit, Write, MultiEdit and NotebookEdit. Enforces phase 2
+// PreToolUse hook for Edit, Write and NotebookEdit. Enforces phase 2
 // of the basic ATDD workflow (ADR 0003): while a tag `oracle/<branch>` exists in
 // the repository of the edited file, the approved tests are frozen. In a linked
 // worktree on a branch of its own, the nearest oracle tag whose commit is an

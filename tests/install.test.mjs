@@ -198,7 +198,7 @@ describe('install (#57)', () => {
 });
 
 // Issue #27: an install moves the merge decision to an entry of its own that blocks the call when the hook
-// fails.
+// fails, and keeps only the editing tools Claude Code has in the test guard's matcher.
 describe('install (#27)', () => {
   let target;
   before(() => {
@@ -225,5 +225,9 @@ describe('install (#27)', () => {
       ['Bash', '--skip-merge', undefined, undefined],
       ['Bash', '--merge-only', 'Bash(gh pr merge *)', 'block'],
     ]);
+  });
+
+  test('AC-6 (#27) an install leaves the test guard matching Edit, Write and NotebookEdit', () => {
+    assert.deepEqual(handlers('guard-tests.mjs').map((h) => h.matcher), ['Edit|Write|NotebookEdit']);
   });
 });
