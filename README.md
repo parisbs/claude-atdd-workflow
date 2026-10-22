@@ -167,13 +167,21 @@ whatever it overwrites or removes in JSON bundles under
 files it installed earlier but no longer ships. It keeps the latest 10 bundles
 per target; `--keep-backups <n>` changes that limit. `--list-backups` lists them
 and their location; `--restore <stamp>` restores one for its target after saving
-what it overwrites. Legacy backups are migrated once and exempt from retention.
+what it overwrites, keeping the restored bundle during retention so the restore
+can be repeated. Legacy backups are migrated once and exempt from retention.
 Empty legacy directories are removed without a bundle; migration removes
 `.DS_Store` and leaves other loose files in place, reporting them as not backups
-during installation and `--check`. Malformed bundle files are skipped with a
-warning and never removed by retention. Atomic writes keep existing destination
-symlinks and update their resolved files. Settings are written before retired
-files are removed, and the new manifest is written before the legacy one is removed.
+during installation and `--check`. Symlinks inside legacy backups are reported
+and skipped; a symlink or regular file at the legacy root is reported as not
+migratable and left untouched. Malformed bundle files are skipped with a warning
+and never removed by retention; one blocking a legacy directory leaves that
+directory in place and the install exits non-zero while other directories migrate.
+Atomic writes replace symlinks at planned files and the manifest with regular
+files, leaving their former targets untouched and saving resolved content in
+the bundle. Only `settings.json` keeps a resolving symlink and updates its real
+path atomically; a dangling settings link is replaced by a regular file.
+Settings are written before retired files are removed, and the new manifest is
+written before the legacy one is removed.
 An install refuses differing files it does not manage with exit 2; `--adopt`
 backs them up and takes them over. It also registers the
 declared MCP servers through the `claude` CLI, never by writing `~/.claude.json`,
