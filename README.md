@@ -212,6 +212,11 @@ npm run test:verbose
 
 `CLAUDE.md` lists the scripts that run only the tests of one area.
 
+To measure delegations before and after a change, `node scripts/metrics-delegations.mjs` reads your local
+transcripts and prints aggregates only: how task packages are filled, how large hand-backs and Codex results
+are, and the tokens Codex used per model and effort. `--since YYYY-MM-DD`, `--rates <file>`, `--json` and
+`--verbose` refine it; it writes nothing and is not part of the metrics donation.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
