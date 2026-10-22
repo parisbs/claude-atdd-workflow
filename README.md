@@ -161,11 +161,18 @@ The personal files are optional: edit them to your own preferences first. The
 check reports what would change without writing anything. Installing copies
 files (never links them), merges `settings.json` keeping existing user settings
 except retired rules and reconciling the derived Codex permissions, backs up
-whatever it overwrites to `~/.claude/backups/claude-workflow/`,
-and removes files it installed earlier but no longer ships. It also registers the
+whatever it overwrites or removes in JSON bundles under
+`$XDG_STATE_HOME/claude-atdd-workflow/backups/` (or
+`~/.local/state/claude-atdd-workflow/backups/` when unset or relative), and removes
+files it installed earlier but no longer ships. It keeps the latest 10 bundles
+per target; `--keep-backups <n>` changes that limit. `--list-backups` lists them
+and their location; `--restore <stamp>` restores one for its target after saving
+what it overwrites. Legacy backups are migrated once and exempt from retention.
+An install refuses differing files it does not manage with exit 2; `--adopt`
+backs them up and takes them over. It also registers the
 declared MCP servers through the `claude` CLI, never by writing `~/.claude.json`,
-replacing a registration that differs (the old one is saved in the backup
-directory) and removing a retired one; a Claude Code session that is already
+replacing a registration that differs (the old one is saved in the bundle)
+and removing a retired one; a Claude Code session that is already
 open keeps the old server process until it reloads. Without `claude` on `PATH`
 the servers are reported as not verified, and the check exits 1. Run the check
 again at any time to detect drift.
