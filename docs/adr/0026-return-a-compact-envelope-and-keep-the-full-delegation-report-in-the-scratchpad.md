@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-21
 ---
 # 0026. Return a compact envelope and keep the full delegation report in the scratchpad
 
-- Would amend: [0011](0011-delegate-through-subagents-interchangeable-with-codex.md) (the tools of `claude-researcher`) and [0015](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md) (the report shape)
+- Amends: [0011](0011-delegate-through-subagents-interchangeable-with-codex.md) (the tools of `claude-researcher`) and [0015](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md) (the report shape)
 
 ## Context
 
@@ -47,7 +47,7 @@ The evidence was gathered on 2026-10-21 against `main` at `f676e03`, Claude Code
 
 ## Consequences
 
-- If accepted, ADRs 0011 and 0015 change only in their front matter status, as amended in part. ADR 0017 is unchanged: its MCP cap keeps the default.
+- ADRs 0011 and 0015 change only in their front matter status, as amended in part. ADR 0017 is unchanged: its MCP cap keeps the default.
 - The orchestrator's context carries envelopes, and the full reports stay on disk for the session. They are lost with the scratchpad; a report worth keeping is copied into an issue or a pull request.
 - `claude-researcher` and any other read-only agent gain a narrow write path. The guard that limits it becomes part of the read-only boundary and must fail closed like `guard-readonly`, an exception to the fail-open rule of ADR 0002 with the precedent of `guard-readonly` and ADR 0019.
 - The delegate must know the scratchpad path. Whether every subagent already receives the orchestrator's scratchpad in its environment is not verified, so the package names it. Codex runs in its own sandbox and may not be able to write there; decision 5 covers it through the server.

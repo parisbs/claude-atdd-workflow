@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-21
 ---
 # 0025. Route model and effort per delegation through a matrix applied by a hook
 
-- Would amend: [0011](0011-delegate-through-subagents-interchangeable-with-codex.md) (the fixed model and effort of each agent file)
+- Amends: [0011](0011-delegate-through-subagents-interchangeable-with-codex.md) (the fixed model and effort of each agent file)
 
 ## Context
 
@@ -83,7 +83,7 @@ Provisional default matrix, each role as Claude model and effort, then Codex mod
 
 ## Consequences
 
-- If accepted, ADR 0011 changes only in its front matter status; the agent files stop carrying the routing and keep a fallback.
+- ADR 0011 changes only in its front matter status; the agent files stop carrying the routing and keep a fallback.
 - The routing of delegations becomes one file a user can tune in `personal/` without touching agent files, and a hook makes the choice visible on every call instead of left to judgement.
 - Every route sets effort explicitly; a forked delegation cannot take a per-invocation effort (G-02), so its effort comes from outside the call.
 - Decision 4 depends on what the hook can do on `Agent` and MCP calls in the installed Claude Code; the implementation must verify it before it relies on rewriting the input.
