@@ -11,7 +11,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PARAMETERS = ['working_dir', 'context', 'target_files', 'acceptance_criteria', 'system_instructions',
   'output_schema', 'model', 'reasoning_effort'];
 const CODEX = /^mcp__(.+)__(codex_delegate|codex_follow_up|codex_job_result)$/;
-const STATS = /^model=([^\s|]+) \| effort=([^\s|]+) \|.*\btokens=in (\d+) \(cached (\d+), uncached (\d+)\) \/ out (\d+)/;
+// Older codex-subagent-mcp versions print no uncached figure; it is then the input less the cached tokens.
+const STATS = /^model=([^\s|]+) \| effort=([^\s|]+) \|.*\btokens=in (\d+) \(cached (\d+)(?:, uncached (\d+))?\) \/ out (\d+)/;
 const BEGIN = '-----BEGIN STRUCTURED RESULT-----';
 const END = '-----END STRUCTURED RESULT-----';
 const USAGE = 'Usage: metrics-delegations.mjs [--dir <projects>] [--since YYYY-MM-DD] [--rates <file>] [--json] [--verbose]';
@@ -66,7 +67,10 @@ function rates(file) {
 
 // The `- Name:` items of the list after "Write each field", so the report follows the skill.
 function fields() {
-  const lines = readFileSync(join(root, 'global/skills/task-package/SKILL.md'), 'utf8').split(/\r?\n/);
+  let lines;
+  try { lines = readFileSync(join(root, 'global/skills/task-package/SKILL.md'), 'utf8').split(/\r?\n/); } catch (error) {
+    throw new Error(`Cannot read the task-package skill (${error.code ?? 'error'})`);
+  }
   const start = lines.findIndex((line) => line.includes('Write each field'));
   const names = [];
   for (const line of start < 0 ? [] : lines.slice(start + 1)) {
@@ -88,18 +92,37 @@ function missingFields(text, list) {
   return list.filter((f) => !starts.some((s) => s.startsWith(f.full) || (f.first && f.first.test(s)))).map((f) => f.name);
 }
 
-function transcripts(dir) {
+// Every `*.jsonl` under the root; a directory that cannot be listed is skipped and counted, never named.
+function transcripts(dir, counters) {
   let info;
   try { info = statSync(dir); } catch { throw new Error('The transcript directory does not exist'); }
   if (!info.isDirectory()) throw new Error('The transcript directory is not a directory');
-  return readdirSync(dir, { recursive: true, withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
-    .map((e) => join(e.parentPath ?? e.path, e.name)).sort(byName);
+  const files = [];
+  const walk = (directory, top) => {
+    let entries;
+    try { entries = readdirSync(directory, { withFileTypes: true }); } catch (error) {
+      if (top) throw new Error(`Cannot read the transcript directory (${error.code ?? 'error'})`);
+      counters.unreadable++;
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) walk(join(directory, e.name), false);
+      else if (e.isFile() && e.name.endsWith('.jsonl')) files.push(join(directory, e.name));
+    }
+  };
+  walk(dir, true);
+  return files.sort(byName);
 }
 
+// The records of one transcript, or null when it cannot be read (a live one may vanish after listing).
 function records(file, counters) {
+  let content;
+  try { content = readFileSync(file, 'utf8'); } catch {
+    counters.unreadable++;
+    return null;
+  }
   const result = [];
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
+  for (const line of content.split('\n')) {
     if (!line.trim()) continue;
     try {
       const record = JSON.parse(line);
@@ -143,7 +166,7 @@ function codexResult(text) {
   const end = begin < 0 ? -1 : lines.findIndex((l, i) => i > begin && l.line.trimEnd() === END);
   const commands = lines.findIndex((l, i) => i < statsIndex && l.line.startsWith('Commands run ('));
   return {
-    model, effort, input: +input, cached: +cached, uncached: +uncached, output: +output, chars: text.length,
+    model, effort, input: +input, cached: +cached, uncached: uncached === undefined ? input - cached : +uncached, output: +output, chars: text.length,
     structured: end < 0 ? 0 : lines[end].start + lines[end].line.length - lines[begin].start,
     commands: commands < 0 ? 0 : lines[statsIndex].start - 1 - lines[commands].start,
   };
@@ -161,8 +184,8 @@ function handback(content) {
 }
 
 function collect(dir, opts) {
-  const counters = { invalid: 0 };
-  const files = transcripts(dir);
+  const counters = { invalid: 0, unreadable: 0, read: 0 };
+  const files = transcripts(dir, counters);
   const delegations = [];
   const results = [];
   const handbacks = new Map();
@@ -174,7 +197,10 @@ function collect(dir, opts) {
     const uses = new Map();
     let loaded = false;
     let ran = false;
-    for (const record of records(file, counters)) {
+    const list = records(file, counters);
+    if (!list) continue;
+    counters.read++;
+    for (const record of list) {
       if (record.type === 'queue-operation' && typeof record.content === 'string' && counted(record)) {
         const h = handback(record.content);
         if (h && !handbacks.has(h.agent)) handbacks.set(h.agent, h.chars);
@@ -203,7 +229,7 @@ function collect(dir, opts) {
       }
     }
   }
-  return { files, counters, delegations, results, handbacks: [...handbacks.values()] };
+  return { counters, delegations, results, handbacks: [...handbacks.values()] };
 }
 
 function report(data, opts, list, table) {
@@ -245,7 +271,7 @@ function report(data, opts, list, table) {
     return group;
   });
   const doc = {
-    transcripts: data.files.length, invalid_lines: data.counters.invalid, delegates, codex,
+    transcripts: data.counters.read, invalid_lines: data.counters.invalid, delegates, codex,
     handbacks: { count: data.handbacks.length, chars: sizes(data.handbacks) },
   };
   if (table) doc.unpriced = [...new Set(codex.filter((g) => g.credits === null).map((g) => g.model))].sort(byName);
@@ -256,30 +282,33 @@ function report(data, opts, list, table) {
   return doc;
 }
 
+// Names from transcripts lose colons and control characters, so they cannot break or forge a `Label: value` line.
+const safe = (name) => String(name).replace(/[\p{Cc}\u2028\u2029:]/gu, '_');
 const value = (n) => (n === null || n === undefined ? 'none' : String(n));
 const percent = (n) => (n === null ? 'none' : `${(n * 100).toFixed(1)}%`);
 const credit = (n) => (n === null ? 'none' : String(Number(n.toFixed(6))));
 const stats = (s, format = value) => Object.entries(s).map(([k, n]) => `${k} ${format(n)}`).join(', ');
 
-function text(doc) {
-  const lines = [`Transcripts: ${doc.transcripts}`, `Invalid lines skipped: ${doc.invalid_lines}`];
-  for (const [name, d] of Object.entries(doc.delegates)) {
+function text(doc, unreadable) {
+  const lines = [`Transcripts: ${doc.transcripts}`, `Unreadable paths skipped: ${unreadable}`, `Invalid lines skipped: ${doc.invalid_lines}`];
+  for (const [raw, d] of Object.entries(doc.delegates)) {
+    const name = safe(raw);
     lines.push(`Delegate ${name} delegations: ${d.delegations}`, `Delegate ${name} task-package loaded: ${d.task_package_loaded}`,
       `Delegate ${name} task-package script run: ${d.task_package_script}`, `Delegate ${name} package chars: ${stats(d.package_chars)}`);
     for (const [field, n] of Object.entries(d.missing_fields)) lines.push(`Delegate ${name} missing field ${field}: ${n}`);
     for (const [parameter, n] of Object.entries(d.missing_parameters ?? {})) lines.push(`Delegate ${name} missing parameter ${parameter}: ${n}`);
   }
   for (const g of doc.codex) {
-    const label = `Codex ${g.model} ${g.effort}`;
+    const label = `Codex ${safe(g.model)} ${safe(g.effort)}`;
     lines.push(`${label} results: ${g.results}`, `${label} input tokens: ${stats(g.input_tokens)}`,
       `${label} cached tokens: ${stats(g.cached_tokens)}`, `${label} output tokens: ${stats(g.output_tokens)}`,
       `${label} command log share: ${percent(g.command_log_share)}`, `${label} structured result share: ${percent(g.structured_share)}`);
     if ('credits' in g) lines.push(`${label} credits per result: ${g.credits ? stats(g.credits, credit) : 'unpriced'}`);
   }
-  if (doc.unpriced) lines.push(`Unpriced models: ${doc.unpriced.length ? doc.unpriced.join(', ') : 'none'}`);
+  if (doc.unpriced) lines.push(`Unpriced models: ${doc.unpriced.length ? doc.unpriced.map(safe).join(', ') : 'none'}`);
   lines.push(`Hand-backs: ${doc.handbacks.count}`, `Hand-back chars: ${stats(doc.handbacks.chars)}`);
   for (const d of doc.delegations ?? []) {
-    lines.push(`Delegation: date ${value(d.date)}, project ${d.project}, session ${d.session}, delegate ${d.delegate}, ` +
+    lines.push(`Delegation: date ${value(d.date)}, project ${safe(d.project)}, session ${safe(d.session)}, delegate ${safe(d.delegate)}, ` +
       `package chars ${d.package_chars}, result chars ${value(d.result_chars)}`);
   }
   return `${lines.join('\n')}\n`;
@@ -290,12 +319,12 @@ function main() {
   const table = opts.rates === undefined ? null : rates(opts.rates);
   const list = fields();
   const dir = opts.dir ?? join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'projects');
-  let data;
-  try { data = collect(dir, opts); } catch (error) {
-    throw new Error(error.code ? `Cannot read the transcripts (${error.code})` : error.message);
-  }
+  const data = collect(dir, opts);
   const doc = report(data, opts, list, table);
-  process.stdout.write(opts.json ? `${JSON.stringify(doc, null, 2)}\n` : text(doc));
+  const { unreadable } = data.counters;
+  // The JSON document keeps its documented keys, so skipped paths are noted on stderr.
+  if (opts.json && unreadable) console.error(`Unreadable paths skipped: ${unreadable}`);
+  process.stdout.write(opts.json ? `${JSON.stringify(doc, null, 2)}\n` : text(doc, unreadable));
 }
 
 try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; }
