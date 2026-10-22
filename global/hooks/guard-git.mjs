@@ -26,10 +26,12 @@
 // decision it keeps only the denials that need no network. With --merge-only it
 // decides merges and nothing else, and asks when it cannot decide. Claude Code runs
 // its entry when the `if` matches gh pr merge or cannot rule a command out. The entry
-// uses shell builtins to start Node only when the event contains literal merge,
-// including a whole-quoted word. With onFailure "block", a hook failure or timeout
-// blocks a merge and, at worst, another command whose event contains merge. Without
-// a flag the hook applies every rule.
+// uses shell builtins to look for literal merge, including a whole-quoted word,
+// between the command and following description keys in compact events of at most
+// 16,000 characters. Larger events or an unrecognized shape use the whole event.
+// Only a match starts Node. With onFailure "block", a hook failure or timeout blocks
+// a merge and, at worst, a non-merge with merge in that scope. Without a flag the
+// hook applies every rule.
 import { spawnSync } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
