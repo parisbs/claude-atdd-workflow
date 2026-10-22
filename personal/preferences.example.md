@@ -12,7 +12,3 @@ what is about you, not about a project.
 ## Responses
 
 - As concise as possible without losing data, context or intent.
-
-## Language
-
-- Respond in English, including plans.

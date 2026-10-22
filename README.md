@@ -125,6 +125,8 @@ cannot separate the effects of the workflow, developer, project and model.
   versioned. `preferences.md` becomes `~/.claude/rules/personal.md`;
   `settings.json` is merged over the generic settings; `mcp-servers.json` holds
   machine values, such as `CODEX_BIN`, merged over the env of the shared servers.
+  See [Personalization](docs/personalization.md) for effort, language, git
+  context and attribution settings.
 - `common/`: templates every repository receives through `repo-bootstrap`:
   a `CLAUDE.md` skeleton, issue and pull request templates, the
   pull request title check, an ADR template and the ADR check workflow,

@@ -1,5 +1,10 @@
 {
   "language": "english",
   "effortLevel": "high",
-  "autoCompactEnabled": true
+  "autoCompactEnabled": true,
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
+  }
 }
