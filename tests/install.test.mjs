@@ -65,7 +65,7 @@ describe('install', () => {
     assert.equal(s.theme, 'dark');
     assert.equal(s.includeGitInstructions, false);
     assert.ok(s.permissions.allow.includes('Bash(make:*)'));
-    assert.ok(s.permissions.allow.includes('Bash(git status:*)'));
+    assert.ok(s.permissions.allow.includes('Bash(git status *)'));
     assert.ok(!(s.permissions.ask ?? []).includes('Bash(gh pr merge:*)'), 'the merge decision moved to guard-git (ADR 0010)');
     const commands = s.hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => h.command));
     assert.ok(commands.includes('/usr/local/bin/my-own-hook'), 'a hook the user added is kept');
@@ -259,5 +259,146 @@ describe('install (#27)', () => {
     const r = check('unknown');
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stdout, /cannot verify the claude version/);
+  });
+});
+
+// Issue #37: the shipped settings deny reading secrets, the allow list moves from the Bash(x:*) form to the
+// space form through global/retired-permissions.json, and the personal examples and docs/personalization.md
+// set effort and language where they take effect.
+describe('install (#37)', () => {
+  const DENY = [
+    'Read(**/.env)',
+    'Read(**/.env.*)',
+    'Read(!**/.env.example)',
+    'Read(!**/.env.sample)',
+    'Read(**/*.pem)',
+    'Read(**/*.key)',
+    'Read(**/id_rsa*)',
+    'Read(**/id_ed25519*)',
+    'Read(**/*.keystore)',
+    'Read(**/*.jks)',
+  ];
+  // The allow list global/settings.json shipped before #37.
+  const OLD_ALLOW = [
+    'Bash(git status:*)',
+    'Bash(git diff:*)',
+    'Bash(git log:*)',
+    'Bash(git show:*)',
+    'Bash(git branch --show-current:*)',
+    'Bash(git branch --list:*)',
+    'Bash(git fetch:*)',
+    'Bash(git merge-base:*)',
+    'Bash(git merge-tree:*)',
+    'Bash(git rev-parse:*)',
+    'Bash(git ls-files:*)',
+    'Bash(git tag --list:*)',
+    'Bash(git stash list:*)',
+    'Bash(gh issue list:*)',
+    'Bash(gh issue view:*)',
+    'Bash(gh pr list:*)',
+    'Bash(gh pr view:*)',
+    'Bash(gh pr diff:*)',
+    'Bash(gh pr checks:*)',
+    'Bash(gh run list:*)',
+    'Bash(gh run view:*)',
+    'Bash(gh run watch:*)',
+    'Bash(gh label list:*)',
+    'Bash(gh repo view:*)',
+  ];
+  const spaced = (rule) => rule.replace(/^Bash\((.*):\*\)$/, 'Bash($1 *)');
+  const readRepo = (...path) => readFileSync(join(repo, ...path), 'utf8');
+  const shipped = () => JSON.parse(readRepo('global', 'settings.json'));
+  const personalDoc = () => readRepo('docs', 'personalization.md');
+  const seeded = (settings) => {
+    const target = mkdtempSync(join(tmpdir(), 'cw-install-37-'));
+    writeFileSync(join(target, 'settings.json'), JSON.stringify(settings));
+    return target;
+  };
+
+  test('AC-1 (#37) an install writes the approved deny rules in order, each exception after the rule it narrows', () => {
+    const target = seeded({});
+    const r = install(target);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(settingsOf(target).permissions.deny, DENY);
+    rmSync(target, { recursive: true, force: true });
+  });
+
+  test('AC-1 (#37) an install keeps a deny rule the user already had and adds the approved ones in order', () => {
+    const target = seeded({ permissions: { deny: ['Read(**/secrets/**)'] } });
+    const r = install(target);
+    assert.equal(r.status, 0, r.stderr);
+    const deny = settingsOf(target).permissions.deny;
+    assert.ok(deny.includes('Read(**/secrets/**)'));
+    assert.deepEqual(deny.filter((rule) => DENY.includes(rule)), DENY);
+    rmSync(target, { recursive: true, force: true });
+  });
+
+  test('AC-3 (#37) an install over the Bash(x:*) rules retires them, keeps their space-form equivalents and leaves no drift', () => {
+    const target = seeded({ permissions: { allow: OLD_ALLOW } });
+    const r = install(target);
+    assert.equal(r.status, 0, r.stderr);
+    const allow = settingsOf(target).permissions.allow;
+    for (const rule of OLD_ALLOW) {
+      assert.ok(!allow.includes(rule), `${rule} is still installed`);
+      assert.ok(allow.includes(spaced(rule)), `${spaced(rule)} is missing`);
+    }
+    const check = install(target, '--check');
+    assert.equal(check.status, 0, check.stdout);
+    assert.match(check.stdout, /matches the repository/);
+    rmSync(target, { recursive: true, force: true });
+  });
+
+  test('AC-3 (#37) the retired-permissions file lists every old allow rule and keeps the earlier retirements', () => {
+    const retired = JSON.parse(readRepo('global', 'retired-permissions.json'));
+    for (const rule of OLD_ALLOW) assert.ok(retired.allow.includes(rule), rule);
+    assert.ok(retired.ask.includes('Bash(gh pr merge:*)'));
+    assert.ok(retired.allow.includes('mcp__codex-reviewer__codex_job_status'));
+    assert.ok(retired.allow.includes('mcp__codex-implementer__codex_job_status'));
+  });
+
+  test('AC-3 (#37) the shipped settings hold no rule in the colon form', () => {
+    const lists = Object.values(shipped().permissions).flat();
+    assert.deepEqual(lists.filter((rule) => /:\*\)$/.test(rule)), []);
+  });
+
+  test('AC-4 (#37) the new allow list is exactly the space-form equivalent of the old one', () => {
+    const allow = shipped().permissions.allow;
+    assert.deepEqual([...allow].sort(), OLD_ALLOW.map(spaced).sort());
+    assert.equal(new Set(allow).size, OLD_ALLOW.length);
+  });
+
+  test('AC-5 (#37) the personal settings example sets the Opus 5.5 effort through modelSettings', () => {
+    const example = JSON.parse(readRepo('personal', 'settings.example.json'));
+    assert.ok(['low', 'medium', 'high', 'xhigh', 'max'].includes(example.modelSettings?.['claude-opus-5-5']?.effortLevel));
+  });
+
+  test('AC-5 (#37) the personalization guide explains effortLevel, modelSettings and the drift /effort causes', () => {
+    const doc = personalDoc();
+    assert.match(doc, /modelSettings/);
+    assert.match(doc, /effortLevel[^]*(earlier|older|previous|before Opus 5\.5)/i);
+    assert.match(doc, /\/effort[^]*drift/i);
+    assert.match(doc, /revert|overwrit|undo/i);
+  });
+
+  test('AC-6 (#37) the preferences example leaves the response language to the language setting', () => {
+    const prefs = readRepo('personal', 'preferences.example.md');
+    assert.doesNotMatch(prefs, /^#+\s*Language\b/im);
+    assert.doesNotMatch(prefs, /\b(respond|reply|answer|write)\b[^.\n]*\bin (English|Spanish|French|German|Portuguese|Italian)\b/i);
+    const example = JSON.parse(readRepo('personal', 'settings.example.json'));
+    assert.equal(typeof example.language, 'string');
+    assert.ok(example.language.length > 0);
+  });
+
+  test('AC-7 (#37) the personalization guide covers git instructions, attribution, a SessionStart hook, the deny limits and the schema lag', () => {
+    const doc = personalDoc();
+    assert.match(doc, /includeGitInstructions[^]*(snapshot|git status)/i);
+    assert.match(doc, /attribution[^]*personal\/settings\.json|personal\/settings\.json[^]*attribution/);
+    assert.match(doc, /SessionStart[^]*git (branch|status)/);
+    assert.match(doc, /deny[^]*sandbox/i);
+    assert.match(doc, /schema[^]*(lag|behind|out of date|not yet)/i);
+  });
+
+  test('AC-7 (#37) the README links the personalization guide', () => {
+    assert.match(readRepo('README.md'), /\]\((\.\/)?docs\/personalization\.md\)/);
   });
 });
