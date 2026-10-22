@@ -87,3 +87,23 @@ allowed `Bash(gh pr merge *)` and `Bash(echo *)`, so a call that no hook stopped
 - A merge written as `env gh ...`, `time gh ...` or `command gh ...`, through an absolute path to `gh`, or inside
   `bash -c` or `eval` reaches neither guard-git nor the merge entry; the rulesets stay the guarantee.
 - `install.mjs --check` reads the `claude` on `PATH`, which can differ from the version a desktop app runs.
+
+## 5. The shell gate of the merge entry (issue #31)
+
+Section 3, variant B, showed that the merge entry blocked `echo $(echo probe-b-subst)` when its script was
+missing. Issue #31 put a gate of shell builtins in front of Node: the entry starts the hook only when the event
+holds the text `merge`.
+
+Method: Claude Code 2.1.306, the environment above, with the merge entry of the branch rewritten to point at its
+failure: in variant B a script that does not exist, in variant A a script that never finishes, with a 5 s
+timeout. A first handler logged every command and allowed only the six probe commands, so that the probe ran
+without permission prompts and nothing else could run. The fake `gh` recorded its calls.
+
+- In both variants `echo $(echo probe-subst)`, `` echo `echo probe-backticks` ``,
+  `for f in a; do echo probe-loop; done` and `f() { echo probe-function; }; f` ran and printed their output.
+- In both variants `gh pr merge 12 --squash` and `echo $(gh pr merge 12 --squash)` were blocked, with
+  `failed; blocking because onFailure is "block"` in variant B and `timed out; blocking because onFailure is "block"`
+  in variant A.
+- The fake `gh` recorded no call.
+
+The error Claude Code shows names the whole command of the entry, gate included.
