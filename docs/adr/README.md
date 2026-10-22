@@ -58,3 +58,4 @@ added, the legacy status and date lines removed, every other line identical.
 - [0024. Merge without asking only the user's own pull requests from the base repository](0024-merge-without-asking-only-the-users-own-pull-requests-from-the-base-repository.md)
 - [0025. Route model and effort per delegation through a matrix applied by a hook](0025-route-model-and-effort-per-delegation-through-a-matrix.md)
 - [0026. Return a compact envelope and keep the full delegation report in the scratchpad](0026-return-a-compact-envelope-and-keep-the-full-delegation-report-in-the-scratchpad.md)
+- [0027. Keep installer backups in the XDG state directory as JSON bundles](0027-keep-installer-backups-in-the-xdg-state-directory-as-json-bundles.md)

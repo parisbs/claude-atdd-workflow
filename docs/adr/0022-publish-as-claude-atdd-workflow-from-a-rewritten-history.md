@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, consequence on the manifest and backup directory superseded by 0027
 date: 2026-10-19
 ---
 # 0022. Publish the project as claude-atdd-workflow from a rewritten history
