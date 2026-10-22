@@ -212,6 +212,23 @@ npm run test:verbose
 
 `CLAUDE.md` lists the scripts that run only the tests of one area.
 
+To measure delegations before and after a change, `node scripts/metrics-delegations.mjs` reads your local
+transcripts and prints aggregates only: how task packages are filled, how large hand-backs and Codex results
+are, and the tokens Codex used per model and effort. It reads `$CLAUDE_CONFIG_DIR/projects`, or
+`~/.claude/projects` without that variable; `--dir <projects>` reads another directory. `--since YYYY-MM-DD`
+counts only records from that UTC day on, `--json` prints one JSON document and `--verbose` adds one row per
+delegation. `--rates <file>` adds credits from a JSON table of credits per million input, cached and output
+tokens per model; `input` applies to uncached input tokens only:
+
+```json
+{ "gpt-6.1-sol": { "input": 100, "cached": 10, "output": 500 } }
+```
+
+A missing or unreadable transcript directory or rate table is an error. Below the directory, a file or folder
+it cannot read is skipped and counted: always on a text line, and with `--json` in a note on stderr when any
+was skipped. A Codex result whose turn usage the server reports as unknown is not counted. It writes nothing
+and is not part of the metrics donation.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
