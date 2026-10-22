@@ -319,8 +319,9 @@ describe('check-adrs wiring and records (#28)', () => {
   });
 
   test('AC-13 (#28) the roadmap line for issue 28 describes the check under ADR 0018', () => {
-    const line = (text('docs/ROADMAP.md').split(/\n(?=- )/).find((item) => item.startsWith('- Issue 28:')) ?? '');
-    assert.ok(line, 'docs/ROADMAP.md has no line for issue 28');
+    // The roadmap writes the archived repository's issues as claude-workflow#N.
+    const line = (text('docs/ROADMAP.md').split(/\n(?=- )/).find((item) => item.startsWith('- claude-workflow#28:')) ?? '');
+    assert.ok(line, 'docs/ROADMAP.md has no line for claude-workflow#28');
     assert.match(line, /0018/);
     assert.doesNotMatch(line, /change only their status line/i);
   });
