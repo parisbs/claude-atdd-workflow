@@ -168,6 +168,12 @@ files it installed earlier but no longer ships. It keeps the latest 10 bundles
 per target; `--keep-backups <n>` changes that limit. `--list-backups` lists them
 and their location; `--restore <stamp>` restores one for its target after saving
 what it overwrites. Legacy backups are migrated once and exempt from retention.
+Empty legacy directories are removed without a bundle; migration removes
+`.DS_Store` and leaves other loose files in place, reporting them as not backups
+during installation and `--check`. Malformed bundle files are skipped with a
+warning and never removed by retention. Atomic writes keep existing destination
+symlinks and update their resolved files. Settings are written before retired
+files are removed, and the new manifest is written before the legacy one is removed.
 An install refuses differing files it does not manage with exit 2; `--adopt`
 backs them up and takes them over. It also registers the
 declared MCP servers through the `claude` CLI, never by writing `~/.claude.json`,

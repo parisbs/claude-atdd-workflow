@@ -45,14 +45,18 @@
 // it writes. Everything it overwrites or removes, MCP registrations included,
 // is first saved in one JSON bundle under $XDG_STATE_HOME/claude-atdd-workflow/backups/
 // (or ~/.local/state/claude-atdd-workflow/backups/). Legacy backups are migrated
-// once and exempt from retention. Differing unmanaged files require --adopt.
-// Files are written through a same-directory rename, settings after planned files,
-// and the manifest last.
+// once and exempt from retention; empty legacy directories need no bundle. Migration
+// removes .DS_Store but leaves and reports other loose files as not backups.
+// Malformed bundle files are skipped with a warning and left out of retention.
+// Differing unmanaged files require --adopt. Files are written through a
+// same-directory rename, preserving existing symlinks by writing to their real
+// destinations. Settings follow planned files and precede orphan removal; the
+// manifest is written last, before removing a legacy manifest.
 //
 // --check also reports a claude on PATH older than MIN_CLAUDE.
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { accessSync, chmodSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -253,6 +257,7 @@ function desiredSettings(target, previousPersonal) {
 const stable = (value) => `${JSON.stringify(value, null, 2)}\n`;
 
 function atomicWrite(path, content, mode = existsSync(path) ? statSync(path).mode & 0o777 : 0o644) {
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) path = realpathSync(path);
   mkdirSync(dirname(path), { recursive: true });
   const temporary = join(dirname(path), `.claude-atdd-workflow-${randomUUID()}.tmp`);
   try {
@@ -272,9 +277,26 @@ const backupsDirectory = () => join(
 function readBundles() {
   const dir = backupsDirectory();
   if (!existsSync(dir)) return [];
-  return readdirSync(dir).filter((name) => name.endsWith('.json')).map((name) => ({
-    ...readJson(join(dir, name)), file: join(dir, name),
-  })).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.stamp.localeCompare(b.stamp));
+  return readdirSync(dir).filter((name) => name.endsWith('.json')).flatMap((name) => {
+    const file = join(dir, name);
+    try {
+      const bundle = readJson(file);
+      if (!isObject(bundle) || bundle.version !== 1
+        || typeof bundle.createdAt !== 'string' || Number.isNaN(Date.parse(bundle.createdAt))
+        || typeof bundle.stamp !== 'string' || !bundle.stamp
+        || typeof bundle.target !== 'string' || !bundle.target
+        || !isObject(bundle.files) || !isObject(bundle.mcpServers)
+        || !Object.values(bundle.files).every((entry) => isObject(entry)
+          && Number.isInteger(entry.mode) && entry.mode >= 0 && entry.mode <= 0o777 && typeof entry.content === 'string')
+        || !Object.values(bundle.mcpServers).every(isObject)) {
+        throw new Error('not a version 1 backup bundle');
+      }
+      return [{ ...bundle, file }];
+    } catch (error) {
+      console.warn(`Skipping backup ${file}: ${error.message}`);
+      return [];
+    }
+  }).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.stamp.localeCompare(b.stamp));
 }
 
 function savedFiles(target, paths) {
@@ -285,7 +307,7 @@ function savedFiles(target, paths) {
 }
 
 function writeBundle(target, files, mcpServers, { legacy = false, stamp, createdAt = new Date().toISOString() } = {}) {
-  if (!legacy && Object.keys(files).length === 0 && Object.keys(mcpServers).length === 0) return;
+  if (Object.keys(files).length === 0 && Object.keys(mcpServers).length === 0) return;
   stamp ??= `${createdAt.replace(/[:.]/g, '-')}-${randomUUID()}`;
   const dir = backupsDirectory();
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -305,10 +327,14 @@ function migrateBackups(target) {
   if (!existsSync(root)) return;
   for (const name of readdirSync(root)) {
     const dir = join(root, name);
-    if (!statSync(dir).isDirectory()) continue;
+    if (!lstatSync(dir).isDirectory()) {
+      if (name !== '.DS_Store') console.warn(`Skipping ${dir}: not a backup; leaving it in place.`);
+      continue;
+    }
     try {
       const files = savedFiles(dir, walk(dir).map((path) => relative(dir, path).split(sep).join('/')));
-      const mcpServers = files['mcp-servers.json'] ? JSON.parse(Buffer.from(files['mcp-servers.json'].content, 'base64').toString('utf8')) : {};
+      const mcpFile = files['mcp-servers.json'];
+      const mcpServers = mcpFile ? JSON.parse(Buffer.from(mcpFile.content, 'base64').toString('utf8')) : {};
       delete files['mcp-servers.json'];
       // Stable identity lets a retry recognize a bundle even if removing its old directory failed.
       const stamp = `legacy-${createHash('sha256').update(JSON.stringify([realpathSync(target), name])).digest('hex')}`;
@@ -316,7 +342,9 @@ function migrateBackups(target) {
       if (existsSync(file)) {
         const previous = readJson(file);
         if (!previous.legacy || previous.target !== realpathSync(target)
-          || !isDeepStrictEqual(previous.files, files) || !isDeepStrictEqual(previous.mcpServers, mcpServers)) {
+          || !isObject(previous.files)
+          || !Object.entries(files).every(([rel, entry]) => Object.hasOwn(previous.files, rel) && isDeepStrictEqual(previous.files[rel], entry))
+          || (mcpFile && !isDeepStrictEqual(previous.mcpServers, mcpServers))) {
           throw new Error(`existing bundle ${stamp} differs`);
         }
       } else {
@@ -330,6 +358,9 @@ function migrateBackups(target) {
       throw new Error(`cannot migrate legacy backup ${dir}: ${error.message}`);
     }
   }
+  const metadata = join(root, '.DS_Store');
+  const metadataStat = lstatSync(metadata, { throwIfNoEntry: false });
+  if (metadataStat && !metadataStat.isDirectory()) rmSync(metadata);
   if (readdirSync(root).length === 0) rmdirSync(root);
 }
 
@@ -545,6 +576,9 @@ function main() {
     const drift = [
       ...(legacyManifest ? [`pending migration: ${LEGACY_MANIFEST}`] : []),
       ...(legacyBackups ? ['pending migration: backups/claude-workflow'] : []),
+      ...(legacyBackups ? readdirSync(join(target, 'backups', 'claude-workflow'))
+        .filter((name) => name !== '.DS_Store' && !lstatSync(join(target, 'backups', 'claude-workflow', name)).isDirectory())
+        .map((name) => `not a backup: backups/claude-workflow/${name}`) : []),
       ...changed.map((f) => `differs or missing: ${f}`),
       ...orphans.map((f) => `no longer shipped: ${f}`),
       ...retiredPresent(readJson(settingsPath)).map((rule) => `retired permission rule still installed: ${rule}`),
@@ -578,13 +612,13 @@ function main() {
     const source = planned.get(rel);
     atomicWrite(join(target, rel), readFileSync(source), statSync(source).mode & 0o777);
   }
-  for (const rel of orphans) rmSync(join(target, rel));
   if (settingsChanged) atomicWrite(settingsPath, settings);
+  for (const rel of orphans) rmSync(join(target, rel));
+  atomicWrite(join(target, MANIFEST), stable({ files: [...planned.keys()].sort(), personalHooks: desired.personalHooks }));
   if (legacyManifest) {
     rmSync(join(target, LEGACY_MANIFEST));
     console.log(`Migrated legacy manifest ${LEGACY_MANIFEST} to ${MANIFEST}.`);
   }
-  atomicWrite(join(target, MANIFEST), stable({ files: [...planned.keys()].sort(), personalHooks: desired.personalHooks }));
   retainBundles(target, keepBackups);
 
   console.log(`Installed into ${target}: ${changed.length} file(s) written, ${orphans.length} removed, settings ${settingsChanged ? 'updated' : 'unchanged'}.`);
