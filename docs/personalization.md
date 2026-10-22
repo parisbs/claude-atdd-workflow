@@ -50,8 +50,9 @@ To keep git instructions disabled while restoring compact status context,
 add an optional `SessionStart` hook that prints the current branch and up to
 20 status lines. For every session, put it in `personal/settings.json` and
 reinstall: the installer adds personal hooks after the repository's managed
-ones, replaces them on each install and removes one you delete from the
-file. For one project, put it in that project's `.claude/settings.local.json`
+ones, installs each once and removes one you delete from the file. A copy
+left by an installer older than this support stays until you add the same
+hook back or remove it by hand. For one project, put it in that project's `.claude/settings.local.json`
 instead, merging it into any existing hooks there. Never edit the installed
 copies in `~/.claude`.
 
