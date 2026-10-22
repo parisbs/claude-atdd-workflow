@@ -46,15 +46,14 @@ pull request instructions. It also removes the git snapshot of branch,
 status and recent commits read at session start. Set
 `"includeGitInstructions": true` in `personal/settings.json` to restore both.
 
-Do not put a `hooks` key in `personal/settings.json`: the installer currently
-drops the repository's managed `PreToolUse` guard hooks from
-`~/.claude/settings.json` and duplicates the personal hook on every install,
-so `--check` keeps reporting drift. Add an optional `SessionStart` hook to a
-project's `.claude/settings.local.json`, merging it into any existing hooks
-there. A user-wide personal hook must wait for installer support for hooks in
-`personal/settings.json`. Never edit the installed copies in `~/.claude`.
 To keep git instructions disabled while restoring compact status context,
-this hook prints the current branch and up to 20 status lines:
+add an optional `SessionStart` hook that prints the current branch and up to
+20 status lines. For every session, put it in `personal/settings.json` and
+reinstall: the installer adds personal hooks after the repository's managed
+ones, replaces them on each install and removes one you delete from the
+file. For one project, put it in that project's `.claude/settings.local.json`
+instead, merging it into any existing hooks there. Never edit the installed
+copies in `~/.claude`.
 
 ```json
 {
