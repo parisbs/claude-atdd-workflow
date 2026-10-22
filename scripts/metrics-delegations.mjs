@@ -11,8 +11,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PARAMETERS = ['working_dir', 'context', 'target_files', 'acceptance_criteria', 'system_instructions',
   'output_schema', 'model', 'reasoning_effort'];
 const CODEX = /^mcp__(.+)__(codex_delegate|codex_follow_up|codex_job_result)$/;
-// Older codex-subagent-mcp versions print no uncached figure; it is then the input less the cached tokens.
-const STATS = /^model=([^\s|]+) \| effort=([^\s|]+) \|.*\btokens=in (\d+) \(cached (\d+)(?:, uncached (\d+))?\) \/ out (\d+)/;
+// Older codex-subagent-mcp versions print no uncached figure; it is then the input less the cached tokens. A
+// thread of several turns prints `tokens this turn=` and `tokens thread so far=`; only this turn is the result's.
+const STATS = /^model=([^\s|]+) \| effort=([^\s|]+) \|.*\btokens(?: this turn)?=in (\d+) \(cached (\d+)(?:, uncached (\d+))?\) \/ out (\d+)/;
 const BEGIN = '-----BEGIN STRUCTURED RESULT-----';
 const END = '-----END STRUCTURED RESULT-----';
 const USAGE = 'Usage: metrics-delegations.mjs [--dir <projects>] [--since YYYY-MM-DD] [--rates <file>] [--json] [--verbose]';
@@ -33,7 +34,7 @@ function rank(values, p) {
   return sorted[Math.max(1, Math.ceil(p * sorted.length)) - 1];
 }
 const spread = (values) => ({ median: rank(values, 0.5), p90: rank(values, 0.9) });
-const sizes = (values) => ({ ...spread(values), max: values.length ? Math.max(...values) : null });
+const sizes = (values) => ({ ...spread(values), max: values.length ? values.reduce((a, b) => (b > a ? b : a)) : null });
 
 function options(args) {
   const result = { json: false, verbose: false };
@@ -233,7 +234,8 @@ function collect(dir, opts) {
 }
 
 function report(data, opts, list, table) {
-  const delegates = {};
+  // No prototype, so a delegate named `__proto__` stays an ordinary key.
+  const delegates = Object.create(null);
   for (const name of [...new Set(data.delegations.map((d) => d.name))].sort(byName)) {
     const rows = data.delegations.filter((d) => d.name === name);
     const chars = rows.map((d) => d.pkg.chars);
@@ -324,6 +326,10 @@ function main() {
   const { unreadable } = data.counters;
   // The JSON document keeps its documented keys, so skipped paths are noted on stderr.
   if (opts.json && unreadable) console.error(`Unreadable paths skipped: ${unreadable}`);
+  // A reader that closes the pipe early, such as head, ends the report quietly.
+  process.stdout.on('error', (error) => {
+    if (error.code !== 'EPIPE') { console.error(error.message); process.exitCode = 1; }
+  });
   process.stdout.write(opts.json ? `${JSON.stringify(doc, null, 2)}\n` : text(doc, unreadable));
 }
 
