@@ -205,6 +205,9 @@ de-identified metrics from their own sessions to it.
   published under CC0 1.0. The transcript format was checked on 2026-10-20.
 - The maintainer's own dataset comes from the same script, with model, effort
   and CLI versions.
+- A local delegation report (issue #34, `scripts/metrics-delegations.mjs`): task-package coverage, hand-back
+  and Codex result sizes, and Codex tokens per model and effort, in aggregates only. It is the before and after
+  measurement for the routing and compact-report decisions (ADR 0025 and 0026) and is not donated.
 - An optional local event log of hook decisions, off by default: counts,
   categories and enumerations only, never prompts, code or paths. Not decided.
 - A baseline from the git and GitHub history. Not decided.
