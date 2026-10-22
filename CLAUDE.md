@@ -15,8 +15,8 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   - `npm run test:metrics`: `scripts/metrics-*.mjs`, `.github/` and the README section on donating metrics.
 - Install: `node scripts/install.mjs`; `--check` reports drift and writes nothing. Run it after changing
   anything under `global/` or `personal/`.
-- Delegation report: `node scripts/metrics-delegations.mjs` (`--since`, `--rates`, `--json`, `--verbose`)
-  prints local aggregates on task packages, hand-backs and Codex tokens, to measure delegation changes.
+- Delegation report: `node scripts/metrics-delegations.mjs` (`--dir`, `--since`, `--rates`, `--json`,
+  `--verbose`) prints local aggregates on task packages, hand-backs and Codex tokens, to measure changes.
 
 ## Invariants
 

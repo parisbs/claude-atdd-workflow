@@ -214,8 +214,17 @@ npm run test:verbose
 
 To measure delegations before and after a change, `node scripts/metrics-delegations.mjs` reads your local
 transcripts and prints aggregates only: how task packages are filled, how large hand-backs and Codex results
-are, and the tokens Codex used per model and effort. `--since YYYY-MM-DD`, `--rates <file>`, `--json` and
-`--verbose` refine it; it writes nothing and is not part of the metrics donation.
+are, and the tokens Codex used per model and effort. It reads `$CLAUDE_CONFIG_DIR/projects`, or
+`~/.claude/projects` without that variable; `--dir <projects>` reads another directory. `--since YYYY-MM-DD`
+counts only records from that UTC day on, `--json` prints one JSON document and `--verbose` adds one row per
+delegation. `--rates <file>` adds credits from a JSON table of credits per million input, cached and output
+tokens per model:
+
+```json
+{ "gpt-6.1-sol": { "input": 100, "cached": 10, "output": 500 } }
+```
+
+It writes nothing and is not part of the metrics donation.
 
 ## License
 
