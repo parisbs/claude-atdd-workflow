@@ -1,0 +1,26 @@
+name: Bug
+description: A hook, skill, agent, script or template that behaves differently from what it should.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behaviour
+      description: What happens, with the exact steps, the commit of this repository you installed, the Claude Code version (`claude --version`), Node and the operating system.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: The regression test that must fail before the fix and pass after it, as WHEN ... THEN ..., numbered AC-n. Tests here run with `npm test`; a hook test spawns the real hook.
+      placeholder: |
+        - AC-1: WHEN ... THEN ...
+    validations:
+      required: true

@@ -1,0 +1,33 @@
+name: Feature
+description: New behaviour of the workflow, described by testable acceptance criteria.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who is affected and what they cannot do today.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in, and explicitly what is out. Name the areas it touches, such as `global/hooks/`, a skill, `scripts/install.mjs` or the `repo-bootstrap` templates.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: One per observable behaviour, numbered AC-1, AC-2, each as WHEN <situation> THEN <observable result>. The tests that prove a criterion carry its identifier in their name.
+      placeholder: |
+        - AC-1: WHEN ... THEN ...
+        - AC-2: WHEN ... THEN ...
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decisions and risks
+      description: Linked ADRs in `docs/adr/`, dependencies and open risks. A decision that closes an alternative needs a new ADR.

@@ -15,8 +15,8 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   - `npm run test:metrics`: `scripts/metrics-*.mjs`, `.github/` and the README section on donating metrics.
 - Install: `node scripts/install.mjs`; `--check` reports drift and writes nothing. Run it after changing
   anything under `global/` or `personal/`.
-- Delegation report: `node scripts/metrics-delegations.mjs` (`--dir`, `--since`, `--rates`, `--json`,
-  `--verbose`) prints local aggregates on task packages, hand-backs and Codex tokens, to measure changes.
+- Delegation report: `node scripts/metrics-delegations.mjs`, to measure a change to delegation before and after
+  it.
 
 ## Invariants
 
@@ -50,8 +50,8 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   in a file imported from here.
 - User skill names never collide with project skills (ADR 0007). Skills that publish or reconfigure stay
   manual; see ADR 0010 for which.
-- Hook tests spawn the real hook with a fake `gh` first on `PATH`. They are POSIX-only, like the CI matrix
-  (Ubuntu and macOS).
+- Hook tests spawn the real hook with a fake `gh` first on `PATH`. They are POSIX-only: CI runs the whole suite
+  on Ubuntu and macOS, and only the metrics tests on Windows.
 
 ## Conventions
 
