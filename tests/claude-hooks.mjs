@@ -11,7 +11,11 @@
 // Two simplifications. An entry without a matcher is skipped: only guard-codex ships without one, and
 // the installer derives it. And `if` is approximated: Bash(<words> *) runs the hook when the command
 // holds those words in that order, which reaches every form Claude Code matched in
-// docs/experiments/2026-10-21-hook-if-and-onfailure-probes.md, and more.
+// docs/experiments/2026-10-21-hook-if-and-onfailure-probes.md, and more. It also runs it, as Claude Code
+// does for a pattern that names more than the command, whenever the command holds a form `if` cannot
+// rule out: $(), backticks, ${...}, a for, while or until loop in any spelling, a function definition with
+// or without the function keyword, a variable in command position, or test or [ with a variable (issue #31,
+// docs/experiments/2026-10-21-hook-if-and-onfailure-probes.md, section 2).
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -49,11 +53,21 @@ export function handlersFor(toolName, settings = SETTINGS) {
     .flatMap((entry) => entry.hooks ?? []);
 }
 
-function ifApplies(rule, toolName, input) {
+// The forms after which Claude Code runs a hook whose `if` names more than the command, matched or not.
+const UNREADABLE = new RegExp([
+  /\$\(|`|\$\{/.source,
+  /(?:^|[\s;&|(])(?:for|while|until)\b[\s\S]*\bdo\b/.source,
+  /\w+\s*\(\s*\)\s*\{|\bfunction\s+\w+/.source,
+  /(?:^|[;&|(\n])\s*\$\w/.source,
+  /(?:^|[;&|(\n])\s*(?:test|\[\[?)\s[^;&|\n]*\$/.source,
+].join('|'));
+
+export function ifApplies(rule, toolName, input) {
   if (rule === undefined) return true;
   const match = /^Bash\((.*?)(?: \*)?\)$/.exec(rule);
   if (!match) throw new Error(`claude-hooks: unsupported if rule ${rule}`);
   if (toolName !== 'Bash') return false;
+  if (match[1].includes(' ') && UNREADABLE.test(input.command ?? '')) return true;
   const words = match[1].split(' ').map((word) => `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
   return new RegExp(words.join('[\\s\\S]*')).test(input.command ?? '');
 }

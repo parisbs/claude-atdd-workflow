@@ -10,7 +10,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { HOOKS, SETTINGS, handlersFor, runConfigured } from './claude-hooks.mjs';
+import { HOOKS, SETTINGS, handlersFor, ifApplies, runConfigured } from './claude-hooks.mjs';
 
 // guard-git run directly, with a mode or without one.
 function guardGit(event, env, ...args) {
@@ -129,19 +129,21 @@ describe('guard-git entries of global/settings.json (#27)', () => {
   const NO_NODE = () => join(root, 'no-node');
 
   test('AC-1 (#27) decides merges from an entry of its own that runs only for gh pr merge and blocks the call when it fails', () => {
-    const merge = guardGitHandlers().filter((h) => h.command.endsWith(' --merge-only'));
+    const merge = guardGitHandlers().filter((h) => / --merge-only\b/.test(h.command));
     assert.equal(merge.length, 1, 'one handler runs guard-git --merge-only');
     assert.equal(merge[0].if, 'Bash(gh pr merge *)');
     assert.equal(merge[0].onFailure, 'block');
   });
 
   test('AC-2 (#27) leaves every other rule to an entry for all of Bash that fails open, and no other hook blocks on failure', () => {
-    const general = guardGitHandlers().filter((h) => h.command.endsWith(' --skip-merge'));
+    const general = guardGitHandlers().filter((h) => / --skip-merge\b/.test(h.command));
     assert.equal(general.length, 1, 'one handler runs guard-git --skip-merge');
     assert.equal(general[0].if, undefined, 'it runs for every Bash command');
     assert.equal(guardGitHandlers().length, 2);
     const blocking = SETTINGS.hooks.PreToolUse.flatMap((entry) => entry.hooks).filter((h) => h.onFailure !== undefined);
-    assert.deepEqual(blocking.map((h) => [h.command, h.onFailure]), [['node "$HOME/.claude/hooks/guard-git.mjs" --merge-only', 'block']]);
+    assert.equal(blocking.length, 1, 'one handler blocks on failure');
+    assert.match(blocking[0].command, /node "\$HOME\/\.claude\/hooks\/guard-git\.mjs" --merge-only\b/);
+    assert.equal(blocking[0].onFailure, 'block');
   });
 
   test('AC-1 (#27) blocks the merge, saying why, when gh hangs past the timeout of the merge entry', () => {
@@ -149,14 +151,14 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     const env = { ...github({ view: { stdout: green(), delayMs: 4000 } }), GUARD_GIT_GH_TIMEOUT_MS: '5000', GUARD_GIT_GH_BUDGET_MS: '5000' };
     const result = runConfigured(event(SQUASH), { env, timeoutMs: 1500 });
     assert.equal(result.decision, 'deny');
-    assert.match(result.reason, /--merge-only: timed out after 1500 ms; blocking because onFailure is "block"/);
+    assert.match(result.reason, /--merge-only\b[^\n]*: timed out after 1500 ms; blocking because onFailure is "block"/);
   });
 
   test('AC-1 (#27) blocks the merge when the hook cannot load its modules, or node cannot start', () => {
     for (const options of [{ hooksDir: broken }, { path: NO_NODE() }]) {
       const result = runConfigured(event(SQUASH), { env: github(), ...options });
       assert.equal(result.decision, 'deny', JSON.stringify(options));
-      assert.match(result.reason, /--merge-only: exited with \d+; blocking because onFailure is "block"/);
+      assert.match(result.reason, /--merge-only\b[^\n]*: exited with \d+; blocking because onFailure is "block"/);
       assert.deepEqual(ghCalls(), [], 'nothing read the pull request');
     }
   });
@@ -256,5 +258,122 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     assert.match(result.reason, /could not decide this merge/i);
     assert.match(result.reason, /must be of type string/);
     assert.equal(runConfigured(failing, { env: github() }).decision, 'ask', 'the general entry fails open, the merge entry asks');
+  });
+
+  // Issue #31: Claude Code runs the merge entry for every command its `if` cannot rule out, so a failure of
+  // that entry must block a merge and nothing else.
+  const NOT_MERGES = [
+    'echo $(date)',
+    'echo `date`',
+    'for f in a b; do echo $f; done',
+    'while false; do :; done',
+    'f() { echo hi; }; f',
+    'function f { echo hi; }; f',
+    'for ((i = 0; i < 1; i++)); do echo $i; done',
+    'test -n "$X" && echo yes',
+  ];
+  // A hooks directory whose guard-git never finishes.
+  const hanging = () => {
+    const hooks = join(root, 'hanging');
+    if (!existsSync(hooks)) {
+      mkdirSync(hooks);
+      writeFileSync(join(hooks, 'guard-git.mjs'), 'setInterval(() => {}, 1000);\n');
+    }
+    return hooks;
+  };
+  const isMergeEntry = (command) => command.includes('guard-git.mjs') && / --merge-only\b/.test(command);
+
+  test('AC-1 (#31) a command that is not a merge goes ahead when the merge entry cannot start or runs past its timeout', () => {
+    for (const [label, options] of [
+      ['modules missing', { hooksDir: broken }],
+      ['no node', { path: NO_NODE() }],
+      ['hook hangs', { hooksDir: hanging(), timeoutMs: 1000 }],
+    ]) {
+      for (const command of NOT_MERGES) {
+        const result = runConfigured(event(command), options);
+        assert.ok(result.ran.some(isMergeEntry), `${label}, ${command}: the merge entry did not run`);
+        assert.notEqual(result.decision, 'deny', `${label}, ${command}: ${result.reason}`);
+        assert.ok(!result.failures.some(isMergeEntry), `${label}, ${command}: ${result.failures}`);
+      }
+    }
+  });
+
+  test('AC-2 (#31) a merge is blocked, naming onFailure, when the merge entry cannot start or runs past its timeout', () => {
+    const merges = [
+      SQUASH,
+      `cd ${dir} && gh pr merge 12 --squash`,
+      `cd ${dir}; gh pr merge 12 --squash`,
+      'GH_HOST=github.com gh pr merge 12 --squash',
+      'FOO=1 BAR=2 gh pr merge 12 --squash',
+      'gh pr merge 12 --squash -R o/r',
+      'gh pr merge 12 --squash --repo=o/r',
+      'echo start; gh pr merge 12 --squash',
+      'false || gh pr merge 12 --squash',
+      'gh pr merge 12 --squash | cat',
+      'echo start\ngh pr merge 12 --squash',
+      'gh pr merge 12 --squash && echo done',
+      'echo $(gh pr merge 12 --squash)',
+      'echo `gh pr merge 12 --squash`',
+      'for n in 12; do gh pr merge $n --squash; done',
+      'gh pr "merge" 12 --squash',
+      "gh pr 'merge' 12 --squash",
+    ];
+    for (const [label, options, commands] of [
+      ['modules missing', { hooksDir: broken }, merges],
+      ['no node', { path: NO_NODE() }, merges],
+      ['hook hangs', { hooksDir: hanging(), timeoutMs: 1000 }, [SQUASH, 'echo $(gh pr merge 12 --squash)', "gh pr 'merge' 12 --squash"]],
+    ]) {
+      for (const command of commands) {
+        const result = runConfigured(event(command), { env: github(), ...options });
+        assert.equal(result.decision, 'deny', `${label}, ${command}`);
+        assert.match(result.reason, /--merge-only\b[^\n]*: (?:exited with \d+|timed out after \d+ ms); blocking because onFailure is "block"/, `${label}, ${command}`);
+      }
+    }
+  });
+
+  test('AC-4 (#31) the merge entry exits 0 with no output for a command that is not a merge when node is not on PATH', () => {
+    const [merge] = guardGitHandlers().filter((h) => isMergeEntry(h.command));
+    const home = mkdtempSync(join(root, 'home-'));
+    for (const command of NOT_MERGES) {
+      const run = spawnSync('/bin/sh', ['-c', merge.command], {
+        input: JSON.stringify(event(command)),
+        encoding: 'utf8',
+        env: { HOME: home, PATH: NO_NODE() },
+      });
+      assert.equal(run.status, 0, `${command}: ${run.stderr}`);
+      assert.equal(run.stdout, '', command);
+      assert.equal(run.stderr, '', command);
+    }
+  });
+});
+
+describe('the if of the test harness follows Claude Code (#31)', () => {
+  const RULE = 'Bash(gh pr merge *)';
+  const runs = (command, tool = 'Bash') => ifApplies(RULE, tool, { command });
+
+  test('AC-3 (#31) runs an entry whose pattern names more than the command for any form if cannot rule out', () => {
+    for (const command of [
+      'echo $(date)', 'echo `date`', 'ls ${TMPDIR:-/tmp}', 'for f in a b; do echo $f; done', 'while false; do :; done',
+      'until true; do :; done', 'f() { echo hi; }; f',
+      // Amendment: the other spellings, and the forms the probes of section 2 recorded.
+      'function f { echo hi; }; f', 'for ((i = 0; i < 1; i++)); do echo $i; done', 'for((i=0;i<1;i++));do echo $i;done',
+      'while(false);do echo hi;done', 'test -n "$X" && echo yes', '[ -n "$X" ] && echo yes', '$GH pr merge 5 --squash',
+      'x=$(gh pr view 5 --json url) && echo $x',
+    ]) {
+      assert.equal(runs(command), true, command);
+    }
+  });
+
+  test('AC-3 (#31) still applies the pattern to a plain command', () => {
+    assert.equal(runs('gh pr merge 5 --squash'), true);
+    for (const command of [
+      'git status', 'echo $HOME', 'gh pr view 5', 'git log --oneline -3',
+      // Amendment: the plain forms the probes of section 2 recorded as not running the entry.
+      'echo "$HOME/x"', 'cd "$HOME" && ls', 'P=/tmp; cd "$P" && ls', 'npm test 2>&1 | tail -5', 'node -e "console.log(1)"',
+      'gh issue list', 'cd /tmp && gh pr checks 5',
+    ]) {
+      assert.equal(runs(command), false, command);
+    }
+    assert.equal(runs('echo $(date)', 'Edit'), false, 'a Bash rule never runs for another tool');
   });
 });

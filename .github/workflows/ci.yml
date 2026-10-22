@@ -51,6 +51,19 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm test
 
+  # Test the exact Node floor, where the dot reporter first includes failure details.
+  test-minimum:
+    name: Test minimum Node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.2.0
+      - run: npm test
+
   # The test job already runs the metrics tests on Ubuntu and macOS; this job
   # adds Windows, where the POSIX-only hook tests cannot run (ADR 0023).
   metrics:
