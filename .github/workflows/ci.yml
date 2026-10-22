@@ -53,7 +53,7 @@ jobs:
 
   # Test the exact Node floor, where the dot reporter first includes failure details.
   test-minimum:
-    name: Test minimum Node (22.2.0)
+    name: Test minimum Node
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
