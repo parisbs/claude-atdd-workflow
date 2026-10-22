@@ -14,14 +14,18 @@
 // - personal/preferences.md, when present, as rules/personal.md;
 // - settings: the existing settings.json, then global/settings.json, then
 //   personal/settings.json, merged in that order. Permission lists are unions,
-//   kept third-party hook entries come first, followed by global and personal
-//   hooks. The manifest tracks personal entries for replacement or removal;
-//   upgrading without that record removes all copies matching the current
-//   personal entries before appending them. Anything else already in the file
-//   is kept. The one exception is global/retired-permissions.json: the rules
-//   listed there ({"ask": [...], "allow": [...], "deny": [...]}) were installed
-//   once and no longer ship, so they are removed from the existing settings
-//   before the merge, because a union alone never lets a rule leave;
+//   hook entries whose command or args match MANAGED_HOOK
+//   (/.claude/hooks/<name>.mjs) are replaced as managed. Kept third-party
+//   entries come first, followed by global and personal hooks. The manifest
+//   tracks personal entries for replacement or removal. Every install removes
+//   all copies matching current personal entries, regardless of the manifest,
+//   then appends each once unless already in global hooks. This also collapses
+//   identical third-party entries, even on a first install. Anything else
+//   already in the file is kept. The one exception is
+//   global/retired-permissions.json: the rules listed there ({"ask": [...],
+//   "allow": [...], "deny": [...]}) were installed once and no longer ship, so
+//   they are removed from the existing settings before the merge, because a
+//   union alone never lets a rule leave;
 // - MCP servers (ADR 0014): global/mcp-servers.json (name -> add-json object),
 //   with the env of personal/mcp-servers.json merged over it key by key, is
 //   registered in the user scope through `claude mcp add-json` and
@@ -135,25 +139,26 @@ function mergeSettings(base, overlay) {
   return out;
 }
 
-// Replaces the hook entries this repository installed, keeps everyone else's.
+// Replaces managed hooks and deduplicates personal hooks, keeping distinct third-party entries.
 function mergeHooks(current, managed, personal, previousPersonal) {
   const out = {};
   const events = new Set([...Object.keys(current), ...Object.keys(managed), ...Object.keys(personal)]);
   for (const event of events) {
-    let remaining = [...(current[event] ?? [])];
-    // Older manifests did not track personal entries, so remove every matching copy on upgrade.
-    if (!previousPersonal) {
-      remaining = remaining.filter((entry) => !(personal[event] ?? []).some((installed) => isDeepStrictEqual(installed, entry)));
-    }
+    const remaining = [...(current[event] ?? [])];
     // Personal entries were appended, so remove from the end to keep identical third-party entries.
     for (const installed of previousPersonal?.[event] ?? []) {
       const index = remaining.findLastIndex((entry) => isDeepStrictEqual(installed, entry));
       if (index >= 0) remaining.splice(index, 1);
     }
     const kept = remaining.filter(
-      (entry) => !(entry.hooks ?? []).some((h) => MANAGED_HOOK.test(`${h.command ?? ''} ${(h.args ?? []).join(' ')}`)),
+      (entry) => !(entry.hooks ?? []).some((h) => MANAGED_HOOK.test(`${h.command ?? ''} ${(h.args ?? []).join(' ')}`))
+        && !(personal[event] ?? []).some((installed) => isDeepStrictEqual(installed, entry)),
     );
-    const merged = [...kept, ...(managed[event] ?? []), ...(personal[event] ?? [])];
+    // The manifest can be missing or stale; current personal entries still appear only once.
+    const merged = [...kept, ...(managed[event] ?? [])];
+    for (const entry of personal[event] ?? []) {
+      if (!merged.some((installed) => isDeepStrictEqual(installed, entry))) merged.push(entry);
+    }
     if (merged.length > 0) out[event] = merged;
   }
   return out;
