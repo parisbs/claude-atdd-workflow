@@ -107,3 +107,9 @@ without permission prompts and nothing else could run. The fake `gh` recorded it
 - The fake `gh` recorded no call.
 
 The error Claude Code shows names the whole command of the entry, gate included.
+
+After the review the gate looks for `merge` only in the command, for compact events of at most 16,000 characters
+whose description key follows the command key, and in the whole event otherwise. The same probe against that gate
+gave the same results: the four non-merge commands ran in both variants; `gh pr merge 12 --squash` was blocked in
+both, and `echo $(gh pr merge 12 --squash)` was blocked in variant A (in variant B the model did not run it after
+the block of the previous command); the fake `gh` recorded no call.
