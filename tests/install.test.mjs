@@ -8,6 +8,7 @@ import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { fakeClaude } from './fake-claude.mjs';
+import './state-home.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 // The installer registers MCP servers through `claude` (ADR 0014); a fake one stands in for it, so the
@@ -91,7 +92,7 @@ describe('install', () => {
   });
 
   test('removes files it installed and no longer ships', () => {
-    const manifest = join(target, '.claude-workflow-manifest.json');
+    const manifest = join(target, '.claude-atdd-workflow-manifest.json');
     const m = JSON.parse(readFileSync(manifest, 'utf8'));
     m.files.push('skills/retired/SKILL.md');
     writeFileSync(manifest, JSON.stringify(m));

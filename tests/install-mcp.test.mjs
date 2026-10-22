@@ -5,12 +5,13 @@
 // and messages below are the contract: how the installer reaches them is its own business.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { fakeClaude } from './fake-claude.mjs';
+import { bundlesFor } from './state-home.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const scratch = mkdtempSync(join(tmpdir(), 'cw-mcp-'));
@@ -219,12 +220,11 @@ describe('AC-2 reports and repairs drift', () => {
     const old = { type: 'stdio', command: 'old', args: [] };
     registered(target, { 'codex-reviewer': previous, 'old-server': old });
     assert.equal(run(repoDir, target).status, 0);
-    const root = join(target, 'backups', 'claude-workflow');
-    assert.ok(existsSync(root), 'the installer made no backup');
-    const saved = readdirSync(root)
-      .map((stamp) => join(root, stamp, 'mcp-servers.json'))
-      .filter(existsSync)
-      .map((file) => JSON.parse(readFileSync(file, 'utf8')));
+    const bundles = bundlesFor(target);
+    assert.ok(bundles.length > 0, 'the installer made no backup');
+    const saved = bundles
+      .map((bundle) => bundle.mcpServers ?? {})
+      .filter((servers) => Object.keys(servers).length > 0);
     assert.equal(saved.length, 1, 'one backup of the registrations that were replaced or removed');
     assert.deepEqual(saved[0], { 'codex-reviewer': previous, 'old-server': old });
   });

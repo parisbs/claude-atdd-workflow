@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { fakeClaude } from './fake-claude.mjs';
+import './state-home.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const hook = join(root, 'global', 'hooks', 'guard-codex.mjs');
