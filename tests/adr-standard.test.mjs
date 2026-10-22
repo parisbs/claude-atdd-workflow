@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { fakeClaude } from './fake-claude.mjs';
+import './state-home.mjs';
 import { LEGACY_LINE, frontMatter, frontStatus } from './front-matter.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');

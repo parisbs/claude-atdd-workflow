@@ -161,11 +161,32 @@ The personal files are optional: edit them to your own preferences first. The
 check reports what would change without writing anything. Installing copies
 files (never links them), merges `settings.json` keeping existing user settings
 except retired rules and reconciling the derived Codex permissions, backs up
-whatever it overwrites to `~/.claude/backups/claude-workflow/`,
-and removes files it installed earlier but no longer ships. It also registers the
+whatever it overwrites or removes in JSON bundles under
+`$XDG_STATE_HOME/claude-atdd-workflow/backups/` (or
+`~/.local/state/claude-atdd-workflow/backups/` when unset or relative), and removes
+files it installed earlier but no longer ships. It keeps the latest 10 bundles
+per target; `--keep-backups <n>` changes that limit. `--list-backups` lists them
+and their location; `--restore <stamp>` restores one for its target after saving
+what it overwrites, keeping the restored bundle during retention so the restore
+can be repeated. Legacy backups are migrated once and exempt from retention.
+Empty legacy directories are removed without a bundle; migration removes
+`.DS_Store` and leaves other loose files in place, reporting them as not backups
+during installation and `--check`. Symlinks inside legacy backups are reported
+and skipped; a symlink or regular file at the legacy root is reported as not
+migratable and left untouched. Malformed bundle files are skipped with a warning
+and never removed by retention; one blocking a legacy directory leaves that
+directory in place and the install exits non-zero while other directories migrate.
+Atomic writes replace symlinks at planned files and the manifest with regular
+files, leaving their former targets untouched and saving resolved content in
+the bundle. Only `settings.json` keeps a resolving symlink and updates its real
+path atomically; a dangling settings link is replaced by a regular file.
+Settings are written before retired files are removed, and the new manifest is
+written before the legacy one is removed.
+An install refuses differing files it does not manage with exit 2; `--adopt`
+backs them up and takes them over. It also registers the
 declared MCP servers through the `claude` CLI, never by writing `~/.claude.json`,
-replacing a registration that differs (the old one is saved in the backup
-directory) and removing a retired one; a Claude Code session that is already
+replacing a registration that differs (the old one is saved in the bundle)
+and removing a retired one; a Claude Code session that is already
 open keeps the old server process until it reloads. Without `claude` on `PATH`
 the servers are reported as not verified, and the check exits 1. Run the check
 again at any time to detect drift.

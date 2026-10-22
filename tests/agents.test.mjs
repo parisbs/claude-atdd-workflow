@@ -3,11 +3,12 @@
 // say, not that Claude Code honours it. That is the read-only probe recorded in the pull request.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { bundlesFor } from './state-home.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const agentPath = (name) => join(repo, 'global', 'agents', `${name}.md`);
@@ -61,7 +62,7 @@ describe('installing agents', () => {
     const copy = join(target, 'agents', 'example.md');
     assert.ok(existsSync(copy), 'the installer did not copy agents/example.md');
     assert.equal(readFileSync(copy, 'utf8'), readFileSync(example(), 'utf8'));
-    const manifest = JSON.parse(readFileSync(join(target, '.claude-workflow-manifest.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(join(target, '.claude-atdd-workflow-manifest.json'), 'utf8'));
     assert.ok(manifest.files.includes('agents/example.md'), 'the manifest does not list agents/example.md');
   });
 
@@ -92,8 +93,7 @@ describe('installing agents', () => {
       assert.equal(r.status, 0, r.stderr);
       assert.equal(existsSync(copy), false, 'the retired agent is still installed');
       assert.match(r.stdout, /Backed up/);
-      const backups = join(target, 'backups', 'claude-workflow');
-      const saved = readdirSync(backups).some((stamp) => existsSync(join(backups, stamp, 'agents', 'example.md')));
+      const saved = bundlesFor(target).some((bundle) => bundle.files?.['agents/example.md']);
       assert.ok(saved, 'the retired agent was not backed up');
     } finally {
       writeFileSync(example(), kept);

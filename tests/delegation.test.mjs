@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { fakeClaude } from './fake-claude.mjs';
+import './state-home.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const instructions = readFileSync(join(repo, 'global', 'CLAUDE.md'), 'utf8');
