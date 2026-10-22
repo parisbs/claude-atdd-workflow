@@ -53,7 +53,7 @@
           {
             "type": "command",
             "if": "Bash(gh pr merge *)",
-            "command": "event=; while IFS= read -r line; do event=\"$event$line\n\"; done; event=\"$event$line\"; scope=$event; if [ \"${#event}\" -le 16000 ]; then shape=${event%\"${event##*[!'\n']}\"}; case \"$shape\" in '{'*'}') case \"$event\" in *': '* | *':\t'*) ;; *'\"command\":\"'*'\"command\":\"'*) ;; *'\"command\":\"'*'\",\"description\":\"'*) scope=command ;; esac ;; esac; case \"$scope\" in command) case \"$event\" in *'\"command\":\"'*merge*'\",\"description\":\"'*) scope=merge ;; esac ;; esac; fi; case \"$scope\" in *merge*) printf '%s' \"$event\" | node \"$HOME/.claude/hooks/guard-git.mjs\" --merge-only ;; esac",
+            "command": "event=; while IFS= read -r line; do event=\"$event$line\n\"; done; event=\"$event$line\"; scope=$event; if [ \"${#event}\" -le 16000 ]; then shape=${event%\"${event##*[!'\n']}\"}; case \"$shape\" in '{'*'}') case \"$event\" in *'\"command\":\"'*'\"command\":\"'*) ;; *'\"command\":\"'*'\",\"description\":\"'*) scope=command ;; esac ;; esac; case \"$scope\" in command) case \"$event\" in *'\"command\":\"'*merge*'\",\"description\":\"'*) scope=merge ;; esac ;; esac; fi; case \"$scope\" in *merge*) printf '%s' \"$event\" | node \"$HOME/.claude/hooks/guard-git.mjs\" --merge-only ;; esac",
             "timeout": 30,
             "onFailure": "block",
             "statusMessage": "Checking the merge conditions"
