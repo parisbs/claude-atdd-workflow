@@ -218,13 +218,14 @@ are, and the tokens Codex used per model and effort. It reads `$CLAUDE_CONFIG_DI
 `~/.claude/projects` without that variable; `--dir <projects>` reads another directory. `--since YYYY-MM-DD`
 counts only records from that UTC day on, `--json` prints one JSON document and `--verbose` adds one row per
 delegation. `--rates <file>` adds credits from a JSON table of credits per million input, cached and output
-tokens per model:
+tokens per model; `input` applies to uncached input tokens only:
 
 ```json
 { "gpt-6.1-sol": { "input": 100, "cached": 10, "output": 500 } }
 ```
 
-It writes nothing and is not part of the metrics donation.
+Paths it cannot read are skipped and counted, on a text line or, with `--json`, in a note on stderr. It
+writes nothing and is not part of the metrics donation.
 
 ## License
 
