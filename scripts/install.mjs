@@ -14,13 +14,14 @@
 // - personal/preferences.md, when present, as rules/personal.md;
 // - settings: the existing settings.json, then global/settings.json, then
 //   personal/settings.json, merged in that order. Permission lists are unions,
-//   hooks installed by this repository are replaced with global hooks followed
-//   by personal hooks, using the manifest to track previously installed personal
-//   entries. Anything else already in the file is kept. The one exception is
-//   global/retired-permissions.json: the rules listed there
-//   ({"ask": [...], "allow": [...], "deny": [...]}) were
-//   installed once and no longer ship, so they are removed from the existing
-//   settings before the merge, because a union alone never lets a rule leave;
+//   kept third-party hook entries come first, followed by global and personal
+//   hooks. The manifest tracks personal entries for replacement or removal;
+//   upgrading without that record removes all copies matching the current
+//   personal entries before appending them. Anything else already in the file
+//   is kept. The one exception is global/retired-permissions.json: the rules
+//   listed there ({"ask": [...], "allow": [...], "deny": [...]}) were installed
+//   once and no longer ship, so they are removed from the existing settings
+//   before the merge, because a union alone never lets a rule leave;
 // - MCP servers (ADR 0014): global/mcp-servers.json (name -> add-json object),
 //   with the env of personal/mcp-servers.json merged over it key by key, is
 //   registered in the user scope through `claude mcp add-json` and
@@ -139,9 +140,13 @@ function mergeHooks(current, managed, personal, previousPersonal) {
   const out = {};
   const events = new Set([...Object.keys(current), ...Object.keys(managed), ...Object.keys(personal)]);
   for (const event of events) {
-    const remaining = [...(current[event] ?? [])];
+    let remaining = [...(current[event] ?? [])];
+    // Older manifests did not track personal entries, so remove every matching copy on upgrade.
+    if (!previousPersonal) {
+      remaining = remaining.filter((entry) => !(personal[event] ?? []).some((installed) => isDeepStrictEqual(installed, entry)));
+    }
     // Personal entries were appended, so remove from the end to keep identical third-party entries.
-    for (const installed of previousPersonal[event] ?? []) {
+    for (const installed of previousPersonal?.[event] ?? []) {
       const index = remaining.findLastIndex((entry) => isDeepStrictEqual(installed, entry));
       if (index >= 0) remaining.splice(index, 1);
     }
@@ -178,7 +183,8 @@ function withoutRetired(settings) {
 
 function desiredSettings(target, previousPersonal) {
   const existing = withoutRetired(readJson(join(target, 'settings.json')));
-  const { hooks: genericHooks, ...generic } = readJson(join(repo, 'global', 'settings.json'));
+  const generic = readJson(join(repo, 'global', 'settings.json'));
+  const genericHooks = generic.hooks;
   const { hooks: personalHooks = {}, ...personal } = readJson(join(repo, 'personal', 'settings.json'));
   const settings = mergeSettings(mergeSettings(existing, generic), personal);
   if (existing.hooks || genericHooks || Object.keys(personalHooks).length > 0) {
@@ -356,7 +362,7 @@ function main() {
   }).map(([rel]) => rel);
 
   const settingsPath = join(target, 'settings.json');
-  const desired = desiredSettings(target, manifest.personalHooks ?? {});
+  const desired = desiredSettings(target, manifest.personalHooks);
   const settings = stable(desired.settings);
   const settingsChanged = !existsSync(settingsPath) || readFileSync(settingsPath, 'utf8') !== settings;
 
