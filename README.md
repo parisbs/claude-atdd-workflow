@@ -30,7 +30,7 @@ paths, branch names, session or account identifiers, pull request URLs, custom
 titles, or private MCP server names. Unknown records and keys are counted and
 discarded, never printed.
 
-With Node 22 or newer, run this command from a checkout of the repository on
+With Node 22.2.0 or newer, run this command from a checkout of the repository on
 Windows (PowerShell), macOS or Linux (a terminal); no dependencies are needed:
 
 ```sh
@@ -143,7 +143,7 @@ cannot separate the effects of the workflow, developer, project and model.
 
 ## Install
 
-Requires Node 22 or later and Claude Code 2.1.295 or later. Older versions of
+Requires Node 22.2.0 or later and Claude Code 2.1.295 or later. Older versions of
 Claude Code ignore the `onFailure` setting that blocks a merge when its guard
 does not finish, and `--check` reports an older `claude` on `PATH`.
 
