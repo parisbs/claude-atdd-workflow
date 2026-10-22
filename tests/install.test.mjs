@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { fakeClaude } from './fake-claude.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -401,5 +402,129 @@ describe('install (#37)', () => {
 
   test('AC-7 (#37) the README links the personalization guide', () => {
     assert.match(readRepo('README.md'), /\]\((\.\/)?docs\/personalization\.md\)/);
+  });
+});
+
+// Issue #39: a hooks key in personal/settings.json must neither strip the managed hooks nor pile up across
+// installs. The installer runs from a fake copy of the repository whose personal settings each test writes.
+describe('install (#39)', () => {
+  const PERSONAL_SESSION = { hooks: [{ type: 'command', command: 'git branch --show-current' }] };
+  const PERSONAL_BASH = { matcher: 'Bash', hooks: [{ type: 'command', command: '/usr/local/bin/personal-guard' }] };
+  const THIRD_PARTY_BASH = { matcher: 'Bash', hooks: [{ type: 'command', command: '/opt/vendor/bin/vendor-guard' }] };
+  const THIRD_PARTY_SESSION = { hooks: [{ type: 'command', command: '/opt/vendor/bin/vendor-start' }] };
+  const shippedHooks = JSON.parse(readFileSync(join(repo, 'global', 'settings.json'), 'utf8')).hooks;
+  const temps = [];
+  after(() => { for (const dir of temps) rmSync(dir, { recursive: true, force: true }); });
+  const temp = (prefix) => {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    temps.push(dir);
+    return dir;
+  };
+  const writePersonal = (fakeRepo, personal) => {
+    mkdirSync(join(fakeRepo, 'personal'), { recursive: true });
+    writeFileSync(join(fakeRepo, 'personal', 'settings.json'), JSON.stringify(personal));
+  };
+  const fakeRepoWith = (personal) => {
+    const fakeRepo = temp('cw-fake-repo-39-');
+    mkdirSync(join(fakeRepo, 'scripts'));
+    mkdirSync(join(fakeRepo, 'global'));
+    copyFileSync(join(repo, 'scripts', 'install.mjs'), join(fakeRepo, 'scripts', 'install.mjs'));
+    copyFileSync(join(repo, 'global', 'settings.json'), join(fakeRepo, 'global', 'settings.json'));
+    copyFileSync(join(repo, 'global', 'mcp-servers.json'), join(fakeRepo, 'global', 'mcp-servers.json'));
+    writeFileSync(join(fakeRepo, 'global', 'CLAUDE.md'), 'x\n');
+    writePersonal(fakeRepo, personal);
+    return fakeRepo;
+  };
+  const installFrom = (fakeRepo, target, ...args) => spawnSync(
+    process.execPath,
+    [join(fakeRepo, 'scripts', 'install.mjs'), '--target', target, ...args],
+    { encoding: 'utf8', env: { ...process.env, ...fake.env() } },
+  );
+  const seeded = (settings) => {
+    const target = temp('cw-install-39-');
+    if (settings) writeFileSync(join(target, 'settings.json'), JSON.stringify(settings));
+    return target;
+  };
+  const installTwice = (fakeRepo, target) => {
+    for (let i = 0; i < 2; i += 1) {
+      const r = installFrom(fakeRepo, target);
+      assert.equal(r.status, 0, r.stderr);
+    }
+    return settingsOf(target);
+  };
+  const count = (entries, entry) => (entries ?? []).filter((e) => isDeepStrictEqual(e, entry)).length;
+  const withPersonalHooks = { hooks: { SessionStart: [PERSONAL_SESSION], PreToolUse: [PERSONAL_BASH] } };
+  const withThirdParty = { hooks: { PreToolUse: [THIRD_PARTY_BASH], SessionStart: [THIRD_PARTY_SESSION] } };
+  // The installer rewrites the guard-codex matcher, so a managed entry is matched by its hooks; the merge
+  // entry, which it never rewrites, must also keep its matcher and fail closed.
+  const assertManagedKept = (installed) => {
+    for (const [event, entries] of Object.entries(shippedHooks)) {
+      for (const entry of entries) {
+        assert.ok((installed[event] ?? []).some((e) => isDeepStrictEqual(e.hooks, entry.hooks)), `${event} ${entry.hooks[0].command.slice(0, 60)}`);
+      }
+    }
+    const merge = shippedHooks.PreToolUse.find((e) => e.hooks.some((h) => h.onFailure === 'block'));
+    assert.ok(merge, 'the shipped settings hold the fail-closed merge entry');
+    assert.equal(count(installed.PreToolUse, merge), 1);
+  };
+
+  test('AC-1 (#39) an install with personal hooks keeps every managed hook entry, the fail-closed merge entry included', () => {
+    const fakeRepo = fakeRepoWith(withPersonalHooks);
+    const target = seeded();
+    const r = installFrom(fakeRepo, target);
+    assert.equal(r.status, 0, r.stderr);
+    assertManagedKept(settingsOf(target).hooks);
+  });
+
+  test('AC-2 (#39) after two installs each personal hook entry appears exactly once', () => {
+    const fakeRepo = fakeRepoWith(withPersonalHooks);
+    const { hooks } = installTwice(fakeRepo, seeded());
+    assert.equal(count(hooks.SessionStart, PERSONAL_SESSION), 1);
+    assert.equal(count(hooks.PreToolUse, PERSONAL_BASH), 1);
+    assertManagedKept(hooks);
+  });
+
+  test('AC-3 (#39) after two installs with personal hooks --check reports no drift', () => {
+    const fakeRepo = fakeRepoWith(withPersonalHooks);
+    const target = seeded();
+    installTwice(fakeRepo, target);
+    const r = installFrom(fakeRepo, target, '--check');
+    assert.equal(r.status, 0, r.stdout);
+    assert.doesNotMatch(r.stdout, /settings\.json differs/);
+  });
+
+  test('AC-4 (#39) third-party hooks already in the target stay beside the managed and personal ones', () => {
+    const fakeRepo = fakeRepoWith(withPersonalHooks);
+    const { hooks } = installTwice(fakeRepo, seeded(withThirdParty));
+    assert.equal(count(hooks.PreToolUse, THIRD_PARTY_BASH), 1);
+    assert.equal(count(hooks.SessionStart, THIRD_PARTY_SESSION), 1);
+    assert.equal(count(hooks.SessionStart, PERSONAL_SESSION), 1);
+    assert.equal(count(hooks.PreToolUse, PERSONAL_BASH), 1);
+    assertManagedKept(hooks);
+  });
+
+  test('AC-5 (#39) personal settings without hooks install the third-party hooks followed by the managed ones, as before', () => {
+    const fakeRepo = fakeRepoWith({ theme: 'light' });
+    const s = installTwice(fakeRepo, seeded(withThirdParty));
+    assert.equal(s.theme, 'light');
+    assert.deepEqual(Object.keys(s.hooks).sort(), ['PreToolUse', 'SessionStart']);
+    assert.deepEqual(s.hooks.SessionStart, [THIRD_PARTY_SESSION]);
+    assert.deepEqual(s.hooks.PreToolUse[0], THIRD_PARTY_BASH);
+    assert.deepEqual(s.hooks.PreToolUse.slice(1).map((e) => e.hooks), shippedHooks.PreToolUse.map((e) => e.hooks));
+  });
+
+  test('AC-6 (#39) a hook entry removed from the personal settings leaves the installed settings on the next install', () => {
+    const fakeRepo = fakeRepoWith(withPersonalHooks);
+    const target = seeded(withThirdParty);
+    installTwice(fakeRepo, target);
+    writePersonal(fakeRepo, { hooks: { SessionStart: [PERSONAL_SESSION] } });
+    const r = installFrom(fakeRepo, target);
+    assert.equal(r.status, 0, r.stderr);
+    const { hooks } = settingsOf(target);
+    assert.equal(count(hooks.PreToolUse, PERSONAL_BASH), 0);
+    assert.equal(count(hooks.SessionStart, PERSONAL_SESSION), 1);
+    assert.equal(count(hooks.PreToolUse, THIRD_PARTY_BASH), 1);
+    assert.equal(count(hooks.SessionStart, THIRD_PARTY_SESSION), 1);
+    assertManagedKept(hooks);
   });
 });
