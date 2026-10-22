@@ -224,8 +224,10 @@ tokens per model; `input` applies to uncached input tokens only:
 { "gpt-6.1-sol": { "input": 100, "cached": 10, "output": 500 } }
 ```
 
-Paths it cannot read are skipped and counted, on a text line or, with `--json`, in a note on stderr. It
-writes nothing and is not part of the metrics donation.
+A missing or unreadable transcript directory or rate table is an error. Below the directory, a file or folder
+it cannot read is skipped and counted: always on a text line, and with `--json` in a note on stderr when any
+was skipped. A Codex result whose turn usage the server reports as unknown is not counted. It writes nothing
+and is not part of the metrics donation.
 
 ## License
 
