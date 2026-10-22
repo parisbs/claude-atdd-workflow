@@ -14,11 +14,18 @@
 // - personal/preferences.md, when present, as rules/personal.md;
 // - settings: the existing settings.json, then global/settings.json, then
 //   personal/settings.json, merged in that order. Permission lists are unions,
-//   hooks installed by this repository are replaced, anything else already in
-//   the file is kept. The one exception is global/retired-permissions.json: the
-//   rules listed there ({"ask": [...], "allow": [...], "deny": [...]}) were
-//   installed once and no longer ship, so they are removed from the existing
-//   settings before the merge, because a union alone never lets a rule leave;
+//   hook entries whose command or args match MANAGED_HOOK
+//   (/.claude/hooks/<name>.mjs) are replaced as managed. Kept third-party
+//   entries come first, followed by global and personal hooks. The manifest
+//   tracks personal entries for replacement or removal. Every install removes
+//   all copies matching current personal entries, regardless of the manifest,
+//   then appends each once unless already in global hooks. This also collapses
+//   identical third-party entries, even on a first install. Anything else
+//   already in the file is kept. The one exception is
+//   global/retired-permissions.json: the rules listed there ({"ask": [...],
+//   "allow": [...], "deny": [...]}) were installed once and no longer ship, so
+//   they are removed from the existing settings before the merge, because a
+//   union alone never lets a rule leave;
 // - MCP servers (ADR 0014): global/mcp-servers.json (name -> add-json object),
 //   with the env of personal/mcp-servers.json merged over it key by key, is
 //   registered in the user scope through `claude mcp add-json` and
@@ -41,6 +48,7 @@ import { accessSync, constants, cpSync, existsSync, mkdirSync, readFileSync, rea
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STACKS = ['android', 'flutter', 'node-mcp', 'supabase'];
@@ -114,9 +122,7 @@ const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 function mergeSettings(base, overlay) {
   const out = { ...base };
   for (const [key, value] of Object.entries(overlay)) {
-    if (key === 'hooks') {
-      out.hooks = mergeHooks(out.hooks ?? {}, value);
-    } else if (key === 'permissions' && isObject(value)) {
+    if (key === 'permissions' && isObject(value)) {
       const current = isObject(out.permissions) ? out.permissions : {};
       out.permissions = { ...current };
       for (const [list, rules] of Object.entries(value)) {
@@ -133,15 +139,26 @@ function mergeSettings(base, overlay) {
   return out;
 }
 
-// Replaces the hook entries this repository installed, keeps everyone else's.
-function mergeHooks(current, managed) {
+// Replaces managed hooks and deduplicates personal hooks, keeping distinct third-party entries.
+function mergeHooks(current, managed, personal, previousPersonal) {
   const out = {};
-  const events = new Set([...Object.keys(current), ...Object.keys(managed)]);
+  const events = new Set([...Object.keys(current), ...Object.keys(managed), ...Object.keys(personal)]);
   for (const event of events) {
-    const kept = (current[event] ?? []).filter(
-      (entry) => !(entry.hooks ?? []).some((h) => MANAGED_HOOK.test(`${h.command ?? ''} ${(h.args ?? []).join(' ')}`)),
+    const remaining = [...(current[event] ?? [])];
+    // Personal entries were appended, so remove from the end to keep identical third-party entries.
+    for (const installed of previousPersonal?.[event] ?? []) {
+      const index = remaining.findLastIndex((entry) => isDeepStrictEqual(installed, entry));
+      if (index >= 0) remaining.splice(index, 1);
+    }
+    const kept = remaining.filter(
+      (entry) => !(entry.hooks ?? []).some((h) => MANAGED_HOOK.test(`${h.command ?? ''} ${(h.args ?? []).join(' ')}`))
+        && !(personal[event] ?? []).some((installed) => isDeepStrictEqual(installed, entry)),
     );
+    // The manifest can be missing or stale; current personal entries still appear only once.
     const merged = [...kept, ...(managed[event] ?? [])];
+    for (const entry of personal[event] ?? []) {
+      if (!merged.some((installed) => isDeepStrictEqual(installed, entry))) merged.push(entry);
+    }
     if (merged.length > 0) out[event] = merged;
   }
   return out;
@@ -169,11 +186,15 @@ function withoutRetired(settings) {
   return { ...settings, permissions };
 }
 
-function desiredSettings(target) {
+function desiredSettings(target, previousPersonal) {
   const existing = withoutRetired(readJson(join(target, 'settings.json')));
   const generic = readJson(join(repo, 'global', 'settings.json'));
-  const personal = readJson(join(repo, 'personal', 'settings.json'));
+  const genericHooks = generic.hooks;
+  const { hooks: personalHooks = {}, ...personal } = readJson(join(repo, 'personal', 'settings.json'));
   const settings = mergeSettings(mergeSettings(existing, generic), personal);
+  if (existing.hooks || genericHooks || Object.keys(personalHooks).length > 0) {
+    settings.hooks = mergeHooks(existing.hooks ?? {}, genericHooks ?? {}, personalHooks, previousPersonal);
+  }
   const servers = readJson(join(repo, 'global', 'mcp-servers.json'));
   const names = Object.entries(servers).filter(([, server]) =>
     [server.command, ...(server.args ?? [])].some((part) => typeof part === 'string' && part.includes('codex-subagent-mcp')),
@@ -193,14 +214,16 @@ function desiredSettings(target) {
   }
   if (settings.hooks?.PreToolUse) {
     const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    settings.hooks.PreToolUse = settings.hooks.PreToolUse.flatMap((entry) => {
+    const withServerMatcher = (entry) => {
       if (!(entry.hooks ?? []).some((hook) => /(?:^|\/)guard-codex\.mjs(?:["'\s]|$)/.test(hook.command ?? ''))) return [entry];
       return names.length > 0
         ? [{ ...entry, matcher: `^mcp__(?:${escaped.join('|')})__codex_(?:delegate|follow_up)$` }]
         : [];
-    });
+    };
+    settings.hooks.PreToolUse = settings.hooks.PreToolUse.flatMap(withServerMatcher);
+    if (personalHooks.PreToolUse) personalHooks.PreToolUse = personalHooks.PreToolUse.flatMap(withServerMatcher);
   }
-  return settings;
+  return { settings, personalHooks };
 }
 
 const stable = (value) => `${JSON.stringify(value, null, 2)}\n`;
@@ -334,7 +357,8 @@ function registerServers(claude, configDir, plan) {
 function main() {
   const { check, target, configDir } = parseArgs(process.argv.slice(2));
   const planned = plannedFiles();
-  const previous = readJson(join(target, MANIFEST)).files ?? [];
+  const manifest = readJson(join(target, MANIFEST));
+  const previous = manifest.files ?? [];
   const orphans = previous.filter((f) => !planned.has(f) && existsSync(join(target, f)));
 
   const changed = [...planned].filter(([rel, source]) => {
@@ -343,7 +367,8 @@ function main() {
   }).map(([rel]) => rel);
 
   const settingsPath = join(target, 'settings.json');
-  const settings = stable(desiredSettings(target));
+  const desired = desiredSettings(target, manifest.personalHooks);
+  const settings = stable(desired.settings);
   const settingsChanged = !existsSync(settingsPath) || readFileSync(settingsPath, 'utf8') !== settings;
 
   const plan = mcpPlan(configDir ?? homedir());
@@ -404,7 +429,7 @@ function main() {
   }
   for (const rel of orphans) rmSync(join(target, rel));
   if (settingsChanged) writeFileSync(settingsPath, settings);
-  writeFileSync(join(target, MANIFEST), stable({ files: [...planned.keys()].sort() }));
+  writeFileSync(join(target, MANIFEST), stable({ files: [...planned.keys()].sort(), personalHooks: desired.personalHooks }));
 
   console.log(`Installed into ${target}: ${changed.length} file(s) written, ${orphans.length} removed, settings ${settingsChanged ? 'updated' : 'unchanged'}.`);
   if (!existsSync(join(repo, 'personal', 'preferences.md'))) {
