@@ -268,6 +268,9 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     'for f in a b; do echo $f; done',
     'while false; do :; done',
     'f() { echo hi; }; f',
+    'function f { echo hi; }; f',
+    'for ((i = 0; i < 1; i++)); do echo $i; done',
+    'test -n "$X" && echo yes',
   ];
   // A hooks directory whose guard-git never finishes.
   const hanging = () => {
@@ -349,14 +352,26 @@ describe('the if of the test harness follows Claude Code (#31)', () => {
   const runs = (command, tool = 'Bash') => ifApplies(RULE, tool, { command });
 
   test('AC-3 (#31) runs an entry whose pattern names more than the command for any form if cannot rule out', () => {
-    for (const command of ['echo $(date)', 'echo `date`', 'ls ${TMPDIR:-/tmp}', 'for f in a b; do echo $f; done', 'while false; do :; done', 'until true; do :; done', 'f() { echo hi; }; f']) {
+    for (const command of [
+      'echo $(date)', 'echo `date`', 'ls ${TMPDIR:-/tmp}', 'for f in a b; do echo $f; done', 'while false; do :; done',
+      'until true; do :; done', 'f() { echo hi; }; f',
+      // Amendment: the other spellings, and the forms the probes of section 2 recorded.
+      'function f { echo hi; }; f', 'for ((i = 0; i < 1; i++)); do echo $i; done', 'for((i=0;i<1;i++));do echo $i;done',
+      'while(false);do echo hi;done', 'test -n "$X" && echo yes', '[ -n "$X" ] && echo yes', '$GH pr merge 5 --squash',
+      'x=$(gh pr view 5 --json url) && echo $x',
+    ]) {
       assert.equal(runs(command), true, command);
     }
   });
 
   test('AC-3 (#31) still applies the pattern to a plain command', () => {
     assert.equal(runs('gh pr merge 5 --squash'), true);
-    for (const command of ['git status', 'echo $HOME', 'gh pr view 5', 'git log --oneline -3']) {
+    for (const command of [
+      'git status', 'echo $HOME', 'gh pr view 5', 'git log --oneline -3',
+      // Amendment: the plain forms the probes of section 2 recorded as not running the entry.
+      'echo "$HOME/x"', 'cd "$HOME" && ls', 'P=/tmp; cd "$P" && ls', 'npm test 2>&1 | tail -5', 'node -e "console.log(1)"',
+      'gh issue list', 'cd /tmp && gh pr checks 5',
+    ]) {
       assert.equal(runs(command), false, command);
     }
     assert.equal(runs('echo $(date)', 'Edit'), false, 'a Bash rule never runs for another tool');

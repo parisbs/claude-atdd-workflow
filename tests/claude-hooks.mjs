@@ -13,7 +13,9 @@
 // holds those words in that order, which reaches every form Claude Code matched in
 // docs/experiments/2026-10-21-hook-if-and-onfailure-probes.md, and more. It also runs it, as Claude Code
 // does for a pattern that names more than the command, whenever the command holds a form `if` cannot
-// rule out: $(), backticks, ${...}, a for, while or until loop, or a function definition (issue #31).
+// rule out: $(), backticks, ${...}, a for, while or until loop in any spelling, a function definition with
+// or without the function keyword, a variable in command position, or test or [ with a variable (issue #31,
+// docs/experiments/2026-10-21-hook-if-and-onfailure-probes.md, section 2).
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -52,7 +54,13 @@ export function handlersFor(toolName, settings = SETTINGS) {
 }
 
 // The forms after which Claude Code runs a hook whose `if` names more than the command, matched or not.
-const UNREADABLE = /\$\(|`|\$\{|(?:^|[\s;&|(])(?:for|while|until)\s[\s\S]*\bdo\b|\w+\s*\(\s*\)\s*\{/;
+const UNREADABLE = new RegExp([
+  /\$\(|`|\$\{/.source,
+  /(?:^|[\s;&|(])(?:for|while|until)\b[\s\S]*\bdo\b/.source,
+  /\w+\s*\(\s*\)\s*\{|\bfunction\s+\w+/.source,
+  /(?:^|[;&|(\n])\s*\$\w/.source,
+  /(?:^|[;&|(\n])\s*(?:test|\[\[?)\s[^;&|\n]*\$/.source,
+].join('|'));
 
 export function ifApplies(rule, toolName, input) {
   if (rule === undefined) return true;

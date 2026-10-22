@@ -119,17 +119,26 @@ describe('CI runs each test file once per system and Node version (#25)', () => 
 });
 
 // Issue #31: which test files each CI step runs, for every system and Node version of its job. A step runs
-// tests through `npm test`, `npm run <script>` or `node --test <globs>`, chained with && or ;.
+// tests through `npm test`, `npm t`, `npm run <script>` or `node --test [globs]`, chained with &&, ||, ; or
+// newlines, in a one-line `run:` or a `run: |` block. A job's systems and Node versions come from its matrix,
+// with `include` and `exclude`, or from `runs-on` and the last `setup-node` before the step.
 const testFiles = () => readdirSync(join(repo, 'tests'), { recursive: true })
   .map((file) => `tests/${String(file).replaceAll('\\', '/')}`)
   .filter((file) => file.endsWith('.test.mjs'));
 
-function filesOf(command, scripts, files) {
-  return command.split(/&&|;|\|\|/).map((part) => part.trim()).flatMap((part) => {
-    const npm = /^npm (?:run )?(test(?::[\w-]+)?)\b/.exec(part);
-    if (npm) return filesOf(scripts[npm[1]] ?? '', scripts, files);
-    if (!/^node --test\b/.test(part)) return [];
-    const globs = part.split(/\s+/).slice(2).filter((arg) => !arg.startsWith('-')).map((arg) => globToRegExp(arg.replace(/^["']|["']$/g, '')));
+function filesOf(command, scripts, files, seen = new Set()) {
+  return command.split(/&&|\|\||;|\n/).map((part) => part.trim()).flatMap((part) => {
+    const npm = /^npm (?:t|test|run(?:-script)? ([\w:-]+))(?:\s|$)/.exec(part);
+    if (npm) {
+      const name = npm[1] ?? 'test';
+      if (seen.has(name)) return [];
+      return filesOf(scripts[name] ?? '', scripts, files, new Set([...seen, name]));
+    }
+    if (!/^node --test(?:\s|$)/.test(part)) return [];
+    const args = part.split(/\s+/).slice(2).filter((arg) => !arg.startsWith('-'));
+    // Without globs node --test discovers every *.test.mjs file under the working directory.
+    if (args.length === 0) return files;
+    const globs = args.map((arg) => globToRegExp(arg.replace(/^["']|["']$/g, '')));
     return files.filter((file) => globs.some((glob) => glob.test(file)));
   });
 }
@@ -137,46 +146,129 @@ function filesOf(command, scripts, files) {
 // The names of the jobs of a workflow, in order.
 const jobNames = (workflow) => [...workflow.slice(workflow.search(/^jobs:/m)).matchAll(/^ {2}([\w-]+):\s*$/gm)].map((match) => match[1]);
 
+// The steps of a job that run commands, each with its command and the node-version of the last setup-node
+// before it. A `run: |` or `run: >` block takes the lines indented under it.
+function runSteps(block) {
+  const lines = block.split('\n');
+  const steps = [];
+  let node;
+  for (let i = 0; i < lines.length; i += 1) {
+    const version = /^\s*node-version:\s*["']?(.+?)["']?\s*$/.exec(lines[i]);
+    if (version) node = version[1];
+    const run = /^(\s*)(?:- )?run:\s*(.*)$/.exec(lines[i]);
+    if (!run) continue;
+    let command = run[2].trim();
+    if (/^[|>][-+]?$/.test(command)) {
+      const indent = lines[i].search(/\S/);
+      const body = [];
+      while (i + 1 < lines.length && (lines[i + 1].trim() === '' || lines[i + 1].search(/\S/) > indent)) body.push(lines[(i += 1)].trim());
+      command = body.join('\n');
+    }
+    steps.push({ command, node });
+  }
+  return steps;
+}
+
+// The items of a block sequence under `key:` in a matrix, such as `include:`, as objects.
+function matrixItems(block, key) {
+  const start = new RegExp(`^(\\s*)${key}:\\s*$`, 'm').exec(block);
+  if (!start) return [];
+  const out = [];
+  for (const line of block.slice(start.index + start[0].length).split('\n').slice(1)) {
+    if (line.trim() === '') continue;
+    if (line.search(/\S/) <= start[1].length) break;
+    const pair = /^\s*(-\s+)?([\w-]+):\s*["']?([^"'\s]*)["']?\s*$/.exec(line);
+    if (!pair) continue;
+    if (pair[1] || out.length === 0) out.push({});
+    out.at(-1)[pair[2]] = pair[3];
+  }
+  return out;
+}
+
+// The systems and Node versions a job runs on, as [os, node] pairs; node is undefined without a matrix value.
+function combinations(block) {
+  const systems = items(block, 'os');
+  const nodes = items(block, 'node');
+  let combos = systems
+    ? systems.flatMap((os) => (nodes ?? [undefined]).map((node) => [os, node]))
+    : [[/runs-on:\s*(\S+)/.exec(block)?.[1], undefined]];
+  for (const item of matrixItems(block, 'include')) {
+    if (!combos.some(([os, node]) => os === item.os && node === item.node)) combos.push([item.os, item.node]);
+  }
+  for (const item of matrixItems(block, 'exclude')) {
+    combos = combos.filter(([os, node]) => !((item.os === undefined || item.os === os) && (item.node === undefined || item.node === node)));
+  }
+  return combos;
+}
+
 // Each test file that runs more than once for the same system and Node version, within a job or across
 // jobs, as [combination, file, times].
 function repeatedRuns(workflow, scripts, files = testFiles()) {
   const runs = new Map();
   for (const name of jobNames(workflow)) {
     const block = job(workflow, name);
-    const systems = items(block, 'os') ?? [/runs-on:\s*(\S+)/.exec(block)?.[1]];
-    const nodes = items(block, 'node') ?? [/node-version:\s*["']?([^\s"']+)/.exec(block)?.[1]];
-    const ran = [...block.matchAll(/run:\s*(.+)$/gm)].flatMap((match) => filesOf(match[1].trim(), scripts, files));
-    for (const os of systems) {
-      for (const node of nodes) {
+    for (const [os, matrixNode] of combinations(block)) {
+      for (const step of runSteps(block)) {
+        const node = step.node === undefined || /matrix\.node/.test(step.node) ? matrixNode : step.node;
         const key = `${os}, Node ${node}`;
         if (!runs.has(key)) runs.set(key, new Map());
-        for (const file of ran) runs.get(key).set(file, (runs.get(key).get(file) ?? 0) + 1);
+        for (const file of filesOf(step.command, scripts, files)) runs.get(key).set(file, (runs.get(key).get(file) ?? 0) + 1);
       }
     }
   }
   return [...runs].flatMap(([key, counts]) => [...counts].filter(([, times]) => times > 1).map(([file, times]) => [key, file, times]));
 }
 
+// The jobs that run `npm test` on Node `version` for pull requests: no job-level `if`, and the step's
+// Node version, from setup-node or the matrix, is that version.
+function jobsTestingOn(workflow, version) {
+  if (!/^on:[\s\S]*?\bpull_request\b/m.test(workflow)) return [];
+  return jobNames(workflow).filter((name) => {
+    const block = job(workflow, name);
+    if (/^ {4}if:/m.test(block)) return false;
+    const nodes = items(block, 'node') ?? [];
+    return runSteps(block).some((step) => /^npm test$/.test(step.command)
+      && (step.node === version || (/matrix\.node/.test(step.node ?? '') && nodes.includes(version))));
+  });
+}
+
 describe('CI keeps one run per test file and the Node floor of package.json (#31)', () => {
   const ci = () => yaml('.github/workflows/ci.yml');
   const scripts = () => JSON.parse(read('package.json')).scripts;
+  const floor = () => /^>=\s*(\d+\.\d+\.\d+)$/.exec(JSON.parse(read('package.json')).engines?.node ?? '')?.[1];
   const replaceIn = (workflow, name, from, to) => {
     const block = job(workflow, name);
     assert.ok(block.includes(from), `${name} holds ${from}`);
     return workflow.replace(block, block.replace(from, to));
   };
+  const metricsStep = (workflow) => {
+    const step = /run:\s*(node --test [^\n]*tests\/metrics-[^\n]*)$/m.exec(job(workflow, 'metrics'))?.[1];
+    assert.ok(step, 'the metrics job runs node --test');
+    return step;
+  };
+  const floorJob = (workflow) => {
+    const [name] = jobsTestingOn(workflow, floor());
+    assert.ok(name, `a job runs npm test on Node ${floor()}`);
+    return name;
+  };
+  const caught = (workflow, extraScripts = {}) => repeatedRuns(workflow, { ...scripts(), ...extraScripts }).some(([, file]) => file.startsWith('tests/metrics-'));
 
   test('AC-6 (#31) a CI job runs npm test on exactly the minimum Node version of engines', () => {
     const engines = JSON.parse(read('package.json')).engines?.node ?? '';
-    const floor = /^>=\s*(\d+\.\d+\.\d+)$/.exec(engines);
-    assert.ok(floor, `engines.node is a minimum with major, minor and patch: ${engines}`);
+    assert.ok(floor(), `engines.node is a minimum with major, minor and patch: ${engines}`);
+    assert.equal(jobsTestingOn(ci(), floor()).length, 1, `one job runs npm test on Node ${floor()} for pull requests`);
+  });
+
+  test('AC-6 (#31) the check fails when the floor job skips pull requests or switches Node before npm test', () => {
     const workflow = ci();
-    const runsOnFloor = jobNames(workflow).filter((name) => {
-      const block = job(workflow, name);
-      const nodes = items(block, 'node') ?? [/node-version:\s*["']?([^\s"']+)/.exec(block)?.[1]];
-      return nodes.includes(floor[1]) && /run:\s*npm test\s*$/m.test(block);
-    });
-    assert.equal(runsOnFloor.length, 1, `one job runs npm test on Node ${floor[1]}`);
+    const name = floorJob(workflow);
+    const runsOn = /runs-on:[^\n]*/.exec(job(workflow, name))[0];
+    const pushOnly = replaceIn(workflow, name, runsOn, `if: github.event_name == 'push'\n    ${runsOn}`);
+    assert.deepEqual(jobsTestingOn(pushOnly, floor()), [], 'a job restricted to pushes');
+    const step = /- run: npm test/.exec(job(workflow, name))[0];
+    const switched = replaceIn(workflow, name, step, `- uses: actions/setup-node@v0\n        with:\n          node-version: 24\n      ${step}`);
+    assert.deepEqual(jobsTestingOn(switched, floor()), [], 'a later setup-node on Node 24');
+    assert.deepEqual(jobsTestingOn(replaceIn(workflow, name, floor(), '22.3.0'), floor()), [], 'another version');
   });
 
   test('AC-7 (#31) no CI step runs a test file more than once for the same system and Node version', () => {
@@ -185,28 +277,34 @@ describe('CI keeps one run per test file and the Node floor of package.json (#31
 
   test('AC-7 (#31) the check fails when the metrics step runs its tests twice', () => {
     const workflow = ci();
-    const step = /run:\s*(node --test [^\n]*tests\/metrics-[^\n]*)$/m.exec(job(workflow, 'metrics'))?.[1];
-    assert.ok(step, 'the metrics job runs node --test');
+    const step = metricsStep(workflow);
     const twice = replaceIn(workflow, 'metrics', step, `${step} && ${step}`);
-    const repeated = repeatedRuns(twice, scripts());
-    assert.ok(repeated.some(([, file]) => file.startsWith('tests/metrics-')), JSON.stringify(repeated));
+    assert.ok(caught(twice), JSON.stringify(repeatedRuns(twice, scripts())));
   });
 
   test('AC-7 (#31) the check fails when a job adds the whole suite where the metrics tests already run', () => {
     const workflow = ci();
-    const step = /run:\s*(node --test [^\n]*tests\/metrics-[^\n]*)$/m.exec(job(workflow, 'metrics'))?.[1];
-    const both = replaceIn(workflow, 'metrics', step, `npm test && ${step}`);
-    assert.ok(repeatedRuns(both, scripts()).some(([, file]) => file.startsWith('tests/metrics-')));
+    const step = metricsStep(workflow);
+    assert.ok(caught(replaceIn(workflow, 'metrics', step, `npm test && ${step}`)));
   });
 
   test('AC-7 (#31) the check fails when two jobs run the suite on the same system and Node version', () => {
     const workflow = ci();
-    const floor = /^>=\s*(\d+\.\d+\.\d+)$/.exec(JSON.parse(read('package.json')).engines?.node ?? '')?.[1];
-    assert.ok(floor, 'engines.node names a full version');
-    const name = jobNames(workflow).find((n) => job(workflow, n).includes(floor) && /run:\s*npm test\s*$/m.test(job(workflow, n)));
-    assert.ok(name, `a job runs on Node ${floor}`);
-    const line = /node-version:\s*["']?[^\s"']+["']?/.exec(job(workflow, name))?.[0] ?? `node: [${floor}]`;
-    const clash = replaceIn(workflow, name, line, line.replace(floor, items(job(workflow, 'test'), 'node')[0]));
+    const name = floorJob(workflow);
+    const line = /node-version:\s*["']?[^\s"']+["']?/.exec(job(workflow, name))[0];
+    const clash = replaceIn(workflow, name, line, line.replace(floor(), items(job(workflow, 'test'), 'node')[0]));
     assert.ok(repeatedRuns(clash, scripts()).length > 0, 'a second run of the suite on Node 22 is caught');
+  });
+
+  test('AC-7 (#31) the check fails for a repetition in a run block, a matrix include, a script alias or bare node --test', () => {
+    const workflow = ci();
+    const step = metricsStep(workflow);
+    const block = replaceIn(workflow, 'metrics', `run: ${step}`, `run: |\n          ${step}\n          ${step}`);
+    assert.ok(caught(block), 'a run: | block');
+    const os = /os:\s*\[[^\]]*\]/.exec(job(workflow, 'metrics'))[0];
+    const include = replaceIn(workflow, 'metrics', os, `${os}\n        include:\n          - os: ubuntu-latest\n            node: ${items(job(workflow, 'test'), 'node')[0]}`);
+    assert.ok(caught(include), 'a matrix include where the test job already runs');
+    assert.ok(caught(replaceIn(workflow, 'metrics', step, 'npm run check && npm run check'), { check: step }), 'a script alias run twice');
+    assert.ok(caught(replaceIn(workflow, 'metrics', step, 'node --test && node --test')), 'node --test without globs, twice');
   });
 });
