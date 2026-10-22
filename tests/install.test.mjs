@@ -369,7 +369,8 @@ describe('install (#37)', () => {
 
   test('AC-5 (#37) the personal settings example sets the Opus 5.5 effort through modelSettings', () => {
     const example = JSON.parse(readRepo('personal', 'settings.example.json'));
-    assert.ok(['low', 'medium', 'high', 'xhigh', 'max'].includes(example.modelSettings?.['claude-opus-5-5']?.effortLevel));
+    // Settings accept no 'max' in either effortLevel key.
+    assert.ok(['low', 'medium', 'high', 'xhigh'].includes(example.modelSettings?.['claude-opus-5-5']?.effortLevel));
   });
 
   test('AC-5 (#37) the personalization guide explains effortLevel, modelSettings and the drift /effort causes', () => {
