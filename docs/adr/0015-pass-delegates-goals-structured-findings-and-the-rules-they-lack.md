@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0026](0026-return-a-compact-envelope-and-keep-the-full-delegation-report-in-the-scratchpad.md)
 date: 2026-10-06
 ---
 # 0015. Give delegates goals, structured findings and the rules they lack

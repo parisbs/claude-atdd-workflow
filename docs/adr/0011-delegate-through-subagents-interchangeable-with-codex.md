@@ -1,5 +1,5 @@
 ---
-status: accepted, amended by [0013](0013-guard-git-keeps-subagents-off-github.md)
+status: accepted, amended by [0013](0013-guard-git-keeps-subagents-off-github.md), [0025](0025-route-model-and-effort-per-delegation-through-a-matrix.md) and [0026](0026-return-a-compact-envelope-and-keep-the-full-delegation-report-in-the-scratchpad.md)
 date: 2026-10-02
 ---
 # 0011. Delegate through Claude Code subagents, interchangeable with Codex
