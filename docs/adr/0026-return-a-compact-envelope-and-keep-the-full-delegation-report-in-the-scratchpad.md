@@ -16,20 +16,19 @@ The evidence was gathered on 2026-10-21 against `main` at `f676e03`, Claude Code
 - Claude subagent reports: median 6,608 characters (about 1,700 tokens), 90th percentile 18,291, maximum 35,684, over 76 reports. Verified (G-04).
 - Codex results: in 51 results since 2026-10-15, 580,000 characters in all, the command log is 49% and the structured block 38%. Measured from the `Commands run (N total):` section and the `BEGIN/END STRUCTURED RESULT` markers. Verified (G-04).
 - There is no output schema for Claude subagents: `--json-schema` exists only for `claude -p`, and `outputFormat` only for the Agent SDK. Source: `sub-agents.md`, `cli-reference.md` and `agent-sdk/structured-outputs.md` on `code.claude.com/docs`. Verified as an absence from those pages.
-- The full transcript of each subagent is already on disk at `~/.claude/projects/{project}/{sessionId}/subagents/agent-{agentId}.jsonl`, deleted after `cleanupPeriodDays` (30). Source: `sub-agents.md`. Verified in the documentation.
-- `codex_delegate` in 0.5.0 has no option to write its report to a file. Source: the tool schema. Verified.
-- `claude-researcher` has no `Write` tool, and `guard-readonly` denies shell writes. Source: `global/agents/claude-researcher.md`. Verified.
-- parisbs/codex-subagent-mcp#166, "Keep the command log out of the result by default", moves the command log to a file with mode 0600 outside the working tree and keeps the structured block inline. On 2026-10-21 it was assigned to the 0.7.0 milestone, with a comment carrying the 49% and 38% measurement and its dependency on #138. Its alternatives note that lowering the client's MCP output cap moves the whole result, report included, into a file the orchestrator has to read back. Source: `gh issue view 166` and the milestones API. Verified (G-05).
+- The full transcript of each subagent is already on disk at `~/.claude/projects/{project}/{sessionId}/subagents/agent-{agentId}.jsonl`, deleted after `cleanupPeriodDays` (30). Source: `sub-agents.md`. Verified in the documentation (G-04).
+- `codex_delegate` in 0.5.0 has no option to write its report to a file. Source: the tool schema. Verified (G-04).
+- `claude-researcher` has no `Write` tool, and `guard-readonly` denies shell writes. Source: `global/agents/claude-researcher.md`. Verified (G-04).
+- parisbs/codex-subagent-mcp#166, "Keep the command log out of the result by default", moves the command log to a file with mode 0600 outside the working tree and keeps the structured block inline. On 2026-10-21 it was assigned to the 0.7.0 milestone, with a comment carrying the 49% and 38% measurement and its dependency on #138 (G-05). Its alternatives note that lowering the client's MCP output cap moves the whole result, report included, into a file the orchestrator has to read back. Source: `gh issue view 166` and the milestones API. Verified.
 - Whether a SubagentStop hook can block a subagent that returns a malformed envelope is not verified.
 
 ## Decision
 
-1. A Claude subagent returns a short envelope inline and writes its full report to a file. The envelope holds:
+1. Every delegate returns a short envelope inline. A Claude subagent also writes its full report to a file; Codex keeps it as decision 5 says. The envelope holds:
    - status (done, partial or failed) and failure type;
    - the verdict in at most three sentences;
    - the number of findings by severity;
    - the path of the full report.
-   Codex follows decision 5 until its server can write the report itself.
 2. The full report goes to `<scratchpad>/delegations/<id>/report.md` and `report.json`, where `<scratchpad>` is the orchestrator session's scratchpad directory and `<id>` names one delegation. The orchestrator reads it by range when it needs more than the envelope.
 3. The report schema of ADR 0015 is trimmed:
    - `checks_run` holds, per check, the command, the result (pass, fail or blocked) and one line;
@@ -37,7 +36,7 @@ The evidence was gathered on 2026-10-21 against `main` at `f676e03`, Claude Code
    - each finding gains a severity (blocking, should-fix or nit), so the envelope can count them;
    - sources and what was left out appear only in the file, not in the envelope.
 4. Read-only Claude agents get `Write`, limited by a guard to `<scratchpad>/delegations/`. Every other write stays denied, so the agent still cannot change the repository.
-5. For Codex, `codex_delegate` cannot write a report file, so the structured result requested through `output_schema` follows the trimmed schema and stays inline. The command log leaves the result through parisbs/codex-subagent-mcp#166 once a release carrying it is adopted, through a pull request like any version change (ADR 0017); the file #166 proposes, holding the full log and Codex's full final message, then plays the role of the full report. What that release finally offers is not known yet; the implementation records it.
+5. Codex returns the same envelope, requested through `output_schema`, so Claude and Codex keep one inline shape (ADRs 0011 and 0015). `codex_delegate` cannot write a report file, so Codex's full report is its final message. Once a codex-subagent-mcp release carrying #166 is adopted, through a pull request like any version change (ADR 0017), the command log leaves the result and the server writes the log and the full final message to a file, which serves as the full report. #166 keeps the final message inline too, so until the server can leave it out, the package asks Codex to keep that message short. What that release finally offers is not known yet; the implementation records it.
 6. The envelope is validated by a hook when the client allows it; otherwise the orchestrator checks it and treats a malformed envelope as a failed delegation.
 
 ## Alternatives considered
@@ -50,7 +49,7 @@ The evidence was gathered on 2026-10-21 against `main` at `f676e03`, Claude Code
 
 - If accepted, ADRs 0011 and 0015 change only in their front matter status, as amended in part. ADR 0017 is unchanged: its MCP cap keeps the default.
 - The orchestrator's context carries envelopes, and the full reports stay on disk for the session. They are lost with the scratchpad; a report worth keeping is copied into an issue or a pull request.
-- `claude-researcher` and any other read-only agent gain a narrow write path. The guard that limits it becomes part of the read-only boundary and must fail closed like `guard-readonly`, an exception to the fail-open rule of ADR 0002 with the precedent of ADR 0013 and `guard-readonly`.
+- `claude-researcher` and any other read-only agent gain a narrow write path. The guard that limits it becomes part of the read-only boundary and must fail closed like `guard-readonly`, an exception to the fail-open rule of ADR 0002 with the precedent of `guard-readonly` and ADR 0019.
 - The delegate must know the scratchpad path. Whether every subagent already receives the orchestrator's scratchpad in its environment is not verified, so the package names it. Codex runs in its own sandbox and may not be able to write there; decision 5 covers it through the server.
 - The envelope only pays off if the orchestrator reads the file by range instead of whole; that is guidance, not a check.
-- Adopting #166 waits for the codex-subagent-mcp release that carries it; until then Codex results keep their command log inline.
+- Adopting #166 waits for the codex-subagent-mcp release that carries it; until then Codex results keep their command log inline. Even after it, Codex's final message stays inline, so the saving for Codex is smaller than for Claude until the server can leave that message out.

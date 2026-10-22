@@ -55,7 +55,7 @@ ADR 0002 puts what must always hold in a hook, a permission rule or CI. Today th
    - risk: control plane, concurrency, security;
    - priority: quality, balance, cost.
 3. The matrix defaults live in a file in `global/` and a user's overrides in `personal/`, merged by the installer. The names and the format are left to the implementation (a planned follow-up).
-4. A PreToolUse hook on `Agent` and on `codex_delegate` applies the matrix to delegations. The matrix also states the effort of the orchestrator session and of its in-session skills, which no hook applies: the session is set by the user and the skills by decision 6. The hook fills a missing model or effort, or checks an explicit one against the matrix. If the client does not let the hook rewrite the input for those tools, the hook validates instead and asks, naming the values the matrix expects. Like other hooks it fails open with a visible message (ADR 0002).
+4. A PreToolUse hook on `Agent` and on `codex_delegate` applies the matrix to delegations. The matrix also lists the model and effort of the orchestrator session and of work done in it, which no hook applies: the user sets the session, and in-session skills follow decision 6. The hook fills a missing model or effort, or checks an explicit one against the matrix. If the client does not let the hook rewrite the input for those tools, the hook validates instead and asks, naming the values the matrix expects. Like other hooks it fails open with a visible message (ADR 0002).
 5. Every routed call sets the effort explicitly; no route relies on a model's default effort, because the documentation does not agree on it for Sonnet 5.5.
 6. Interactive skills that run in the orchestrator's conversation (issue drafting, ADR drafting, oracle approval) declare `effort` only, never `model`: an effort change keeps the cache, a model change re-reads the whole conversation without it. A skill with `context: fork` runs as a fresh subagent and may declare a model.
 7. The five-hour and weekly windows of the Claude subscription and the Codex plan credits are a design constraint of the matrix: a route takes the cheaper model and effort that meets the role, difficulty and risk. The provisional matrix applies it by preferring Sonnet 5.5 at high effort to Opus 5.5 for standard work under the Claude Pro plan, because Opus is assumed to draw on the weekly limit about twice as fast per token; that ratio is not verified here.
@@ -65,8 +65,8 @@ ADR 0002 puts what must always hold in a hook, a permission rule or CI. Today th
 Provisional default matrix, each role as Claude model and effort, then Codex model and effort:
 
 - Orchestrator: Opus 5.5 medium, raised for oracle and review work because an effort change keeps the cache.
-- Issues and ADRs: Opus 5.5 high in the session. Codex only as a second opinion, `gpt-6.1-sol` high, Astra when the risk is high.
-- Oracle and tests: Opus 5.5 high. Codex `gpt-6.1-sol` high; Astra high with concurrency.
+- Issues and ADRs: Opus 5.5 high in the session. Codex only as a second opinion, `gpt-6.1-sol` high, Astra for a listed risk.
+- Oracle and tests: Opus 5.5 high, with the approval in the session. Codex `gpt-6.1-sol` high; Astra high with concurrency.
 - Complex implementer: Opus 5.5 high, xhigh with concurrency or strict architecture. Codex `gpt-6.1-sol` high, xhigh when the effort ceiling allows it; Astra high to escalate after a failed attempt.
 - Standard tasks and bugs: Sonnet 5.5 high while the plan is Pro; Opus 5.5 medium when the budget allows. Codex `gpt-6.1-sol` medium.
 - Reviewer: fresh context, Opus 5.5 high. Codex `gpt-6.1-sol` high; Astra for the control plane or security.
@@ -84,8 +84,8 @@ Provisional default matrix, each role as Claude model and effort, then Codex mod
 ## Consequences
 
 - If accepted, ADR 0011 changes only in its front matter status; the agent files stop carrying the routing and keep a fallback.
-- The routing becomes one file a user can tune in `personal/` without touching agent files, and a hook makes the choice visible on every call instead of left to judgement.
-- Every route sets effort explicitly; a forked delegation cannot take a per-invocation effort and runs with its frontmatter or the session's.
+- The routing of delegations becomes one file a user can tune in `personal/` without touching agent files, and a hook makes the choice visible on every call instead of left to judgement.
+- Every route sets effort explicitly; a forked delegation cannot take a per-invocation effort (G-02), so its effort comes from outside the call.
 - Decision 4 depends on what the hook can do on `Agent` and MCP calls in the installed Claude Code; the implementation must verify it before it relies on rewriting the input.
 - The matrix is a proposal until the delegation report measures it; its values are expected to change. What this record decides is the criteria, the mechanism, the effort-only rule for in-session skills and the escalation-only rule for Astra and Fable.
 - The cross-family review evidence (G-08) rests on one abstract; who reviews whom is left to the reviewer work and to the `Review:` line of ADR 0011, not decided here.
