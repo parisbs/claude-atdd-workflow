@@ -49,10 +49,10 @@ status and recent commits read at session start. Set
 Do not put a `hooks` key in `personal/settings.json`: the installer currently
 drops the repository's managed `PreToolUse` guard hooks from
 `~/.claude/settings.json` and duplicates the personal hook on every install,
-so `--check` keeps reporting drift. Until the installer supports personal
-hooks, add an optional `SessionStart` hook directly to `~/.claude/settings.json`
-(the installer keeps hooks it does not manage) or to a project's
-`.claude/settings.local.json`. Merge it into any existing hooks there.
+so `--check` keeps reporting drift. Add an optional `SessionStart` hook to a
+project's `.claude/settings.local.json`, merging it into any existing hooks
+there. A user-wide personal hook must wait for installer support for hooks in
+`personal/settings.json`. Never edit the installed copies in `~/.claude`.
 To keep git instructions disabled while restoring compact status context,
 this hook prints the current branch and up to 20 status lines:
 
@@ -99,21 +99,27 @@ Some organisations require that trailer. Override the fields in
 The shipped deny rules cover `.env`, `.env.*`, PEM and key files, RSA and
 Ed25519 identity files, keystores and JKS files. Their `**/` patterns match at
 or under the session's current directory: they protect files inside the
-project being worked on, but not `~/.ssh` keys or a `.env` in a parent directory
-or another project. Those need a `//` absolute or `~/` home-relative path rule.
+project being worked on. They do not protect `~/.ssh` keys unless the session
+starts in the home directory or above it, nor a `.env` outside the current
+directory tree. Those need a `//` absolute or `~/` home-relative path rule.
 
 The `.env.example` and `.env.sample` exceptions follow the rules they narrow:
 a deny pattern with `!` excludes matching paths from preceding rules in the
 same settings source only. A project-level `.env.*` deny is not narrowed by
 the shipped user-level exceptions. The installer appends shipped rules after
 deny rules already in `~/.claude/settings.json`, so the exceptions also narrow
-your own earlier rules there: `Read(**/.env*)` would no longer cover
-`.env.example`.
+your own earlier relative and `**/` rules there: `Read(**/.env*)` would no
+longer cover `.env.example`. A `!` exception cannot reach rules anchored with
+`/`, `~/` or `//`, including the home-relative and absolute rules above.
 
-Read deny rules cover Claude's file tools and the shell readers Claude Code
-recognises, including `cat`, `head`, `tail`, `sed`, `tee` and redirections.
-They do not cover every program that can read a file. Use the sandbox with
-filesystem restrictions for full coverage of shell programs.
+Read and Edit deny rules apply to Claude's file tools, to file commands
+Claude Code recognises in Bash such as `cat`, `head`, `tail` and `sed`, and to
+redirect targets. Input redirects such as `< file` are checked against Read
+rules; `tee` and output redirects write, so Edit rules govern them. These
+rules do not apply to commands that read files without naming them, such as
+`grep -r pattern .` run from the directory holding the file, nor to arbitrary
+programs. Use the sandbox with filesystem restrictions for full coverage of
+shell programs.
 
 Permission lists merge by union. Removing a shipped rule alone leaves it in
 existing installations; `global/retired-permissions.json` tells the installer
@@ -127,6 +133,7 @@ form in personal files too.
 ## Schema diagnostics
 
 The published schemastore schema can lag behind valid Claude Code settings.
-Keys such as `bashOutputMaxChars`, `promptCacheTtl`, `subagentPromptCacheTtl`
-and `enableWorkflows` exist even when the schema does not yet recognise them.
-A schema warning alone does not mean a setting is invalid.
+It allows additional properties, so unknown keys such as `bashOutputMaxChars`,
+`promptCacheTtl`, `subagentPromptCacheTtl`, `enableWorkflows` and `modelSettings`
+get no completion or description in an editor rather than a validation error.
+A key missing from the schema does not mean the setting is invalid.

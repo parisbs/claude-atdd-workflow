@@ -45,10 +45,12 @@ Observed: with either form, both `./probe.sh` and `./probe.sh x` ran and printed
 
 ## Conclusions
 
-- The shipped deny rules stop the Read tool and `cat` from reading `.env`, `.env.*` and key files, and the `!`
-  exceptions placed after `Read(**/.env.*)` let `.env.example` and `.env.sample` through. Deny rules apply even in
-  an untrusted workspace, where project allow rules do not.
+- The shipped deny rules denied Read for `.env`, `.env.local`, `keys/server.key` and `keys/cert.pem`, and denied
+  `cat` for `.env`. With the `!` exceptions placed after `Read(**/.env.*)`, Read and `cat` were allowed for
+  `.env.example`, and Read was allowed for `.env.sample`. The patterns `id_rsa*`, `id_ed25519*`, `*.keystore` and
+  `*.jks` were not probed. Deny rules applied even in an untrusted workspace, where project allow rules did not.
 - `Bash(x *)` allows the bare command and the command with arguments, as `Bash(x:*)` does, so the migration keeps
   every previously allowed command.
-- The probes used project and `--settings` sources, not `~/.claude/settings.json`; permission rules from every
-  source are combined, and the installed user file is checked by the install tests instead.
+- The probes used project and `--settings` sources, not `~/.claude/settings.json`. The deny and exception result
+  carries over to the installed user file because all ten rules sit in one source there too: a `!` exception
+  only narrows rules from the same source. The installed user file is checked by the install tests instead.
