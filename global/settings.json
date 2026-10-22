@@ -53,7 +53,7 @@
           {
             "type": "command",
             "if": "Bash(gh pr merge *)",
-            "command": "node \"$HOME/.claude/hooks/guard-git.mjs\" --merge-only",
+            "command": "event=; while IFS= read -r line; do event=\"$event$line\n\"; done; event=\"$event$line\"; case \"$event\" in *merge*) printf '%s' \"$event\" | node \"$HOME/.claude/hooks/guard-git.mjs\" --merge-only ;; esac",
             "timeout": 30,
             "onFailure": "block",
             "statusMessage": "Checking the merge conditions"

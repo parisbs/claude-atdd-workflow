@@ -27,8 +27,9 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   open with a visible message, except the merge decision, which fails closed: it asks when it cannot read the
   pull request (ADR 0010), and its own entry in `global/settings.json` blocks the merge when the hook cannot
   start, fails or times out (`onFailure: "block"`, Claude Code 2.1.295 or later). Claude Code also runs that
-  entry for commands its `if` cannot rule out, such as any with `$()`, so `--merge-only` must stay fast and
-  silent for everything that is not a merge. `guard-readonly` is the second exception: it fails closed,
+  entry for commands its `if` cannot rule out, such as any with `$()`. Shell builtins start Node only when
+  the event contains literal `merge`; hook failures can block only those events, including non-merges that
+  contain that text. `guard-readonly` is the second exception: it fails closed,
   denying unread events and commands, and its entry in the researcher's frontmatter declares
   `onFailure: "block"` so a call is blocked when the hook cannot start, fails or times out.
 - The hooks are a safety net for one machine, not a boundary: they read a command as words and allow a form

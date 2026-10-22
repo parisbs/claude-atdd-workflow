@@ -24,11 +24,12 @@
 // global/settings.json runs it from two entries. With --skip-merge it
 // runs for every Bash command and fails open like the other hooks; of the merge
 // decision it keeps only the denials that need no network. With --merge-only it
-// decides merges and nothing else, and asks when it cannot decide. Its entry runs
-// it when the `if` matches gh pr merge, and for any command Claude Code cannot rule
-// out, such as one with $() or a loop, and declares onFailure "block": a merge never
-// goes ahead when the hook cannot start, fails or runs past its timeout. Without a
-// flag the hook applies every rule.
+// decides merges and nothing else, and asks when it cannot decide. Claude Code runs
+// its entry when the `if` matches gh pr merge or cannot rule a command out. The entry
+// uses shell builtins to start Node only when the event contains literal merge,
+// including a whole-quoted word. With onFailure "block", a hook failure or timeout
+// blocks a merge and, at worst, another command whose event contains merge. Without
+// a flag the hook applies every rule.
 import { spawnSync } from 'node:child_process';
 import { isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
