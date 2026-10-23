@@ -27,18 +27,6 @@ holds only what is intended: `git log <base>..HEAD --oneline` and
 `main...HEAD`: only the first includes uncommitted work. Report anything that
 does not belong.
 
-Before opening the pull request, compare the local branch with its pushed head
-(the existing pull request's `headRefOid`, or the remote branch's current commit
-when no pull request exists). Check `git log <pushed-head>..<local-branch> --oneline`
-for commits missing from that head, and use `git worktree list --porcelain` and
-`git -C <worktree> status --short --untracked-files=all` to check every worktree
-of the branch for uncommitted changes, including staged, unstaged and untracked
-files that are not ignored. Include local branches with another name whose upstream
-is the head branch on a remote of the same repository. Stop when local work is
-missing from the pushed head or a worktree has uncommitted changes; report the
-commits, worktrees and paths. If the pushed head or local copy cannot be read,
-stop and say why instead of treating it as clean.
-
 ## 2. Verify
 
 Run the verify command declared in the repository's `CLAUDE.md` (the line that
@@ -89,9 +77,25 @@ only after looking.
 - Body: the repository's `.github` pull request template. Include the issue it
   closes; for ATDD work, the criterion-to-test map, the oracle commit and the red
   evidence; which checks ran and which did not; and any review fallback.
-- Push the branch and open the pull request only if this request asked for it.
+- Push the branch only if this request asked for it.
   Otherwise present the title and body and stop.
-- Repeat the scope step's local-work check after any push and before opening the
-  pull request, and again before asking for the merge. Read the pull request's
-  current `headRefOid` for the merge check; stop if any local commit is missing
-  from that head or any worktree of its local branches has uncommitted changes.
+- After the push and before opening the pull request, read the pushed remote
+  branch's current commit with `git ls-remote <remote> refs/heads/<branch>`.
+  Compare it with the local branch using
+  `git log <pushed-head>..<local-branch> --oneline`. Include local branches with
+  another name whose upstream is the head branch using
+  `git for-each-ref --format='%(refname:short) %(upstream)' refs/heads`;
+  use `git remote -v` to select remotes of the same repository. Check every
+  worktree of those branches with `git worktree list --porcelain` and
+  `git -C <worktree> status --short --untracked-files=all`, including staged,
+  unstaged and untracked files that are not ignored. Stop when local commits
+  are missing from the pushed head or a worktree has uncommitted changes;
+  report the commits, worktrees and paths. If the pushed head is absent locally,
+  fetch it before comparing; if the remote head or local copy cannot be read,
+  stop and say why instead of treating it as clean. Then open the pull request
+  only if this request asked for it.
+- Repeat that local-work check before asking for the merge, comparing with the
+  pull request's current `headRefOid` from
+  `gh pr view <pr> --json headRefName,headRefOid`; stop if any local commit is
+  missing from that head or any worktree of its local branches has uncommitted
+  changes, or if the head or local copy cannot be read.

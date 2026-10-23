@@ -34,7 +34,7 @@
 // a merge and, at worst, a non-merge with merge in that scope. Without a flag the
 // hook applies every rule.
 import { spawnSync } from 'node:child_process';
-import { readdirSync, realpathSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git, readEvent } from './lib.mjs';
@@ -325,13 +325,14 @@ function remoteRepository(remote) {
   }
 }
 
-// Reads local git without trimming paths or taking optional locks. All reads
-// share five seconds so a broken local copy still leaves time to print an ask.
+// Reads local git without trimming paths, taking optional locks or lazily fetching.
+// All reads share five seconds so a broken local copy leaves time to print an ask.
 function localGit(cwd, args, deadline) {
   const left = Math.floor(deadline - performance.now());
   if (left < 1) throw new Error(`Could not read the local copy in ${cwd}: git exhausted its time budget.`);
   const run = spawnSync('git', ['--no-optional-locks', ...args], {
     cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
+    env: { ...process.env, GIT_NO_LAZY_FETCH: '1' }, maxBuffer: 64 * 1024 * 1024,
   });
   if (run.error || run.status !== 0) {
     throw new Error(`Could not read the local copy in ${cwd}: git ${args[0]} failed (${brief(run.stderr) || run.error?.message || run.status}).`, { cause: run });
@@ -352,18 +353,34 @@ function changedPaths(status) {
   return paths;
 }
 
-// A failed discovery is not proof that no repository exists. Only readable
+function summarize(items, separator) {
+  const shown = items.slice(0, 10).map((item) => item.length > 200 ? `${item.slice(0, 200)}…` : item);
+  if (items.length > shown.length) shown.push(`${items.length - shown.length} more`);
+  return shown.join(separator);
+}
+
+// A failed discovery is not proof that no repository exists. Only traversable
 // ancestors with no worktree or bare-repository marker establish that; errors
 // and an explicit GIT_DIR keep the original failure and ask.
 function outsideRepository(cwd) {
   if (process.env.GIT_DIR !== undefined) return false;
-  let dir = realpathSync(cwd);
-  for (;;) {
-    const entries = readdirSync(dir);
-    if (entries.includes('.git') || entries.includes('HEAD')) return false;
-    const parent = dirname(dir);
-    if (parent === dir) return true;
-    dir = parent;
+  try {
+    let dir = realpathSync(cwd);
+    for (;;) {
+      for (const marker of ['.git', 'HEAD']) {
+        try {
+          lstatSync(resolve(dir, marker));
+          return false;
+        } catch (error) {
+          if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') return false;
+        }
+      }
+      const parent = dirname(dir);
+      if (parent === dir) return true;
+      dir = parent;
+    }
+  } catch {
+    return false;
   }
 }
 
@@ -381,7 +398,7 @@ function localWorkReasons(pr, where, cwd) {
       throw error;
     }
     const remotes = localGit(cwd, ['remote', '-v'], deadline);
-    const repository = where.slice(1).join('/').toLowerCase();
+    const repository = remoteRepository(`https://${where[1]}/${where[2]}/${where[3]}`);
     const matching = new Set(remotes.trim().split('\n').flatMap((line) => {
       const [name, url] = line.split(/\s+/);
       return url && remoteRepository(url) === repository ? [name] : [];
@@ -402,18 +419,30 @@ function localWorkReasons(pr, where, cwd) {
     if (typeof pr.headRefOid !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(pr.headRefOid)) {
       return ['Could not read the pushed head: gh returned no valid headRefOid.'];
     }
-    localGit(cwd, ['cat-file', '-e', `${pr.headRefOid}^{commit}`], deadline);
-    const missing = localGit(cwd, ['log', '--format=%h %s', ...branches, '--not', pr.headRefOid, '--'], deadline).trim();
+    try {
+      localGit(cwd, ['cat-file', '-e', `${pr.headRefOid}^{commit}`], deadline);
+    } catch (error) {
+      return [`The pushed head ${pr.headRefOid.slice(0, 7)} is unavailable in the local repository; fetch the pull request's head and retry. ${error.message}`];
+    }
+    const missing = localGit(cwd, ['log', '--no-show-signature', '--format=%h %s', ...branches, '--not', pr.headRefOid, '--'], deadline).trim();
     const reasons = [];
-    if (missing) reasons.push(`Local commits missing from the pushed head ${pr.headRefOid}: ${missing.split('\n').join('; ')}.`);
+    if (missing) reasons.push(`Local commits missing from the pushed head ${pr.headRefOid}: ${summarize(missing.split('\n'), '; ')}.`);
     const worktrees = localGit(cwd, ['worktree', 'list', '--porcelain', '-z'], deadline);
     for (const record of worktrees.split('\0\0')) {
       const fields = record.split('\0');
       if (!fields.some((field) => field.startsWith('branch ') && branches.includes(field.slice(7)))) continue;
       const path = fields.find((field) => field.startsWith('worktree '))?.slice(9);
       if (!path) throw new Error('Could not read the path of a local branch worktree.');
+      if (fields.some((field) => field === 'prunable' || field.startsWith('prunable '))) {
+        try {
+          lstatSync(path);
+        } catch (error) {
+          if (error.code === 'ENOENT' || error.code === 'ENOTDIR') continue;
+          throw new Error(`Could not read the local copy in ${path}: ${error.message}`);
+        }
+      }
       const paths = changedPaths(localGit(path, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], deadline));
-      if (paths.length > 0) reasons.push(`Uncommitted changes in worktree ${path}: ${paths.join(', ')}.`);
+      if (paths.length > 0) reasons.push(`Uncommitted changes in worktree ${path}: ${summarize(paths, ', ')}.`);
     }
     return reasons;
   } catch (error) {
@@ -594,7 +623,7 @@ try {
   // An explicit allow lifts the prompt for the whole command, so it is only given to a
   // command that is nothing but one plain merge, with no quotes, chains or redirections.
   if (merged && !subagent && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
-    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label, opened by the authenticated gh user from a branch in the base repository (ADR 0010, ADR 0024).');
+    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label, the local copy holds nothing missing from the pull request, opened by the authenticated gh user from a branch in the base repository (ADR 0010, ADR 0024).');
   }
   verdict.emit();
 } catch (error) {
