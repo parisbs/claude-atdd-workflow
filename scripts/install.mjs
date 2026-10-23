@@ -73,7 +73,7 @@ const STACKS = ['android', 'flutter', 'node-mcp', 'supabase'];
 const MANIFEST = '.claude-atdd-workflow-manifest.json';
 const LEGACY_MANIFEST = '.claude-workflow-manifest.json';
 const MANAGED_HOOK = /\/\.claude\/hooks\/[a-z-]+\.mjs/;
-const CODEX_NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel'];
+const CODEX_NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel', 'codex_usage'];
 const CODEX_ALLOW = new RegExp(`^mcp__.+__(?:${CODEX_NO_QUOTA.join('|')})$`);
 // The first Claude Code that honours onFailure on a hook. An older one ignores it, and the
 // merge decision of guard-git fails open when the hook does not finish.
@@ -523,6 +523,14 @@ function registerServers(claude, configDir, plan) {
   };
   let failed = 0;
   let changed = 0;
+  const packages = new Set();
+  const prewarm = (name) => {
+    const server = plan.servers[name];
+    if (server.command !== 'npx') return;
+    for (const arg of server.args ?? []) {
+      if (/^codex-subagent-mcp(?:@[^\s]+)?$/.test(arg)) packages.add(arg);
+    }
+  };
   for (const name of plan.remove) {
     if (mcp('remove', name)) {
       changed += 1;
@@ -540,6 +548,7 @@ function registerServers(claude, configDir, plan) {
     }
     changed += 1;
     if (mcp('add-json', name, JSON.stringify(plan.servers[name]))) {
+      prewarm(name);
       console.log(`Replaced MCP server ${name}`);
     } else {
       failed += 1;
@@ -549,11 +558,19 @@ function registerServers(claude, configDir, plan) {
   for (const name of plan.add) {
     if (mcp('add-json', name, JSON.stringify(plan.servers[name]))) {
       changed += 1;
+      prewarm(name);
       console.log(`Registered MCP server ${name}`);
     } else {
       failed += 1;
       console.error(`MCP server ${name} not registered.`);
     }
+  }
+  for (const pkg of packages) {
+    const r = spawnSync('npx', ['--prefer-online', '-y', pkg], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, killSignal: 'SIGKILL',
+    });
+    if (r.status === 0 && !r.error) console.log(`Prewarmed npx cache for ${pkg}.`);
+    else console.error(`npx prewarm for ${pkg} failed: ${(r.stderr || r.error?.message || r.signal || `exit ${r.status}`).trim()}`);
   }
   if (changed > 0) console.log('Open Claude Code sessions keep the old MCP server process until they reload.');
   return failed;

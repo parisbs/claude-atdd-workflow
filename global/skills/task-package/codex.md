@@ -15,6 +15,10 @@ Load the tools for the chosen role with ToolSearch:
 - The rules (constraints, scope out, invariants and conventions, the oracle and the verify command) go to `system_instructions`.
 - The report is requested through `output_schema` with the schema below.
 - The directory the delegate works on goes to `working_dir`, always: without it Codex runs in the directory the MCP server started in.
+- Set `web_search` to `true` only for explicit research.
+- Omitting `web_search` keeps Codex's own configuration rather than disabling search.
+- A review guaranteed without search needs search disabled in the user's Codex configuration (`~/.codex/config.toml`, `web_search = "disabled"`).
+- `label` is a tag kept only in the local usage log, useful to measure per repository and role.
 
 A writing delegation to `codex-implementer` (sandbox `workspace-write`) sets `use_worktree` to `true`.
 Its worktree is made from the last commit, so uncommitted changes, ignored dependencies and build output are missing from it; commit what it needs before delegating, and say in the package what is absent.
