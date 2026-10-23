@@ -139,6 +139,8 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   (see the Control plane section), the pull request is not a draft and does not
   carry `needs-human`, its author is the authenticated `gh` user (collaborators
   and bots ask), its head branch is in the base repository and not in a fork,
+  its local branches and worktrees hold no commit or uncommitted change missing
+  from the pull request's head,
   and the merge is `--squash --delete-branch` (ADR 0010, ADR 0024). Otherwise it
   reports what failed or could not run, and waits.
 - Routing: the `Implement:` line of the repository's `CLAUDE.md` says who writes

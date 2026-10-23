@@ -201,6 +201,11 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
 - #37, done by #38: the shipped settings deny reading common secret files.
 - #39, done by #40: the installer keeps the managed hooks when personal
   settings define hooks.
+- #53, done by #54: a pull request was merged while an amendment existed only
+  locally. Implemented: the merge decision asks when the local branch of the
+  pull request has commits missing from its head or a worktree of it has
+  uncommitted changes, and `pr-prep` checks the same after the push and before
+  the merge.
 
 ## Efficiency (milestone `efficiency`)
 

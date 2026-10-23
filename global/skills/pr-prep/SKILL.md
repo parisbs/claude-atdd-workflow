@@ -77,5 +77,25 @@ only after looking.
 - Body: the repository's `.github` pull request template. Include the issue it
   closes; for ATDD work, the criterion-to-test map, the oracle commit and the red
   evidence; which checks ran and which did not; and any review fallback.
-- Push the branch and open the pull request only if this request asked for it.
+- Push the branch only if this request asked for it.
   Otherwise present the title and body and stop.
+- After the push and before opening the pull request, read the pushed remote
+  branch's current commit with `git ls-remote <remote> refs/heads/<branch>`.
+  Compare it with the local branch using
+  `git log <pushed-head>..<local-branch> --oneline`. Include local branches with
+  another name whose upstream is the head branch using
+  `git for-each-ref --format='%(refname:short) %(upstream)' refs/heads`;
+  use `git remote -v` to select remotes of the same repository. Check every
+  worktree of those branches with `git worktree list --porcelain` and
+  `git -C <worktree> status --short --untracked-files=all`, including staged,
+  unstaged and untracked files that are not ignored. Stop when local commits
+  are missing from the pushed head or a worktree has uncommitted changes;
+  report the commits, worktrees and paths. If the pushed head is absent locally,
+  fetch it before comparing; if the remote head or local copy cannot be read,
+  stop and say why instead of treating it as clean. Then open the pull request
+  only if this request asked for it.
+- Repeat that local-work check before asking for the merge, comparing with the
+  pull request's current `headRefOid` from
+  `gh pr view <pr> --json headRefName,headRefOid`; stop if any local commit is
+  missing from that head or any worktree of its local branches has uncommitted
+  changes, or if the head or local copy cannot be read.

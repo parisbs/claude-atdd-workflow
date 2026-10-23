@@ -127,7 +127,8 @@ cannot separate the effects of the workflow, developer, project and model.
     confirmation before remote Supabase actions, oracle tags created with
     confirmation and never moved or deleted, and the merge decision: squash
     only, never `--admin`, and a pull request is merged without a prompt only
-    when its checks passed, it touches no control-plane path, and the
+    when its checks passed, it touches no control-plane path, the local copy
+    holds nothing missing from the pull request's head, and the
     authenticated `gh` user opened it from a branch in the base repository, not
     a fork, ADR 0024; and for a subagent's call, no `git push` and only
     read-only `gh` commands, ADR 0013), `guard-readonly.mjs` (the researcher's
