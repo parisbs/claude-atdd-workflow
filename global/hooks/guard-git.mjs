@@ -8,8 +8,9 @@
 // - `gh pr merge` must squash and must never use --admin, and is decided from what
 //   GitHub shows about the pull request: checks, control-plane files, the label
 //   needs-human, draft state (ADR 0010), and that the authenticated gh user opened
-//   it from a branch in the base repository (ADR 0024). Anything that cannot be
-//   read asks;
+//   it from a branch in the base repository (ADR 0024). Local commits missing from
+//   its pushed head and uncommitted changes in its branch's worktrees ask too.
+//   Anything that cannot be read asks;
 // - deploys to a linked Supabase project ask first;
 // - an ATDD oracle tag cannot be deleted or moved by the agent, and creating one
 //   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010);
@@ -229,7 +230,7 @@ function checkGit(args, cwd, verdict, branches) {
 }
 
 const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
-const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
+const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
 // All gh calls of one hook run share this budget, counted from the start of the
@@ -310,6 +311,100 @@ function provenanceReasons(pr, host, cwd) {
   return reasons;
 }
 
+// Normalizes HTTPS, scp and SSH remote URLs so another repository's local work
+// cannot affect this pull request, even when its branch has the same name.
+function remoteRepository(remote) {
+  try {
+    const url = new URL(remote.replace(/^git@([^:]+):/, 'ssh://git@$1/'));
+    const path = url.pathname.replace(/\/$/, '').replace(/\.git$/, '');
+    if (!['https:', 'http:', 'ssh:'].includes(url.protocol) || !/^\/[^/]+\/[^/]+$/.test(path)) return undefined;
+    return `${url.hostname}${path}`.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+// Reads local git without trimming paths or taking optional locks. All reads
+// share five seconds so a broken local copy still leaves time to print an ask.
+function localGit(cwd, args, deadline) {
+  const left = Math.floor(deadline - performance.now());
+  if (left < 1) throw new Error(`Could not read the local copy in ${cwd}: git exhausted its time budget.`);
+  const run = spawnSync('git', ['--no-optional-locks', ...args], {
+    cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
+  });
+  if (run.error || run.status !== 0) {
+    throw new Error(`Could not read the local copy in ${cwd}: git ${args[0]} failed (${brief(run.stderr) || run.error?.message || run.status}).`);
+  }
+  return run.stdout;
+}
+
+// Reads porcelain's NUL records so spaces, newlines and rename paths survive.
+// Untracked files count; git status excludes ignored files by default.
+function changedPaths(status) {
+  const records = status.split('\0');
+  const paths = [];
+  for (let i = 0; i < records.length; i += 1) {
+    if (!records[i]) continue;
+    paths.push(records[i].slice(3));
+    if (/[RC]/.test(records[i].slice(0, 2))) paths.push(records[++i]);
+  }
+  return paths;
+}
+
+// Only a clone with a matching remote can hold this pull request's local work.
+// Check named and upstream-tracking branches without fetching; local failures
+// add reasons to ask and never grant permission for a merge.
+function localWorkReasons(pr, where, cwd) {
+  if (!where) return [];
+  const deadline = performance.now() + 5000;
+  try {
+    let remotes;
+    try {
+      remotes = localGit(cwd, ['remote', '-v'], deadline);
+    } catch (error) {
+      if (/not a git repository/i.test(error.message)) return [];
+      throw error;
+    }
+    const repository = where.slice(1).join('/').toLowerCase();
+    const matching = new Set(remotes.trim().split('\n').flatMap((line) => {
+      const [name, url] = line.split(/\s+/);
+      return url && remoteRepository(url) === repository ? [name] : [];
+    }));
+    if (matching.size === 0) return [];
+    if (typeof pr.headRefName !== 'string' || !pr.headRefName) {
+      return ['Could not read the local branch: gh returned no headRefName.'];
+    }
+    const refs = localGit(cwd, [
+      'for-each-ref', '--format=%(refname)%00%(upstream:remotename)%00%(upstream:remoteref)', 'refs/heads/',
+    ], deadline);
+    const branches = refs.trim().split('\n').flatMap((line) => {
+      const [ref, remote, upstream] = line.split('\0');
+      return ref === `refs/heads/${pr.headRefName}`
+        || (matching.has(remote) && upstream === `refs/heads/${pr.headRefName}`) ? [ref] : [];
+    });
+    if (branches.length === 0) return [];
+    if (typeof pr.headRefOid !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(pr.headRefOid)) {
+      return ['Could not read the pushed head: gh returned no valid headRefOid.'];
+    }
+    localGit(cwd, ['cat-file', '-e', `${pr.headRefOid}^{commit}`], deadline);
+    const missing = localGit(cwd, ['log', '--format=%h %s', ...branches, '--not', pr.headRefOid, '--'], deadline).trim();
+    const reasons = [];
+    if (missing) reasons.push(`Local commits missing from the pushed head ${pr.headRefOid}: ${missing.split('\n').join('; ')}.`);
+    const worktrees = localGit(cwd, ['worktree', 'list', '--porcelain', '-z'], deadline);
+    for (const record of worktrees.split('\0\0')) {
+      const fields = record.split('\0');
+      if (!fields.some((field) => field.startsWith('branch ') && branches.includes(field.slice(7)))) continue;
+      const path = fields.find((field) => field.startsWith('worktree '))?.slice(9);
+      if (!path) throw new Error('Could not read the path of a local branch worktree.');
+      const paths = changedPaths(localGit(path, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], deadline));
+      if (paths.length > 0) reasons.push(`Uncommitted changes in worktree ${path}: ${paths.join(', ')}.`);
+    }
+    return reasons;
+  } catch (error) {
+    return [error.message];
+  }
+}
+
 // What the hook may say about a merge: reasons to ask, or none when every
 // condition of ADR 0010 and ADR 0024 holds. Never throws: a merge cannot be undone.
 function mergeReasons(args, cwd) {
@@ -348,6 +443,7 @@ function mergeReasons(args, cwd) {
 
   const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
   reasons.push(...provenanceReasons(pr, where?.[1], cwd));
+  reasons.push(...localWorkReasons(pr, where, cwd));
 
   // The list a pull request is judged by comes from its base branch, never from its own copy.
   let extra = [];
