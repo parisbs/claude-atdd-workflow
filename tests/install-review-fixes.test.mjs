@@ -416,3 +416,41 @@ describe('AC-8 symbolic links and files where the legacy backups are', () => {
     }
   });
 });
+
+// Issue #48: a restore writes a bundle with what it overwrites, and retention after the restore must keep it, or
+// the restore cannot be undone.
+describe('issue #48 the undo bundle of a restore', () => {
+  test('AC-1 --restore <stamp> --keep-backups 1 keeps the restored bundle and the one it wrote, and deletes the others', () => {
+    const w = world();
+    const target = installed(w);
+    overwrite(w, target, 'edit 1\n');
+    const [restored] = w.bundles(target);
+    overwrite(w, target, 'edit 2\n');
+    overwrite(w, target, 'edit 3\n');
+    assert.equal(w.bundles(target).length, 3, 'the setup made three bundles');
+    writeFileSync(join(target, 'CLAUDE.md'), 'before the restore\n');
+    const before = new Set(w.bundles(target).map((b) => b.stamp));
+    const r = w.install(target, '--restore', restored.stamp, '--keep-backups', '1');
+    assert.equal(r.status, 0, output(r));
+    const after = w.bundles(target);
+    const undo = after.filter((b) => !before.has(b.stamp));
+    assert.equal(undo.length, 1, `the restore wrote one bundle that survives retention:\n${output(r)}`);
+    assert.equal(textOf(undo[0].files['CLAUDE.md']), 'before the restore\n', 'it holds what the restore overwrote');
+    assert.deepEqual(after.map((b) => b.stamp).sort(), [restored.stamp, undo[0].stamp].sort(), 'every other bundle beyond the limit is deleted');
+  });
+
+  test('AC-2 restoring the bundle a restore wrote brings the files back to their state before that restore', () => {
+    const w = world();
+    const target = installed(w);
+    overwrite(w, target, 'edit 1\n');
+    const [restored] = w.bundles(target);
+    writeFileSync(join(target, 'CLAUDE.md'), 'before the restore\n');
+    const r = w.install(target, '--restore', restored.stamp, '--keep-backups', '1');
+    assert.equal(r.status, 0, output(r));
+    const undo = w.bundles(target).find((b) => b.stamp !== restored.stamp);
+    assert.ok(undo, `the bundle the restore wrote survives retention:\n${output(r)}`);
+    const back = w.install(target, '--restore', undo.stamp, '--keep-backups', '1');
+    assert.equal(back.status, 0, output(back));
+    assert.equal(readFileSync(join(target, 'CLAUDE.md'), 'utf8'), 'before the restore\n');
+  });
+});

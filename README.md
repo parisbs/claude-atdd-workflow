@@ -167,8 +167,8 @@ whatever it overwrites or removes in JSON bundles under
 files it installed earlier but no longer ships. It keeps the latest 10 bundles
 per target; `--keep-backups <n>` changes that limit. `--list-backups` lists them
 and their location; `--restore <stamp>` restores one for its target after saving
-what it overwrites, keeping the restored bundle during retention so the restore
-can be repeated. Legacy backups are migrated once and exempt from retention.
+what it overwrites, keeping the restored bundle and that new one during retention,
+so the restore can be repeated and undone. Legacy backups are migrated once and exempt from retention.
 Empty legacy directories are removed without a bundle; migration removes
 `.DS_Store` and leaves other loose files in place, reporting them as not backups
 during installation and `--check`. Symlinks inside legacy backups are reported
