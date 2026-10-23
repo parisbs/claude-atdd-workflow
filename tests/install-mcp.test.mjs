@@ -351,7 +351,9 @@ describe('AC-6 the shipped registrations', () => {
     assert.ok(existsSync(file), 'global/mcp-servers.json is missing');
     return JSON.parse(readFileSync(file, 'utf8'));
   };
-  test('AC-2 (#57) declares codex-reviewer and codex-implementer on exactly codex-subagent-mcp@0.5.0, and no codex-subagent', () => {
+  // Issue #50 AC-5 amends this test: it checks the form of the pin, an exact version started offline-first,
+  // not a literal version, so that a version bump changes global/mcp-servers.json alone.
+  test('AC-5 (#50) declares codex-reviewer and codex-implementer on one exact codex-subagent-mcp version behind --prefer-offline, and no codex-subagent', () => {
     const servers = shipped();
     assert.ok('codex-reviewer' in servers && 'codex-implementer' in servers);
     assert.equal('codex-subagent' in servers, false);
@@ -359,10 +361,11 @@ describe('AC-6 the shipped registrations', () => {
       const s = servers[name];
       assert.equal(s.type, 'stdio', name);
       assert.equal(s.command, 'npx', name);
+      assert.equal(s.args[0], '--prefer-offline', `${name}: a cached version starts without asking the registry`);
       assert.ok(s.args.includes('-y'), name);
       const pkg = s.args.filter((a) => a.startsWith('codex-subagent-mcp'));
       assert.equal(pkg.length, 1, name);
-      assert.equal(pkg[0], 'codex-subagent-mcp@0.5.0', `${name}: an exact version, not a range (ADR 0017)`);
+      assert.match(pkg[0], /^codex-subagent-mcp@\d+\.\d+\.\d+$/, `${name}: an exact version, not a range (ADR 0017)`);
       return pkg[0];
     });
     assert.equal(ranges[0], ranges[1], 'both registrations run the same version');
@@ -398,7 +401,8 @@ describe('AC-6 the shipped registrations', () => {
       assert.equal(env.CODEX_SUBAGENT_MCP_SERVERS, 'none', name);
       assert.equal(env.CODEX_SUBAGENT_PLUGINS, 'none', name);
       assert.equal(env.CODEX_SUBAGENT_APPS, 'off', name);
-      assert.equal(env.CODEX_SUBAGENT_MAX_EFFORT, 'high', name);
+      // Issue #50 amends this test: the effort ceilings differ per registration, checked in install-codex-060.
+      assert.ok(env.CODEX_SUBAGENT_MAX_EFFORT, `${name}: an effort ceiling`);
       assert.equal(env.CODEX_SUBAGENT_DEFAULT_EFFORT, 'high', name);
       assert.ok(env.CODEX_SUBAGENT_DEFAULT_MODEL, `${name}: a default model`);
       assert.equal('CODEX_BIN' in env, false, `${name}: CODEX_BIN is a machine value, it belongs in personal/`);
@@ -409,7 +413,7 @@ describe('AC-6 the shipped registrations', () => {
 // Issue #57 (ADR 0017) narrows AC-7: codex_job_status is no longer allowed, so a status poll asks, and the
 // rules are derived at install time from global/mcp-servers.json instead of being written in global/settings.json.
 describe('AC-7 permissions for the tools that spend no quota', () => {
-  const NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel'];
+  const NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel', 'codex_usage'];
   const SERVERS = ['codex-reviewer', 'codex-implementer'];
 
   const assertRules = (allow) => {
@@ -423,7 +427,7 @@ describe('AC-7 permissions for the tools that spend no quota', () => {
     assert.ok(!allow.some((rule) => rule.startsWith('mcp__codex-subagent')), 'no rule for the old name');
   };
 
-  test('AC-7 (#57) an install of this repository leaves the five rules of each server in settings.json, and none that delegates or polls', () => {
+  test('AC-7 (#57, #50) an install of this repository leaves the no-quota rules of each server in settings.json, and none that delegates or polls', () => {
     const target = fresh('target');
     const r = run(repo, target);
     assert.equal(r.status, 0, r.stderr);
@@ -462,7 +466,7 @@ describe('AC-3 (#57) codex_job_status leaves the allow list', () => {
 // registration is added in that file alone. The repository here copies the real global/settings.json and
 // declares no codex-reviewer or codex-implementer, so any rule or coverage for those names was written by hand.
 describe('AC-4 (#57) Codex rules derived from global/mcp-servers.json', () => {
-  const NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel'];
+  const NO_QUOTA = ['codex_doctor', 'list_codex_models', 'codex_recommend', 'codex_job_result', 'codex_job_cancel', 'codex_usage'];
   const SERVERS = {
     'codex-auditor': { type: 'stdio', command: 'npx', args: ['-y', 'codex-subagent-mcp@0.5.0'], env: { CODEX_SUBAGENT_MAX_SANDBOX: 'read-only' } },
     my_codex2: { type: 'stdio', command: '/opt/tools/codex-subagent-mcp/build/index.js', args: [], env: { CODEX_SUBAGENT_MAX_SANDBOX: 'workspace-write' } },
@@ -487,7 +491,7 @@ describe('AC-4 (#57) Codex rules derived from global/mcp-servers.json', () => {
     return new RegExp(`^(?:${entries[0].matcher})$`);
   };
 
-  test('AC-4 (#57) allows exactly the five no-quota tools of each declared Codex registration, from the command or the args form', () => {
+  test('AC-4 (#57, #50) allows exactly the no-quota tools of each declared Codex registration, from the command or the args form', () => {
     const rules = (setup().permissions?.allow ?? []).filter((rule) => rule.startsWith('mcp__')).sort();
     const expected = DERIVED.flatMap((name) => NO_QUOTA.map((tool) => `mcp__${name}__${tool}`)).sort();
     assert.deepEqual(rules, expected);
