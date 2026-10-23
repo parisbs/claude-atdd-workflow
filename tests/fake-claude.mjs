@@ -6,6 +6,10 @@
 // and any call without `-s user`, exits 2: the installer must not reach for anything else.
 // Every call is logged, so a test can say what the installer ran and what it did not.
 // FAKE_CLAUDE_FAIL is a comma-separated list of `add:<name>` and `remove:<name>` that exit 1.
+// Issue #50: the same bin holds a fake `npx`, so that the installer's cache prewarm never reaches the
+// network. It logs its argv and whether its standard input reached end of file within three seconds to
+// FAKE_NPX_LOG. FAKE_NPX_FAIL=exit makes it exit 1; FAKE_NPX_FAIL=signal makes it die by SIGKILL, as a
+// process the installer stopped on a timeout would.
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
@@ -44,18 +48,46 @@ mkdirSync(join(file, '..'), { recursive: true });
 writeFileSync(file, JSON.stringify(config, null, 2));
 `;
 
+const NPX = `#!${process.execPath}
+const { appendFileSync } = require('node:fs');
+const argv = process.argv.slice(2);
+const env = process.env;
+const finish = (stdinClosed) => {
+  if (env.FAKE_NPX_LOG) appendFileSync(env.FAKE_NPX_LOG, JSON.stringify({ argv, stdinClosed }) + '\\n');
+  if (env.FAKE_NPX_FAIL === 'signal') process.kill(process.pid, 'SIGKILL');
+  if (env.FAKE_NPX_FAIL === 'exit') {
+    process.stderr.write('fake npx: failed on purpose\\n');
+    process.exit(1);
+  }
+  process.exit(stdinClosed ? 0 : 1);
+};
+const timer = setTimeout(() => finish(false), 3000);
+process.stdin.on('end', () => { clearTimeout(timer); finish(true); });
+process.stdin.on('error', () => { clearTimeout(timer); finish(true); });
+process.stdin.resume();
+`;
+
 export function fakeClaude(dir) {
   const bin = join(dir, 'bin');
   const log = join(dir, 'calls.log');
+  const npxLog = join(dir, 'npx.log');
   mkdirSync(bin, { recursive: true });
   writeFileSync(join(bin, 'claude'), SCRIPT);
   chmodSync(join(bin, 'claude'), 0o755);
+  writeFileSync(join(bin, 'npx'), NPX);
+  chmodSync(join(bin, 'npx'), 0o755);
   return {
     bin,
     log,
     // The environment for a child process that should find this claude first.
     env(extra = {}) {
-      return { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_CLAUDE_LOG: log, ...extra };
+      return { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_CLAUDE_LOG: log, FAKE_NPX_LOG: npxLog, ...extra };
+    },
+    // The calls the fake npx received, each as { argv, stdinClosed }.
+    npxCalls() {
+      return existsSync(npxLog)
+        ? readFileSync(npxLog, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+        : [];
     },
     calls() {
       return existsSync(log)
@@ -68,6 +100,7 @@ export function fakeClaude(dir) {
     },
     reset() {
       writeFileSync(log, '');
+      writeFileSync(npxLog, '');
     },
     // The user-scope servers registered in a configuration directory.
     servers(configDir) {

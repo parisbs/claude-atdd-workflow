@@ -1,12 +1,14 @@
 {
   "codex-reviewer": {
     "env": {
-      "CODEX_BIN": "/usr/local/bin/codex"
+      "CODEX_BIN": "/usr/local/bin/codex",
+      "CODEX_SUBAGENT_USAGE_LOG": "on"
     }
   },
   "codex-implementer": {
     "env": {
-      "CODEX_BIN": "/usr/local/bin/codex"
+      "CODEX_BIN": "/usr/local/bin/codex",
+      "CODEX_SUBAGENT_USAGE_LOG": "on"
     }
   }
 }

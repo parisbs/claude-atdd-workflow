@@ -81,9 +81,46 @@ cannot separate the effects of the workflow, developer, project and model.
     the installer removes from an installed `settings.json`.
   - `mcp-servers.json`: the MCP servers the installer registers in the user
     scope through `claude mcp` (ADR 0014): `codex-reviewer` and
-    `codex-implementer`, two registrations pinned to `codex-subagent-mcp@0.5.0`
-    with different sandbox ceilings. The installer derives their permissions
-    and guard matcher from this file (ADR 0017), recognizing the package in a
+    `codex-implementer`, two registrations pinned to `codex-subagent-mcp@0.6.0`
+    with `--prefer-offline` and different ceilings (ADR 0028):
+
+    - `CODEX_SUBAGENT_DEFAULT_MODEL=gpt-6.1-sol` supplies the model when a call
+      names none; `CODEX_SUBAGENT_ALLOWED_MODELS=gpt-6.1-sol,gpt-6-astra`
+      refuses any other model, keeping Astra for escalation under ADR 0025.
+      An empty list allows all models; an empty entry is a configuration error.
+      Without a default, a one-model allowed list supplies it.
+    - `CODEX_SUBAGENT_DEFAULT_EFFORT=high` supplies an omitted effort;
+      `CODEX_SUBAGENT_MAX_EFFORT` caps it at `high` for the reviewer and `xhigh`
+      for the implementer, clamping a request to the nearest supported level
+      within the ceiling and refusing it if none qualifies.
+    - `CODEX_SUBAGENT_MAX_SANDBOX` refuses calls above `read-only` for the
+      reviewer and `workspace-write` for the implementer, follow-ups included;
+      unset, the ceiling is `workspace-write`.
+      `CODEX_SUBAGENT_DEFAULT_SANDBOX` stays unset (default `read-only`), so
+      every write needs an explicit argument.
+    - `CODEX_SUBAGENT_MCP_SERVERS=none`, `CODEX_SUBAGENT_PLUGINS=none` and
+      `CODEX_SUBAGENT_APPS=off` disable inherited MCP servers, plugins and apps;
+      `none` also avoids running `codex plugin list`.
+      MCP servers and plugins accept `none`, `all` or a list; apps accept `on`
+      or `off`.
+    - `CODEX_SUBAGENT_MAX_DELEGATIONS_PER_HOUR` limits the reviewer to `10`
+      and the implementer to `6` delegations in a rolling one-hour window per
+      process, counting failed and cancelled runs and resetting on restart.
+    - `CODEX_SUBAGENT_MAX_BACKGROUND_JOBS=2` caps background jobs in each
+      registration (valid values 1 to 8, default 8).
+
+    Values are explicit even when they equal a default, so a future default
+    change needs a pull request to affect these registrations. An invalid
+    value leaves the server running: `codex_doctor` lists the errors, and every
+    tool that reaches the Codex CLI except `codex_doctor` refuses calls until
+    the environment is fixed and the server restarts. This includes
+    `list_codex_models` and `codex_recommend`, which the installer allows
+    without a prompt.
+    Use `codex_usage` to recalibrate the delegation and job ceilings after
+    enabling the usage log with `CODEX_SUBAGENT_USAGE_LOG=on` in the personal
+    overlay; the shipped registrations leave logging off.
+    The installer derives their permissions and guard matcher from this file
+    (ADR 0017), recognizing the package in a
     command or argument under any registration name.
     `retired-mcp-servers.json` lists registrations it removes.
   - `hooks/`: `guard-git.mjs` (no commit or push on main, no `--no-verify`,
@@ -157,8 +194,22 @@ node scripts/install.mjs --check
 node scripts/install.mjs
 ```
 
-The personal files are optional: edit them to your own preferences first. The
-check reports what would change without writing anything. Installing copies
+The personal files are optional: edit them to your own preferences first.
+`CODEX_BIN` and `CODEX_SUBAGENT_USAGE_LOG` overrides in the MCP example are
+optional: `CODEX_BIN` selects the Codex CLI path and must not be left empty,
+because an empty value is used as is; `CODEX_SUBAGENT_USAGE_LOG` accepts `on`
+or `off`. The local usage log is off unless set to `on` in the personal
+overlay; the shipped registrations do not set it. Both registrations share
+the log, and recalibrating the ceilings with `codex_usage` needs logging on.
+The log lives in `XDG_STATE_HOME/codex-subagent-mcp` only when `XDG_STATE_HOME`
+is an absolute path. Otherwise it uses
+`~/Library/Application Support/codex-subagent-mcp` on macOS,
+`~/.local/state/codex-subagent-mcp` on other POSIX systems, or
+`LOCALAPPDATA/codex-subagent-mcp` on Windows.
+`CODEX_HOME` is Codex's own configuration directory variable, also read by
+`guard-codex`.
+
+The check reports what would change without writing anything. Installing copies
 files (never links them), merges `settings.json` keeping existing user settings
 except retired rules and reconciling the derived Codex permissions, backs up
 whatever it overwrites or removes in JSON bundles under
@@ -186,14 +237,22 @@ An install refuses differing files it does not manage with exit 2; `--adopt`
 backs them up and takes them over. It also registers the
 declared MCP servers through the `claude` CLI, never by writing `~/.claude.json`,
 replacing a registration that differs (the old one is saved in the bundle)
-and removing a retired one; a Claude Code session that is already
-open keeps the old server process until it reloads. Without `claude` on `PATH`
+and removing a retired one. After successful additions or replacements, it
+prewarms the npx cache once per distinct Codex package with
+`npx --prefer-online -y <package spec>`, closed standard input and a 60-second
+timeout; a failed prewarm is reported without failing the install.
+Unchanged registrations and `--check` do not prewarm.
+This refreshes the package document before later offline-first starts; see
+the [network probe](docs/experiments/2026-10-23-codex-subagent-mcp-060-npx-probes.md).
+A Claude Code session that is already open keeps the old server process until
+it reloads. Without `claude` on `PATH`
 the servers are reported as not verified, and the check exits 1. Run the check
 again at any time to detect drift.
 
-Each declared Codex registration allows only the five no-quota tools
-`codex_doctor`, `list_codex_models`, `codex_recommend`, `codex_job_result` and
-`codex_job_cancel`; delegation, follow-up and job status require permission.
+Each declared Codex registration allows only the six no-quota tools
+`codex_doctor`, `list_codex_models`, `codex_recommend`, `codex_job_result`,
+`codex_job_cancel` and `codex_usage`, which only reads the local usage log;
+delegation, follow-up and job status require permission.
 The previously shipped job-status permissions are retired during installation.
 Removing a Codex name also removes its derived permissions and guard coverage.
 `--check` compares the same derived settings and exact server version that an
