@@ -34,7 +34,8 @@
 // a merge and, at worst, a non-merge with merge in that scope. Without a flag the
 // hook applies every rule.
 import { spawnSync } from 'node:child_process';
-import { isAbsolute, resolve } from 'node:path';
+import { readdirSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git, readEvent } from './lib.mjs';
 import { ghIsRead, gitSubcommand, program } from './commands.mjs';
@@ -333,7 +334,7 @@ function localGit(cwd, args, deadline) {
     cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
   });
   if (run.error || run.status !== 0) {
-    throw new Error(`Could not read the local copy in ${cwd}: git ${args[0]} failed (${brief(run.stderr) || run.error?.message || run.status}).`);
+    throw new Error(`Could not read the local copy in ${cwd}: git ${args[0]} failed (${brief(run.stderr) || run.error?.message || run.status}).`, { cause: run });
   }
   return run.stdout;
 }
@@ -351,6 +352,21 @@ function changedPaths(status) {
   return paths;
 }
 
+// A failed discovery is not proof that no repository exists. Only readable
+// ancestors with no worktree or bare-repository marker establish that; errors
+// and an explicit GIT_DIR keep the original failure and ask.
+function outsideRepository(cwd) {
+  if (process.env.GIT_DIR !== undefined) return false;
+  let dir = realpathSync(cwd);
+  for (;;) {
+    const entries = readdirSync(dir);
+    if (entries.includes('.git') || entries.includes('HEAD')) return false;
+    const parent = dirname(dir);
+    if (parent === dir) return true;
+    dir = parent;
+  }
+}
+
 // Only a clone with a matching remote can hold this pull request's local work.
 // Check named and upstream-tracking branches without fetching; local failures
 // add reasons to ask and never grant permission for a merge.
@@ -358,13 +374,13 @@ function localWorkReasons(pr, where, cwd) {
   if (!where) return [];
   const deadline = performance.now() + 5000;
   try {
-    let remotes;
     try {
-      remotes = localGit(cwd, ['remote', '-v'], deadline);
+      localGit(cwd, ['rev-parse', '--absolute-git-dir'], deadline);
     } catch (error) {
-      if (/not a git repository/i.test(error.message)) return [];
+      if (!error.cause?.error && error.cause?.status === 128 && outsideRepository(cwd)) return [];
       throw error;
     }
+    const remotes = localGit(cwd, ['remote', '-v'], deadline);
     const repository = where.slice(1).join('/').toLowerCase();
     const matching = new Set(remotes.trim().split('\n').flatMap((line) => {
       const [name, url] = line.split(/\s+/);
