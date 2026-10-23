@@ -50,7 +50,7 @@
 // Symlinks inside legacy backups are reported and skipped; a symlink or file at
 // the legacy root is reported as not migratable and left untouched.
 // Malformed bundle files are skipped with a warning and left out of retention.
-// A restore keeps its source bundle during retention so it can be repeated.
+// A restore keeps its source bundle and the bundle it writes during retention, so it can be repeated and undone.
 // Differing unmanaged files require --adopt. Files are written through a
 // same-directory rename. Planned files and the manifest replace symlinks with
 // regular files, leaving their former targets untouched and saving resolved
@@ -329,11 +329,12 @@ function writeBundle(target, files, mcpServers, { legacy = false, stamp, created
   const file = join(dir, `${stamp}.json`);
   atomicWrite(file, stable({ version: 1, stamp, createdAt, target: realpathSync(target), legacy, files, mcpServers }), 0o600);
   console.log(`Backed up ${Object.keys(files).length} file(s) and ${Object.keys(mcpServers).length} MCP registration(s) to ${file}`);
+  return stamp;
 }
 
-function retainBundles(target, keep, protectedStamp) {
+function retainBundles(target, keep, protectedStamps = []) {
   const current = readBundles().filter((bundle) => bundle.target === realpathSync(target) && !bundle.legacy);
-  const removable = current.filter((bundle) => bundle.stamp !== protectedStamp);
+  const removable = current.filter((bundle) => !protectedStamps.includes(bundle.stamp));
   for (const bundle of removable.slice(0, Math.max(0, current.length - keep))) rmSync(bundle.file);
 }
 
@@ -420,13 +421,14 @@ function restoreBackup(target, configDir, stamp, keep) {
   };
   const claude = names.length > 0 ? findClaude() : null;
   if (names.length > 0 && !claude) throw new Error('cannot restore MCP servers: claude CLI unavailable');
-  writeBundle(target, savedFiles(target, files.map(([rel]) => rel)), Object.fromEntries(plan.replace.map((name) => [name, current[name]])));
+  const undo = writeBundle(target, savedFiles(target, files.map(([rel]) => rel)), Object.fromEntries(plan.replace.map((name) => [name, current[name]])));
   // A bundle can contain settings or a manifest as well as the files they reference.
   const order = (rel) => rel === MANIFEST || rel === LEGACY_MANIFEST ? 2 : rel === 'settings.json' ? 1 : 0;
   files.sort(([a], [b]) => order(a) - order(b));
   for (const [rel, content, mode] of files) atomicWrite(join(target, rel), content, mode, rel === 'settings.json');
   const failed = claude ? registerServers(claude, configDir, plan) : 0;
-  retainBundles(target, keep, stamp);
+  // Retention keeps the restored bundle and the one that undoes the restore, even past the limit.
+  retainBundles(target, keep, [stamp, undo]);
   console.log(`Restored backup ${stamp} into ${target}.`);
   return failed > 0 ? 1 : 0;
 }
