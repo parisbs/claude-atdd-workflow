@@ -18,7 +18,7 @@ Load the tools for the chosen role with ToolSearch:
 - Set `web_search` to `true` only for explicit research.
 - Omitting `web_search` keeps Codex's own configuration rather than disabling search.
 - A review guaranteed without search needs search disabled in the user's Codex configuration (`~/.codex/config.toml`, `web_search = "disabled"`).
-- `label` is a tag kept only in the local usage log, useful to measure per repository and role.
+- `label` is a tag persisted only when the local usage log is on (`CODEX_SUBAGENT_USAGE_LOG=on` in the personal overlay); the shipped registrations leave it off.
 
 A writing delegation to `codex-implementer` (sandbox `workspace-write`) sets `use_worktree` to `true`.
 Its worktree is made from the last commit, so uncommitted changes, ignored dependencies and build output are missing from it; commit what it needs before delegating, and say in the package what is absent.

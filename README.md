@@ -111,8 +111,11 @@ cannot separate the effects of the workflow, developer, project and model.
 
     Values are explicit even when they equal a default, so a future default
     change needs a pull request to affect these registrations. An invalid
-    value leaves the server running: `codex_doctor` lists it, and tools that
-    spend quota refuse calls until the server restarts with corrected values.
+    value leaves the server running: `codex_doctor` lists the errors, and every
+    tool that reaches the Codex CLI except `codex_doctor` refuses calls until
+    the environment is fixed and the server restarts. This includes
+    `list_codex_models` and `codex_recommend`, which the installer allows
+    without a prompt.
     Use `codex_usage` to recalibrate the delegation and job ceilings after
     enabling the usage log with `CODEX_SUBAGENT_USAGE_LOG=on` in the personal
     overlay; the shipped registrations leave logging off.

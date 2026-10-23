@@ -45,6 +45,10 @@ Offline-first still needs the network when the cache is empty.
 The supplied audit measured a caret range at 1.61 s, with two GETs and a POST
 to `/-/npm/v1/security/advisories/bulk`; `codex-subagent-mcp@0.5.0` exact at
 1.44 s with revalidation; and that version with `--prefer-offline` at 0.88 s.
+These figures come from a separate run whose method is not recorded in the
+repository, so they are not directly comparable with the 2026-10-23 0.6.0
+timings. The request counts (GETs, advisories POST and cache hit) are the
+comparable part.
 
 ## Earlier startup probe, 2026-10-08
 

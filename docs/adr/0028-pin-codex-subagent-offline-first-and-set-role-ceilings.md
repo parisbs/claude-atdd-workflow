@@ -47,8 +47,14 @@ current `list_codex_models` catalog.
 
 ## Alternatives considered
 
-- A version range: two GETs and an advisories POST per start, 1.61 s in the
-  audit, and a version that can change without a pull request.
+The 2026-10-21 audit measured a range at 1.61 s, 0.5.0 exact at 1.44 s and
+0.5.0 with `--prefer-offline` at 0.88 s. These figures come from a separate
+run whose method is not recorded in the repository, so they are not directly
+comparable with the 2026-10-23 0.6.0 timings. The request counts (GETs,
+advisories POST and cache hit) are the comparable part.
+
+- A version range: two GETs and an advisories POST per start, and a version
+  that can change without a pull request.
 - An exact version without `--prefer-offline`: one revalidation GET per warm
   start, measured at 0.67 s for 0.6.0.
 - A global npm install with a direct command: the
@@ -65,6 +71,10 @@ current `list_codex_models` catalog.
   ADR 0014 and the temporary `high` of accepted ADR 0025, enabling the latter's
   complex-implementer `xhigh` route. Those immutable records and the routing
   matrix stay as written, including their stale ceiling references.
+- Accepted [ADR 0027](0027-keep-installer-backups-in-the-xdg-state-directory-as-json-bundles.md)
+  says 0.6.0 keeps its usage log under `XDG_STATE_HOME`; this holds only when
+  that variable is an absolute path. Its stale statement stays as written;
+  the platform fallbacks are recorded above.
 - Delegation bounds count failed and cancelled runs in a rolling hour per
   process and reset on restart; they are tuning limits, not durable quotas.
   Recalibrating the 10/6 delegation and 2-job ceilings using `codex_usage`
@@ -75,5 +85,8 @@ current `list_codex_models` catalog.
   `--prefer-offline`; that scenario remains unverified. A failed prewarm
   leaves the install usable but may leave a later start needing the network.
 - Machine paths and local logging remain optional. An invalid environment
-  value leaves the server running for `codex_doctor`, while tools that spend
-  quota refuse calls until restart with a corrected configuration.
+  value leaves the server running: `codex_doctor` lists the errors, and every
+  tool that reaches the Codex CLI except `codex_doctor` refuses calls until
+  the environment is fixed and the server restarts. This includes
+  `list_codex_models` and `codex_recommend`, which the installer allows
+  without a prompt.
