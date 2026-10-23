@@ -428,13 +428,14 @@ describe('issue #48 the undo bundle of a restore', () => {
     overwrite(w, target, 'edit 2\n');
     overwrite(w, target, 'edit 3\n');
     assert.equal(w.bundles(target).length, 3, 'the setup made three bundles');
+    writeFileSync(join(target, 'CLAUDE.md'), 'before the restore\n');
     const before = new Set(w.bundles(target).map((b) => b.stamp));
     const r = w.install(target, '--restore', restored.stamp, '--keep-backups', '1');
     assert.equal(r.status, 0, output(r));
     const after = w.bundles(target);
     const undo = after.filter((b) => !before.has(b.stamp));
     assert.equal(undo.length, 1, `the restore wrote one bundle that survives retention:\n${output(r)}`);
-    assert.equal(textOf(undo[0].files['CLAUDE.md']), 'edit 3\n', 'it holds what the restore overwrote');
+    assert.equal(textOf(undo[0].files['CLAUDE.md']), 'before the restore\n', 'it holds what the restore overwrote');
     assert.deepEqual(after.map((b) => b.stamp).sort(), [restored.stamp, undo[0].stamp].sort(), 'every other bundle beyond the limit is deleted');
   });
 
