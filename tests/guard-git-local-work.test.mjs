@@ -274,7 +274,7 @@ describe('guard-git merge decision with local work (#53)', () => {
   for (const [label, remote] of [
     ['another repository', 'https://github.com/other/repo.git'],
     ['the same name on another host', 'https://ghe.example.com/o/r.git'],
-    ['no remote', undefined],
+    ['no remote', null],
   ]) {
     test(`AC-6 keeps the explicit allow when the clone's remote is ${label}`, () => {
       const { dir, head } = clone({ remote });
