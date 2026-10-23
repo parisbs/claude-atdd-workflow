@@ -51,6 +51,17 @@ function bash(cwd, command, env = {}) {
   assert.deepEqual(result.failures, [], result.stderr);
   return result;
 }
+// Deleting an oracle tag makes guard-git read the branch's pull request with gh (#55), and these cases
+// must not reach the network or depend on a login: a gh that fails at once comes first on PATH.
+let offlineBin;
+function bashOffline(cwd, command) {
+  if (!offlineBin) {
+    offlineBin = mkdtempSync(join(tmpdir(), 'cw-hooks-offline-gh-'));
+    writeFileSync(join(offlineBin, 'gh'), '#!/bin/sh\necho "gh: offline" >&2\nexit 1\n', { mode: 0o755 });
+    process.on('exit', () => rmSync(offlineBin, { recursive: true, force: true }));
+  }
+  return bash(cwd, command, { PATH: `${offlineBin}${delimiter}${process.env.PATH}` });
+}
 // guard-git run directly, with a mode or without one.
 const guardGit = (event, env, ...args) => run('guard-git.mjs', { tool_name: 'Bash', ...event }, env, args);
 const edit = (cwd, file_path) => run('guard-tests.mjs', { cwd, tool_name: 'Edit', tool_input: { file_path } });
@@ -130,8 +141,8 @@ describe('guard-git', () => {
   });
 
   test('protects oracle tags from the agent', () => {
-    assert.equal(bash(dir, 'git tag -d oracle/feature/x').decision, 'deny');
-    assert.equal(bash(dir, 'git tag -f oracle/feature/x HEAD').decision, 'deny');
+    assert.equal(bashOffline(dir, 'git tag -d oracle/feature/x').decision, 'ask');
+    assert.equal(bashOffline(dir, 'git tag -f oracle/feature/x HEAD').decision, 'ask');
     assert.equal(bash(dir, 'git tag oracle/feature/x').decision, 'ask');
   });
 
@@ -141,15 +152,17 @@ describe('guard-git', () => {
 });
 
 // Issue #8: creating an oracle tag is the human's approval of the oracle, so it asks;
-// moving or deleting one is denied through every route the guard can read.
+// moving or deleting one was denied through every route the guard can read. Issue #55 (ADR 0029): in the
+// main session those ask too, so the human can approve them from a session without a terminal;
+// guard-git-oracle-tags.test.mjs covers the reasons, the subagent and bypassPermissions.
 describe('guard-git oracle tags', () => {
   let dir;
   before(() => { dir = repo(); });
   after(() => rmSync(dir, { recursive: true, force: true }));
 
-  const expectAll = (commands, decision) => {
+  const expectAll = (commands, decision, run = bash) => {
     for (const command of commands) {
-      assert.equal(bash(dir, command).decision, decision, command);
+      assert.equal(run(dir, command).decision, decision, command);
     }
   };
 
@@ -183,7 +196,7 @@ describe('guard-git oracle tags', () => {
     ], 'allow');
   });
 
-  test('AC-3 denies deleting or moving an oracle tag with git tag, combined flags included', () => {
+  test('AC-3 asks before deleting or moving an oracle tag with git tag, combined flags included', () => {
     expectAll([
       'git tag -d oracle/x',
       'git tag --delete oracle/x',
@@ -193,10 +206,10 @@ describe('guard-git oracle tags', () => {
       'git tag --force oracle/x HEAD',
       'git tag -d v1.0.0 oracle/x',
       'git tag -d oracle/x v1.0.0',
-    ], 'deny');
+    ], 'ask', bashOffline);
   });
 
-  test('AC-4 denies git update-ref on an oracle tag that exists', () => {
+  test('AC-4 asks before git update-ref moves or deletes an oracle tag that exists', () => {
     sh(dir, 'tag', 'oracle/feature/x');
     expectAll([
       'git update-ref refs/tags/oracle/feature/x HEAD',
@@ -204,7 +217,7 @@ describe('guard-git oracle tags', () => {
       'git update-ref --no-deref refs/tags/oracle/feature/x HEAD',
       'git update-ref -m "retag" refs/tags/oracle/feature/x HEAD',
       'git update-ref -m retag -d refs/tags/oracle/feature/x',
-    ], 'deny');
+    ], 'ask', bashOffline);
   });
 
   test('AC-4 asks when git update-ref would create an oracle tag that does not exist', () => {
