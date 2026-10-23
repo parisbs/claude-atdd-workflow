@@ -74,4 +74,4 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   carry its identifier in their name.
 - Review: none
 - Implement: claude
-- Human merge: global/, scripts/, personal/, common/, docs/experiments/donated/
+- Human merge: global/, scripts/, personal/, common/, docs/experiments/donated/, android/, flutter/, node-mcp/, supabase/, tests/

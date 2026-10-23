@@ -2,5 +2,6 @@
   { "name": "next", "color": "0E8A16", "description": "Prepared and queued; waiting for an explicit go" },
   { "name": "atdd", "color": "1D76DB", "description": "Follows the acceptance-test-driven workflow" },
   { "name": "test-change-requested", "color": "D93F0B", "description": "An agent asked to change a frozen acceptance test" },
+  { "name": "needs-human", "color": "D93F0B", "description": "The pull request must be merged by a human" },
   { "name": "blocked", "color": "B60205", "description": "Cannot progress until something else changes" }
 ]
