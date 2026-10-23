@@ -11,6 +11,8 @@ import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { fakeClaude } from './fake-claude.mjs';
+// For its side effect: XDG_STATE_HOME points at a temporary directory, so no bundle lands in ~/.local/state.
+import './state-home.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const scratch = mkdtempSync(join(tmpdir(), 'cw-codex060-'));
@@ -104,8 +106,15 @@ describe('AC-1 (#50) the shipped registrations', () => {
     const r = run(repo, target);
     assert.equal(r.status, 0, r.stderr);
     const servers = shipped();
+    // The installer merges the env of personal/mcp-servers.json over the shipped one, key by key, so a
+    // checkout with that overlay registers it too.
+    const overlay = join(repo, 'personal', 'mcp-servers.json');
+    const personal = existsSync(overlay) ? JSON.parse(readFileSync(overlay, 'utf8')) : {};
     const registered = fake.servers(target);
-    for (const name of NAMES) assert.deepEqual(registered[name], servers[name], name);
+    for (const name of NAMES) {
+      const expected = personal[name]?.env ? { ...servers[name], env: { ...servers[name].env, ...personal[name].env } } : servers[name];
+      assert.deepEqual(registered[name], expected, name);
+    }
     const check = run(repo, target, ['--check']);
     assert.equal(check.status, 0, check.stdout);
   });
