@@ -60,3 +60,4 @@ added, the legacy status and date lines removed, every other line identical.
 - [0026. Return a compact envelope and keep the full delegation report in the scratchpad](0026-return-a-compact-envelope-and-keep-the-full-delegation-report-in-the-scratchpad.md)
 - [0027. Keep installer backups in the XDG state directory as JSON bundles](0027-keep-installer-backups-in-the-xdg-state-directory-as-json-bundles.md)
 - [0028. Pin Codex subagent offline-first and set role ceilings](0028-pin-codex-subagent-offline-first-and-set-role-ceilings.md)
+- [0029. Ask before deleting or moving an oracle tag in the main session](0029-ask-before-deleting-or-moving-an-oracle-tag-in-the-main-session.md)
