@@ -113,7 +113,9 @@ cannot separate the effects of the workflow, developer, project and model.
     change needs a pull request to affect these registrations. An invalid
     value leaves the server running: `codex_doctor` lists it, and tools that
     spend quota refuse calls until the server restarts with corrected values.
-    Use `codex_usage` to recalibrate the delegation and job ceilings.
+    Use `codex_usage` to recalibrate the delegation and job ceilings after
+    enabling the usage log with `CODEX_SUBAGENT_USAGE_LOG=on` in the personal
+    overlay; the shipped registrations leave logging off.
     The installer derives their permissions and guard matcher from this file
     (ADR 0017), recognizing the package in a
     command or argument under any registration name.
@@ -193,8 +195,14 @@ The personal files are optional: edit them to your own preferences first.
 `CODEX_BIN` and `CODEX_SUBAGENT_USAGE_LOG` overrides in the MCP example are
 optional: `CODEX_BIN` selects the Codex CLI path and must not be left empty,
 because an empty value is used as is; `CODEX_SUBAGENT_USAGE_LOG` accepts `on`
-or `off` and controls the local usage log under `XDG_STATE_HOME`, shared by
-both registrations and read by `codex_usage`.
+or `off`. The local usage log is off unless set to `on` in the personal
+overlay; the shipped registrations do not set it. Both registrations share
+the log, and recalibrating the ceilings with `codex_usage` needs logging on.
+The log lives in `XDG_STATE_HOME/codex-subagent-mcp` only when `XDG_STATE_HOME`
+is an absolute path. Otherwise it uses
+`~/Library/Application Support/codex-subagent-mcp` on macOS,
+`~/.local/state/codex-subagent-mcp` on other POSIX systems, or
+`LOCALAPPDATA/codex-subagent-mcp` on Windows.
 `CODEX_HOME` is Codex's own configuration directory variable, also read by
 `guard-codex`.
 

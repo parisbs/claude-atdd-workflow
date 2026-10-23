@@ -40,6 +40,10 @@
 //   a directory other than ~/.claude (the CLI then runs with
 //   CLAUDE_CONFIG_DIR=<target>) and in HOME otherwise. Without a claude on PATH the servers are reported as not
 //   verified.
+// - after a Codex registration is successfully added or replaced, prewarm the
+//   npx cache once per distinct package with `npx --prefer-online -y <spec>`
+//   (ADR 0028). This is the one installer step that reaches the network;
+//   unchanged registrations and --check do not prewarm. Failure is advisory.
 //
 // Files it installed before and no longer ships are removed, using the manifest
 // it writes. Everything it overwrites or removes, MCP registrations included,

@@ -9,7 +9,8 @@ so the installer can prewarm without leaving a server running.
 ## Warm cache
 
 Each command ran once; the elapsed times show these observations, not a
-statistical comparison of startup latency.
+statistical comparison of startup latency. The 0.6.0 timings measure elapsed
+time to process exit after standard input closed.
 
 | Command (with `< /dev/null`) | HTTP log | Total |
 | --- | --- | --- |
@@ -44,8 +45,15 @@ Offline-first still needs the network when the cache is empty.
 The supplied audit measured a caret range at 1.61 s, with two GETs and a POST
 to `/-/npm/v1/security/advisories/bulk`; `codex-subagent-mcp@0.5.0` exact at
 1.44 s with revalidation; and that version with `--prefer-offline` at 0.88 s.
-A global install with a direct command started in about 0.23 s, but puts the
-installation and version outside the repository installer.
+
+## Earlier startup probe, 2026-10-08
+
+The [2026-10-08 probe](2026-10-08-orchestrator-context-probes.md) measured
+`node` on the installed `codex-subagent-mcp` 0.5.0 package at 0.23 s up to
+the `initialize` response. This is not directly comparable with the 0.6.0
+timings measured to process exit after standard input closed. A global
+install also puts the installation and version outside the repository
+installer.
 
 ## Not verified
 

@@ -4,6 +4,8 @@ date: 2026-10-23
 ---
 # 0028. Pin Codex subagent offline-first and set role ceilings
 
+- Supersedes in part: [0014](0014-run-codex-through-two-role-named-registrations.md) (the effort ceiling of the implementer)
+
 ## Context
 
 ADR 0017 requires an exact version. With npm 11.9.0 that pin still revalidates
@@ -32,8 +34,15 @@ current `list_codex_models` catalog.
 3. Allow `codex_usage` through the derived no-quota permissions; delegation,
    follow-up and job status still prompt. Keep the optional `CODEX_BIN` and
    `CODEX_SUBAGENT_USAGE_LOG` values personal; an empty `CODEX_BIN` is used as
-   is and must not be shipped. The usage log lives under `XDG_STATE_HOME` and
-   is shared by both registrations. The [README](../../README.md#layout)
+   is and must not be shipped. The usage log is off unless
+   `CODEX_SUBAGENT_USAGE_LOG=on` is set in the personal overlay; the shipped
+   registrations do not set it. Both registrations share the log. It lives
+   in `XDG_STATE_HOME/codex-subagent-mcp` only when `XDG_STATE_HOME` is an
+   absolute path. Otherwise it uses
+   `~/Library/Application Support/codex-subagent-mcp` on macOS,
+   `~/.local/state/codex-subagent-mcp` on other POSIX systems, or
+   `LOCALAPPDATA/codex-subagent-mcp` on Windows.
+   The [README](../../README.md#layout)
    documents each environment variable's effect and invalid-value handling.
 
 ## Alternatives considered
@@ -42,18 +51,25 @@ current `list_codex_models` catalog.
   audit, and a version that can change without a pull request.
 - An exact version without `--prefer-offline`: one revalidation GET per warm
   start, measured at 0.67 s for 0.6.0.
-- A global npm install with a direct command: fastest at about 0.23 s, but a
-  manual install step outside the installer and a version that can drift from
-  the repository.
+- A global npm install with a direct command: the
+  [2026-10-08 probe](../experiments/2026-10-08-orchestrator-context-probes.md)
+  measured `node` on the installed `codex-subagent-mcp` 0.5.0 package at
+  0.23 s up to the `initialize` response. This is not directly comparable
+  with the 0.6.0 timings measured to process exit after standard input closed.
+  It also requires a manual install step outside the installer and a version
+  that can drift from the repository.
 
 ## Consequences
 
-- This raises the implementer's effort ceiling from the temporary `high` of
-  accepted ADR 0025, enabling its complex-implementer `xhigh` route. That
-  immutable record and the routing matrix stay as written.
+- This raises the implementer's effort ceiling from the `high` of accepted
+  ADR 0014 and the temporary `high` of accepted ADR 0025, enabling the latter's
+  complex-implementer `xhigh` route. Those immutable records and the routing
+  matrix stay as written, including their stale ceiling references.
 - Delegation bounds count failed and cancelled runs in a rolling hour per
   process and reset on restart; they are tuning limits, not durable quotas.
-  Recalibrate the 10/6 delegation and 2-job ceilings using `codex_usage`.
+  Recalibrating the 10/6 delegation and 2-job ceilings using `codex_usage`
+  requires enabling the usage log with `CODEX_SUBAGENT_USAGE_LOG=on` in the
+  personal overlay.
 - The prewarm refreshes the package document once at installation. A cache
   whose document predates the pinned version might not refresh with
   `--prefer-offline`; that scenario remains unverified. A failed prewarm
