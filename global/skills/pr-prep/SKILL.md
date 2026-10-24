@@ -41,6 +41,10 @@ If the branch has an `oracle/<branch>` tag, run
 request unless the human approved that change in its own commit. Explain every
 configuration change and added skip it lists.
 
+Deleting or moving an oracle tag asks in the main session; the agent may run
+it after the human approves. Deleting the tag before the merge turns
+`oracle-check` off for the branch. Subagents and bypassPermissions stay denied.
+
 ## 4. Review
 
 Only when the repository's `CLAUDE.md` enables one (a line such as

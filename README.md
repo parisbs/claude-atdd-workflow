@@ -125,7 +125,8 @@ cannot separate the effects of the workflow, developer, project and model.
     `retired-mcp-servers.json` lists registrations it removes.
   - `hooks/`: `guard-git.mjs` (no commit or push on main, no `--no-verify`,
     confirmation before remote Supabase actions, oracle tags created with
-    confirmation and never moved or deleted, and the merge decision: squash
+    confirmation, deletion or moves asking in the main session and denied for
+    subagents and bypassPermissions, and the merge decision: squash
     only, never `--admin`, and a pull request is merged without a prompt only
     when its checks passed, it touches no control-plane path, the local copy
     holds nothing missing from the pull request's head, and the

@@ -41,8 +41,9 @@ When a test seems wrong, contradictory or impossible:
 2. Explain which test, which criterion, and why, with evidence (the failing
    assertion and the behaviour the criterion actually asks for).
 3. Wait. If the human approves a change, it goes into its own commit,
-   `test(<scope>): amend AC-n for #<issue>`, the human moves the oracle tag,
-   and the reason is recorded on the issue.
+   `test(<scope>): amend AC-n for #<issue>`, and the reason is recorded on the
+   issue. Moving the oracle tag asks in the main session; the agent may run it
+   after the human approves. Subagents and bypassPermissions stay denied.
 
 ## Loop
 

@@ -50,8 +50,8 @@ preferences live in `~/.claude/rules/personal.md`.
   intended: `git log <base>..HEAD` and `git diff <base> --stat`.
 - After merging, delete the local and remote branches that are no longer used.
   If the branch has an `oracle/<branch>` tag, it is no longer needed either,
-  but the human removes it (the guard denies the agent). In the message that
-  reports the merge, give them both commands with the branch filled in:
+  and deleting the oracle tag asks in the main session; the agent may run it
+  after the human approves. Use both commands with the branch filled in:
   `git push origin :refs/tags/oracle/<branch>` and
   `git tag -d oracle/<branch>`.
 
@@ -132,7 +132,8 @@ could weaken its own controls: `.github/workflows/ci.yml`,
     labels, milestones and comments, and merging under the conditions below.
   - Human only: accepting or rejecting an ADR, amending a frozen test,
     publishing a release, creating, moving or deleting an oracle tag (the
-    guard asks), force pushes and `--admin`.
+    guard asks in the main session, and the agent may run it after the human
+    approves; subagents and bypassPermissions stay denied), force pushes and `--admin`.
 - The orchestrator merges without asking only when every required check is
   green, `oracle-check` is clean, the review the repository declares with
   `Review:` ran with no open finding, no changed file is on the control plane
