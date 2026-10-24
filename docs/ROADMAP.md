@@ -209,7 +209,7 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
 - #55: oracle tags could only be deleted or moved from a terminal. Implemented:
   in the main session `guard-git` asks, saying whether the pull request is still
   open or which commits a move goes from and to; subagents and
-  `bypassPermissions` stay denied (ADR 0029, proposed).
+  `bypassPermissions` stay denied (ADR 0029).
 
 ## Efficiency (milestone `efficiency`)
 

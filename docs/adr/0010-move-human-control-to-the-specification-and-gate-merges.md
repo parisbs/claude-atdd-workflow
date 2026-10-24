@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0029](0029-ask-before-deleting-or-moving-an-oracle-tag-in-the-main-session.md)
 date: 2026-10-02
 ---
 # 0010. Move human control to the specification and gate merges by verified conditions
