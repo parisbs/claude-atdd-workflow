@@ -12,8 +12,8 @@
 //   its pushed head and uncommitted changes in its branch's worktrees ask too.
 //   Anything that cannot be read asks;
 // - deploys to a linked Supabase project ask first;
-// - an ATDD oracle tag cannot be deleted or moved by the agent, and creating one
-//   asks: the tag is the human's approval of the oracle (ADR 0003, ADR 0010);
+// - creating an ATDD oracle tag asks; deleting or moving one asks in the main
+//   session and is denied for subagents and bypassPermissions (ADR 0010, ADR 0029);
 // - a subagent never acts on GitHub: for an event with agent_id, git push and every
 //   gh command off a read-only list are denied, also inside bash -c or eval (ADR 0013).
 //
@@ -118,7 +118,7 @@ function classifyTag(args) {
     '--sort', '--format', '--column') || positional.length === 0) {
     return { mode: 'read', names: positional };
   }
-  return { mode: has('-f', '--force') ? 'move' : 'create', names: positional.slice(0, 1) };
+  return { mode: has('-f', '--force') ? 'move' : 'create', names: positional.slice(0, 1), target: positional[1] ?? 'HEAD' };
 }
 
 function hasFlag(args, ...flags) {
@@ -142,7 +142,7 @@ function trackSwitch(sub, rest, dir, branches) {
   }
 }
 
-function checkGit(args, cwd, verdict, branches) {
+function checkGit(args, cwd, verdict, branches, session) {
   // git [-C dir] <subcommand> ...
   let dir = cwd;
   let i = 0;
@@ -202,13 +202,23 @@ function checkGit(args, cwd, verdict, branches) {
     if (deletes || refspecs.some((r) => r.includes('refs/tags/'))) {
       verdict.add('ask', 'This deletes or rewrites remote refs.');
     }
+    for (const refspec of refspecs) {
+      const [source, destination = source] = refspec.replace(/^\+/, '').split(':');
+      const name = destination.replace(/^refs\/tags\//, '');
+      if (!isOracleTag(name)) continue;
+      const deleting = hasFlag(rest, '--delete', '-d') || source === '';
+      const forcing = hasFlag(rest, '--force', '-f', '--force-with-lease', '--force-if-includes') || refspec.startsWith('+');
+      if (deleting || forcing) {
+        checkOracleChange(dir, name, deleting ? 'delete' : 'move', source, verdict, session, positional[0]);
+      }
+    }
   }
 
   if (sub === 'tag') {
-    const { mode, names } = classifyTag(rest);
+    const { mode, names, target } = classifyTag(rest);
     if (names.some(isOracleTag)) {
       if (mode === 'delete' || mode === 'move') {
-        verdict.add('deny', 'ATDD oracle tags are removed or moved by the human, not the agent.');
+        for (const name of names.filter(isOracleTag)) checkOracleChange(dir, name, mode, target, verdict, session);
       } else if (mode === 'create') {
         verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
       }
@@ -222,7 +232,7 @@ function checkGit(args, cwd, verdict, branches) {
     if (ref?.startsWith('refs/tags/') && isOracleTag(ref.slice('refs/tags/'.length))) {
       const exists = git(dir, ['rev-parse', '--verify', '-q', ref]) !== undefined;
       if (flags.has('-d') || exists) {
-        verdict.add('deny', 'ATDD oracle tags are removed or moved by the human, not the agent.');
+        checkOracleChange(dir, ref.slice('refs/tags/'.length), flags.has('-d') ? 'delete' : 'move', positional[1], verdict, session);
       } else {
         verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
       }
@@ -256,6 +266,61 @@ function gh(args, cwd) {
   if (run.error) return { failure: `gh could not run (${run.error.message})` };
   if (run.status !== 0) return { failure: brief(run.stderr) || `gh exited with ${run.status}`, stderr: run.stderr ?? '' };
   return { stdout: run.stdout };
+}
+
+function oracleDeletionReason(dir, name) {
+  const warning = `Without the tag ${name}, oracle-check checks nothing for ${name.slice('oracle/'.length)}.`;
+  const result = gh(['pr', 'list', '--head', name.slice('oracle/'.length), '--state', 'open', '--json', 'number,url'], dir);
+  if (result.failure) return `${warning} Could not read the pull request state: ${result.failure}.`;
+  try {
+    const prs = JSON.parse(result.stdout);
+    if (!Array.isArray(prs) || prs.some((pr) => typeof pr?.url !== 'string')) throw new Error('gh returned an unreadable pull request list');
+    return prs.length > 0
+      ? `${warning} The pull request is still open: ${prs.map((pr) => pr.url).join(', ')}.`
+      : `${warning} No open pull request was found for the branch.`;
+  } catch (error) {
+    return `${warning} Could not read the pull request state: ${brief(error.message)}.`;
+  }
+}
+
+// ls-remote can reach the network, so it shares gh's remaining budget. Peel an
+// annotated tag to show its commit rather than the tag object's hash.
+function remoteOracleCommit(dir, remote, ref) {
+  const left = Math.floor(ghBudget() - performance.now());
+  if (left < 1) return `unknown (could not read ${remote}: time budget exhausted)`;
+  const limit = Math.min(ghLimit(), left);
+  const run = spawnSync('git', ['ls-remote', '--', remote, ref, `${ref}^{}`], {
+    cwd: dir, encoding: 'utf8', timeout: limit, killSignal: 'SIGKILL',
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  });
+  if (run.error || run.status !== 0) {
+    const why = run.error?.code === 'ETIMEDOUT' ? `git ls-remote timed out after ${limit} ms`
+      : run.error?.message || brief(run.stderr) || `git ls-remote exited with ${run.status}`;
+    return `unknown (could not read ${remote}: ${why})`;
+  }
+  const refs = new Map(run.stdout.trim().split('\n').map((line) => line.split(/\s+/).reverse()));
+  return refs.get(`${ref}^{}`) ?? refs.get(ref) ?? `absent on ${remote}`;
+}
+
+function checkOracleChange(dir, name, action, target, verdict, session, remote) {
+  if (session.subagent) {
+    verdict.add('deny', 'A subagent must not delete or move an ATDD oracle tag; return to the main session for human approval.');
+    return;
+  }
+  if (session.permissionMode === 'bypassPermissions') {
+    verdict.add('deny', 'Deleting or moving an ATDD oracle tag is denied in bypassPermissions; switch to a mode that shows permission prompts.');
+    return;
+  }
+  if (action === 'delete') {
+    verdict.add('ask', `Delete ${name}${remote ? ` on ${remote}` : ''}? ${oracleDeletionReason(dir, name)}`);
+    return;
+  }
+  const ref = `refs/tags/${name}`;
+  const before = remote ? remoteOracleCommit(dir, remote, ref)
+    : git(dir, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) ?? 'unknown (could not read the current commit)';
+  const source = remote && isOracleTag(target) ? `refs/tags/${target}` : target;
+  const after = git(dir, ['rev-parse', '--verify', '-q', `${source}^{commit}`]) ?? `unknown (could not resolve ${target})`;
+  verdict.add('ask', `Move ${name}${remote ? ` on ${remote}` : ''} from ${before} to ${after}? Confirm the human approved changing the frozen oracle.`);
 }
 
 function optionValue(args, names) {
@@ -611,7 +676,7 @@ try {
     if (w[0] === 'cd' && w[1]) {
       cwd = isAbsolute(w[1]) ? w[1] : resolve(cwd, w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
     } else if (w[0] === 'git' && !mergeOnly) {
-      checkGit(w.slice(1), cwd, verdict, branches);
+      checkGit(w.slice(1), cwd, verdict, branches, { subagent, permissionMode: event.permission_mode });
     } else if (w[0] === 'gh' && !subagent) {
       // A subagent's gh is decided by the read-only list alone, so it never reaches the
       // merge decision and never earns its explicit allow.
