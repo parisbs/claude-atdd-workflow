@@ -15,11 +15,21 @@ export const program = (word) => (word ?? '').split('/').pop();
 
 // The git subcommand after the global options, which can take a value of their own:
 // `git -c key=value push` and `git -C dir push` are both a push.
-export function gitSubcommand(args) {
+export function gitCommand(args) {
   const withValue = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'];
+  const directories = [];
   let i = 0;
-  while (i < args.length && args[i].startsWith('-')) i += withValue.includes(args[i]) ? 2 : 1;
-  return args[i];
+  while (i < args.length && args[i].startsWith('-')) {
+    const arg = args[i];
+    if (arg === '-C' && args[i + 1]) directories.push(args[i + 1]);
+    else if (arg.startsWith('-C') && arg.length > 2) directories.push(arg.slice(2).replace(/^=/, ''));
+    i += withValue.includes(arg) ? 2 : 1;
+  }
+  return { subcommand: args[i], rest: args.slice(i + 1), directories };
+}
+
+export function gitSubcommand(args) {
+  return gitCommand(args).subcommand;
 }
 
 // gh api is a read only as a plain GET: any other method, or a field or an input body, writes.

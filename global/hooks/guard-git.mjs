@@ -13,7 +13,8 @@
 //   Anything that cannot be read asks;
 // - deploys to a linked Supabase project ask first;
 // - creating an ATDD oracle tag asks; deleting or moving one asks in the main
-//   session and is denied for subagents and bypassPermissions (ADR 0010, ADR 0029);
+//   session and is denied for subagents and bypassPermissions, including forced
+//   creation with git tag -f and pushes that can move tags wholesale (ADR 0010, ADR 0029);
 // - a subagent never acts on GitHub: for an event with agent_id, git push and every
 //   gh command off a read-only list are denied, also inside bash -c or eval (ADR 0013).
 //
@@ -33,12 +34,12 @@
 // Only a match starts Node. With onFailure "block", a hook failure or timeout blocks
 // a merge and, at worst, a non-merge with merge in that scope. Without a flag the
 // hook applies every rule.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git, readEvent } from './lib.mjs';
-import { ghIsRead, gitSubcommand, program } from './commands.mjs';
+import { ghIsRead, gitCommand, gitSubcommand, program } from './commands.mjs';
 
 const mode = process.argv[2];
 const mergeOnly = mode === '--merge-only';
@@ -71,9 +72,10 @@ function segments(command) {
 // can be combined (-df, -am "msg"), and an option that takes a value ends the
 // cluster: the rest of the cluster is the value, or the next word when nothing
 // follows it.
-function parseOptions(args, { longWithValue = [], shortWithValue = [], shortOptionalValue = [] }) {
+function parseOptions(args, { longWithValue = [], shortWithValue = [], shortOptionalValue = [], longOptions = [] }) {
   const flags = new Set();
   const positional = [];
+  const values = new Map();
   let onlyPositional = false;
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -82,21 +84,43 @@ function parseOptions(args, { longWithValue = [], shortWithValue = [], shortOpti
     } else if (arg === '--') {
       onlyPositional = true;
     } else if (arg.startsWith('--')) {
-      const [name] = arg.split('=');
+      let [name] = arg.split('=');
+      if (!longOptions.includes(name)) {
+        const matches = longOptions.filter((option) => option.startsWith(name));
+        if (matches.length === 1) [name] = matches;
+        // All the force options ask about a rewrite, even if Git would reject
+        // an ambiguous abbreviation such as --forc.
+        else if (matches.length > 0 && matches.every((option) => option.startsWith('--force'))) name = '--force';
+      }
       flags.add(name);
-      if (longWithValue.includes(name) && !arg.includes('=')) i += 1;
+      if (longWithValue.includes(name)) values.set(name, arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : args[++i]);
     } else {
       for (let k = 1; k < arg.length; k += 1) {
         flags.add(`-${arg[k]}`);
         if (shortWithValue.includes(arg[k])) {
-          if (k === arg.length - 1) i += 1;
+          values.set(`-${arg[k]}`, k === arg.length - 1 ? args[++i] : arg.slice(k + 1));
           break;
         }
         if (shortOptionalValue.includes(arg[k])) break;
       }
     }
   }
-  return { flags, positional };
+  return { flags, positional, values };
+}
+
+const PUSH_OPTIONS = ['--verbose', '--quiet', '--repo', '--all', '--branches', '--mirror', '--delete', '--tags',
+  '--dry-run', '--porcelain', '--force', '--force-with-lease', '--force-if-includes', '--recurse-submodules',
+  '--thin', '--receive-pack', '--exec', '--set-upstream', '--progress', '--prune', '--verify', '--follow-tags',
+  '--signed', '--atomic', '--push-option', '--ipv4', '--ipv6'];
+const REF_CHANGING = new Set(['checkout', 'switch', 'commit', 'reset', 'tag', 'update-ref', 'merge', 'rebase',
+  'cherry-pick', 'revert', 'pull', 'fetch', 'push', 'am', 'branch', 'stash', 'symbolic-ref', 'remote', 'worktree']);
+
+function coversOracleTags(pattern) {
+  const wildcard = pattern.indexOf('*');
+  if (wildcard < 0) return false;
+  const prefix = pattern.slice(0, wildcard);
+  const namespace = 'refs/tags/oracle/';
+  return prefix.startsWith(namespace) || namespace.startsWith(prefix);
 }
 
 const isOracleTag = (name) => name.startsWith('oracle/');
@@ -142,20 +166,10 @@ function trackSwitch(sub, rest, dir, branches) {
   }
 }
 
-function checkGit(args, cwd, verdict, branches, session) {
-  // git [-C dir] <subcommand> ...
+async function checkGit(args, cwd, verdict, branches, session) {
+  const { subcommand: sub, rest, directories } = gitCommand(args);
   let dir = cwd;
-  let i = 0;
-  while (i < args.length && args[i].startsWith('-')) {
-    if (args[i] === '-C' && args[i + 1]) {
-      dir = isAbsolute(args[i + 1]) ? args[i + 1] : resolve(dir, args[i + 1]);
-      i += 2;
-    } else {
-      i += 1;
-    }
-  }
-  const sub = args[i];
-  const rest = args.slice(i + 1);
+  for (const directory of directories) dir = isAbsolute(directory) ? directory : resolve(dir, directory);
   trackSwitch(sub, rest, dir, branches);
   const branch = branches.get(dir) ?? git(dir, ['branch', '--show-current']);
   const hasCommits = git(dir, ['rev-parse', '--verify', '-q', 'HEAD']) !== undefined;
@@ -170,29 +184,36 @@ function checkGit(args, cwd, verdict, branches, session) {
   }
 
   if (sub === 'push') {
-    if (hasFlag(rest, '--no-verify')) {
+    const { flags, positional, values } = parseOptions(rest, {
+      longOptions: [...PUSH_OPTIONS, ...PUSH_OPTIONS.map((option) => option.replace('--', '--no-'))],
+      longWithValue: ['--repo', '--push-option', '--receive-pack', '--exec', '--recurse-submodules'],
+      shortWithValue: ['o'],
+    });
+    const has = (...names) => names.some((name) => flags.has(name));
+    if (has('--no-verify')) {
       verdict.add('deny', 'Pushes must not skip hooks with --no-verify.');
     }
-    const positional = rest.filter((a) => !a.startsWith('-'));
+    const remote = positional[0] ?? values.get('--repo');
     const refspecs = positional.slice(1);
     const targets = refspecs.length > 0
       ? refspecs.map((r) => r.replace(/^\+/, '').split(':').pop().replace(/^refs\/heads\//, ''))
       : [branch];
-    const force = hasFlag(rest, '--force', '-f', '--force-with-lease', '--force-if-includes')
+    const forced = has('--force', '-f', '--force-with-lease', '--force-if-includes');
+    const force = forced
       || refspecs.some((r) => r.startsWith('+'));
-    const deletes = hasFlag(rest, '--delete', '-d') || refspecs.some((r) => r.startsWith(':'));
+    const deletes = has('--delete', '-d') || refspecs.some((r) => r.startsWith(':'));
 
     const guarded = protectedBranches(dir);
     for (const target of targets) {
       if (guarded.has(target)) {
-        const remote = positional[0] ?? 'origin';
-        const published = git(dir, ['rev-parse', '--verify', '-q', `refs/remotes/${remote}/${target}`]) !== undefined;
+        const destination = remote ?? 'origin';
+        const published = git(dir, ['rev-parse', '--verify', '-q', `refs/remotes/${destination}/${target}`]) !== undefined;
         if (force || deletes) {
           verdict.add('deny', `Never force-push or delete ${target}.`);
         } else if (published) {
           verdict.add('deny', `Do not push to ${target}: open a pull request and squash-merge it.`);
         } else {
-          verdict.add('ask', `This publishes ${target} for the first time on ${remote}.`);
+          verdict.add('ask', `This publishes ${target} for the first time on ${destination}.`);
         }
       }
     }
@@ -202,14 +223,24 @@ function checkGit(args, cwd, verdict, branches, session) {
     if (deletes || refspecs.some((r) => r.includes('refs/tags/'))) {
       verdict.add('ask', 'This deletes or rewrites remote refs.');
     }
+    if (force) {
+      const oracles = git(dir, ['for-each-ref', '--format=%(refname)', 'refs/tags/oracle/'])?.split('\n').filter(Boolean) ?? [];
+      const wholesale = (forced && has('--tags', '--follow-tags')) || refspecs.some((refspec) => {
+        const destination = refspec.replace(/^\+/, '').split(':').pop();
+        return (forced || refspec.startsWith('+')) && coversOracleTags(destination);
+      });
+      if (oracles.length > 0 && wholesale) {
+        await checkOracleChange(dir, 'oracle/*', 'move-many', undefined, verdict, session, remote);
+      }
+    }
     for (const refspec of refspecs) {
       const [source, destination = source] = refspec.replace(/^\+/, '').split(':');
       const name = destination.replace(/^refs\/tags\//, '');
-      if (!isOracleTag(name)) continue;
-      const deleting = hasFlag(rest, '--delete', '-d') || source === '';
-      const forcing = hasFlag(rest, '--force', '-f', '--force-with-lease', '--force-if-includes') || refspec.startsWith('+');
+      if (!isOracleTag(name) || name.includes('*')) continue;
+      const deleting = has('--delete', '-d') || source === '';
+      const forcing = forced || refspec.startsWith('+');
       if (deleting || forcing) {
-        checkOracleChange(dir, name, deleting ? 'delete' : 'move', source, verdict, session, positional[0]);
+        await checkOracleChange(dir, name, deleting ? 'delete' : 'move', source, verdict, session, remote);
       }
     }
   }
@@ -218,7 +249,11 @@ function checkGit(args, cwd, verdict, branches, session) {
     const { mode, names, target } = classifyTag(rest);
     if (names.some(isOracleTag)) {
       if (mode === 'delete' || mode === 'move') {
-        for (const name of names.filter(isOracleTag)) checkOracleChange(dir, name, mode, target, verdict, session);
+        for (const name of names.filter(isOracleTag)) {
+          const creating = mode === 'move' && !session.refsMayChange
+            && git(dir, ['rev-parse', '--verify', '-q', `refs/tags/${name}`]) === undefined;
+          await checkOracleChange(dir, name, creating ? 'create' : mode, target, verdict, session);
+        }
       } else if (mode === 'create') {
         verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
       }
@@ -232,12 +267,13 @@ function checkGit(args, cwd, verdict, branches, session) {
     if (ref?.startsWith('refs/tags/') && isOracleTag(ref.slice('refs/tags/'.length))) {
       const exists = git(dir, ['rev-parse', '--verify', '-q', ref]) !== undefined;
       if (flags.has('-d') || exists) {
-        checkOracleChange(dir, ref.slice('refs/tags/'.length), flags.has('-d') ? 'delete' : 'move', positional[1], verdict, session);
+        await checkOracleChange(dir, ref.slice('refs/tags/'.length), flags.has('-d') ? 'delete' : 'move', positional[1], verdict, session);
       } else {
         verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
       }
     }
   }
+  return REF_CHANGING.has(sub);
 }
 
 const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
@@ -283,15 +319,42 @@ function oracleDeletionReason(dir, name) {
   }
 }
 
-// ls-remote can reach the network, so it shares gh's remaining budget. Peel an
-// annotated tag to show its commit rather than the tag object's hash.
-function remoteOracleCommit(dir, remote, ref) {
+// ls-remote can reach the network, so it shares gh's remaining budget. Close
+// stdin, disable prompts and kill the process group on timeout: an SSH child
+// holding the pipes open must not keep the hook alive. Respect a custom SSH
+// command; otherwise use BatchMode. Peel annotated tags to their commits.
+async function remoteOracleCommit(dir, remote, ref) {
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  if (env.GIT_SSH_COMMAND === undefined && git(dir, ['config', '--get', 'core.sshCommand']) === undefined) {
+    const ssh = env.GIT_SSH ? `'${env.GIT_SSH.replace(/'/g, "'\\''")}'` : 'ssh';
+    env.GIT_SSH_COMMAND = `${ssh} -o BatchMode=yes`;
+  }
   const left = Math.floor(ghBudget() - performance.now());
   if (left < 1) return `unknown (could not read ${remote}: time budget exhausted)`;
   const limit = Math.min(ghLimit(), left);
-  const run = spawnSync('git', ['ls-remote', '--', remote, ref, `${ref}^{}`], {
-    cwd: dir, encoding: 'utf8', timeout: limit, killSignal: 'SIGKILL',
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  const run = await new Promise((done) => {
+    const child = spawn('git', ['ls-remote', '--', remote, ref, `${ref}^{}`], {
+      cwd: dir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (data) => { stdout += data; });
+    child.stderr.setEncoding('utf8').on('data', (data) => { stderr += data; });
+    const timer = setTimeout(() => {
+      try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+      child.stdout.destroy();
+      child.stderr.destroy();
+      child.unref();
+      done({ error: { code: 'ETIMEDOUT' } });
+    }, limit);
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      done({ error });
+    });
+    child.on('close', (status) => {
+      clearTimeout(timer);
+      done({ status, stdout, stderr });
+    });
   });
   if (run.error || run.status !== 0) {
     const why = run.error?.code === 'ETIMEDOUT' ? `git ls-remote timed out after ${limit} ms`
@@ -302,7 +365,7 @@ function remoteOracleCommit(dir, remote, ref) {
   return refs.get(`${ref}^{}`) ?? refs.get(ref) ?? `absent on ${remote}`;
 }
 
-function checkOracleChange(dir, name, action, target, verdict, session, remote) {
+async function checkOracleChange(dir, name, action, target, verdict, session, remote) {
   if (session.subagent) {
     verdict.add('deny', 'A subagent must not delete or move an ATDD oracle tag; return to the main session for human approval.');
     return;
@@ -311,16 +374,26 @@ function checkOracleChange(dir, name, action, target, verdict, session, remote) 
     verdict.add('deny', 'Deleting or moving an ATDD oracle tag is denied in bypassPermissions; switch to a mode that shows permission prompts.');
     return;
   }
+  if (action === 'create') {
+    verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
+    return;
+  }
+  if (action === 'move-many') {
+    verdict.add('ask', `Oracle tags may be moved on the remote ${remote ?? 'selected by git'}. Confirm the human approved changing the frozen oracles.`);
+    return;
+  }
   if (action === 'delete') {
     verdict.add('ask', `Delete ${name}${remote ? ` on ${remote}` : ''}? ${oracleDeletionReason(dir, name)}`);
     return;
   }
   const ref = `refs/tags/${name}`;
-  const before = remote ? remoteOracleCommit(dir, remote, ref)
+  const before = remote ? await remoteOracleCommit(dir, remote, ref)
     : git(dir, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) ?? 'unknown (could not read the current commit)';
   const source = remote && isOracleTag(target) ? `refs/tags/${target}` : target;
   const after = git(dir, ['rev-parse', '--verify', '-q', `${source}^{commit}`]) ?? `unknown (could not resolve ${target})`;
-  verdict.add('ask', `Move ${name}${remote ? ` on ${remote}` : ''} from ${before} to ${after}? Confirm the human approved changing the frozen oracle.`);
+  const timing = session.refsMayChange
+    ? ' These commits were read before the command runs; earlier segments may change HEAD, branches or tags.' : '';
+  verdict.add('ask', `Move ${name}${remote ? ` on ${remote}` : ''} from ${before} to ${after}?${timing} Confirm the human approved changing the frozen oracle.`);
 }
 
 function optionValue(args, names) {
@@ -666,6 +739,7 @@ try {
   if (subagent && !mergeOnly) checkWrappers(command, verdict);
   let cwd = event.cwd ?? process.cwd();
   const branches = new Map();
+  let refsMayChange = false;
   const parts = segments(command);
   let merged = false;
   for (const segment of parts) {
@@ -675,8 +749,10 @@ try {
     if (subagent && (!mergeOnly || isMerge(w))) checkSubagent(w, verdict);
     if (w[0] === 'cd' && w[1]) {
       cwd = isAbsolute(w[1]) ? w[1] : resolve(cwd, w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
-    } else if (w[0] === 'git' && !mergeOnly) {
-      checkGit(w.slice(1), cwd, verdict, branches, { subagent, permissionMode: event.permission_mode });
+    } else if (program(w[0]) === 'git' && !mergeOnly) {
+      refsMayChange = await checkGit(w.slice(1), cwd, verdict, branches, {
+        subagent, permissionMode: event.permission_mode, refsMayChange,
+      }) || refsMayChange;
     } else if (w[0] === 'gh' && !subagent) {
       // A subagent's gh is decided by the read-only list alone, so it never reaches the
       // merge decision and never earns its explicit allow.
