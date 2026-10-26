@@ -41,6 +41,12 @@ If the branch has an `oracle/<branch>` tag, run
 request unless the human approved that change in its own commit. Explain every
 configuration change and added skip it lists.
 
+Before merging, the merge guard compares the pull request's head with the
+`oracle/<head branch>` tag on the base repository's remote. It asks when test
+paths changed, the label `atdd` has no tag, or the oracle cannot be read;
+bypassPermissions denies. A clean decision names the tag and its commit;
+without a tag or the label, it says no oracle was checked (ADR 0030).
+
 Deleting or moving an oracle tag asks in the main session; the agent may run
 it after the human approves. Deleting the tag before the merge turns
 `oracle-check` off for the branch. Subagents and bypassPermissions stay denied.
