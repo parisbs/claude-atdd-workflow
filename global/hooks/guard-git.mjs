@@ -10,7 +10,9 @@
 //   needs-human, draft state (ADR 0010), and that the authenticated gh user opened
 //   it from a branch in the base repository (ADR 0024). Local commits missing from
 //   its pushed head and uncommitted changes in its branch's worktrees ask too.
-//   Anything that cannot be read asks;
+//   The merge guard compares the head with oracle/<head branch> on the base
+//   repository's remote: changed tests, atdd without a tag, or an unreadable
+//   oracle ask, and deny in bypassPermissions (ADR 0030). Anything unreadable asks;
 // - deploys to a linked Supabase project ask first;
 // - creating an ATDD oracle tag asks; deleting or moving one asks in the main
 //   session and is denied for subagents and bypassPermissions, including forced
@@ -40,6 +42,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git, readEvent } from './lib.mjs';
 import { ghIsRead, gitCommand, gitSubcommand, program } from './commands.mjs';
+import { isTest, testMatchers } from './oracle.mjs';
 
 const mode = process.argv[2];
 const mergeOnly = mode === '--merge-only';
@@ -130,6 +133,10 @@ const isOracleTag = (name) => name.startsWith('oracle/');
 // flag, or with no name at all, the command only reads.
 function classifyTag(args) {
   const { flags, positional } = parseOptions(args, {
+    longOptions: ['--annotate', '--sign', '--no-sign', '--force', '--delete', '--verify', '--list',
+      '--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains',
+      '--no-contains', '--points-at', '--merged', '--no-merged', '--column', '--no-column',
+      '--create-reflog', '--ignore-case', '--omit-empty', '--trailer', '--edit'],
     longWithValue: ['--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains',
       '--no-contains', '--points-at', '--merged', '--no-merged', '--column'],
     shortWithValue: ['m', 'F', 'u'],
@@ -235,7 +242,7 @@ async function checkGit(args, cwd, verdict, branches, session) {
     }
     for (const refspec of refspecs) {
       const [source, destination = source] = refspec.replace(/^\+/, '').split(':');
-      const name = destination.replace(/^refs\/tags\//, '');
+      const name = destination.replace(/^(?:refs\/)?tags\//, '');
       if (!isOracleTag(name) || name.includes('*')) continue;
       const deleting = has('--delete', '-d') || source === '';
       const forcing = forced || refspec.startsWith('+');
@@ -280,8 +287,8 @@ const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
 const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
-// All gh calls of one hook run share this budget, counted from the start of the
-// process. A merge decision makes up to three serial calls, and global/settings.json
+// All gh calls and ls-remote share this budget, counted from the start of the
+// process. A merge decision makes up to four serial calls, and global/settings.json
 // blocks the merge when the hook runs past 30 s; 10 s leaves the rest for Node to
 // start, for git, for a timed-out gh to exit after its signal, and for the hook to
 // print its ask, so a slow GitHub ends in a question rather than in a block.
@@ -323,14 +330,14 @@ function oracleDeletionReason(dir, name) {
 // stdin, disable prompts and kill the process group on timeout: an SSH child
 // holding the pipes open must not keep the hook alive. Respect a custom SSH
 // command; otherwise use BatchMode. Peel annotated tags to their commits.
-async function remoteOracleCommit(dir, remote, ref) {
+async function remoteOracleLookup(dir, remote, ref) {
   const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
   if (env.GIT_SSH_COMMAND === undefined && git(dir, ['config', '--get', 'core.sshCommand']) === undefined) {
     const ssh = env.GIT_SSH ? `'${env.GIT_SSH.replace(/'/g, "'\\''")}'` : 'ssh';
     env.GIT_SSH_COMMAND = `${ssh} -o BatchMode=yes`;
   }
   const left = Math.floor(ghBudget() - performance.now());
-  if (left < 1) return `unknown (could not read ${remote}: time budget exhausted)`;
+  if (left < 1) return { failure: `could not read ${remote}: time budget exhausted` };
   const limit = Math.min(ghLimit(), left);
   const run = await new Promise((done) => {
     const child = spawn('git', ['ls-remote', '--', remote, ref, `${ref}^{}`], {
@@ -359,10 +366,22 @@ async function remoteOracleCommit(dir, remote, ref) {
   if (run.error || run.status !== 0) {
     const why = run.error?.code === 'ETIMEDOUT' ? `git ls-remote timed out after ${limit} ms`
       : run.error?.message || brief(run.stderr) || `git ls-remote exited with ${run.status}`;
-    return `unknown (could not read ${remote}: ${why})`;
+    return { failure: `could not read ${remote}: ${why}` };
   }
-  const refs = new Map(run.stdout.trim().split('\n').map((line) => line.split(/\s+/).reverse()));
-  return refs.get(`${ref}^{}`) ?? refs.get(ref) ?? `absent on ${remote}`;
+  const refs = new Map();
+  for (const line of run.stdout.trim().split('\n').filter(Boolean)) {
+    const [commit, name] = line.split(/\s+/);
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(commit) || ![ref, `${ref}^{}`].includes(name)) {
+      return { failure: `could not read ${ref} on ${remote}: git ls-remote returned unreadable refs` };
+    }
+    refs.set(name, commit);
+  }
+  return { commit: refs.get(`${ref}^{}`) ?? refs.get(ref) };
+}
+
+async function remoteOracleCommit(dir, remote, ref) {
+  const result = await remoteOracleLookup(dir, remote, ref);
+  return result.failure ? `unknown (${result.failure})` : result.commit ?? `absent on ${remote}`;
 }
 
 async function checkOracleChange(dir, name, action, target, verdict, session, remote) {
@@ -389,7 +408,8 @@ async function checkOracleChange(dir, name, action, target, verdict, session, re
   const ref = `refs/tags/${name}`;
   const before = remote ? await remoteOracleCommit(dir, remote, ref)
     : git(dir, ['rev-parse', '--verify', '-q', `${ref}^{commit}`]) ?? 'unknown (could not read the current commit)';
-  const source = remote && isOracleTag(target) ? `refs/tags/${target}` : target;
+  const tag = target?.replace(/^(?:refs\/)?tags\//, '');
+  const source = remote && isOracleTag(tag ?? '') ? `refs/tags/${tag}` : target;
   const after = git(dir, ['rev-parse', '--verify', '-q', `${source}^{commit}`]) ?? `unknown (could not resolve ${target})`;
   const timing = session.refsMayChange
     ? ' These commits were read before the command runs; earlier segments may change HEAD, branches or tags.' : '';
@@ -588,9 +608,60 @@ function localWorkReasons(pr, where, cwd) {
   }
 }
 
+// Read the base repository's oracle, never a fork's. Compare committed trees
+// without fetching, using the test paths declared in the oracle commit.
+async function mergeOracle(pr, where, cwd) {
+  let tag;
+  try {
+    if (typeof pr.headRefName !== 'string' || !pr.headRefName.trim()) {
+      throw new Error('gh returned no headRefName');
+    }
+    tag = `oracle/${pr.headRefName}`;
+    if (!where) throw new Error('the pull request URL has an unexpected shape');
+    const url = `https://${where[1]}/${where[2]}/${where[3]}`;
+    const deadline = performance.now() + 5000;
+    let remotes;
+    try {
+      remotes = localGit(cwd, ['remote', '-v'], deadline);
+    } catch (error) {
+      if (!error.cause?.error && error.cause?.status === 128 && outsideRepository(cwd)) remotes = '';
+      else throw error;
+    }
+    // ls-remote uses the fetch URL, even when a separate push URL matches.
+    const matching = remotes.trim().split('\n').map((line) => line.split(/\s+/))
+      .find(([, remote, usage]) => usage === '(fetch)' && remoteRepository(remote) === remoteRepository(url));
+    const remote = matching?.[0] ?? url;
+    const lookup = await remoteOracleLookup(cwd, remote, `refs/tags/${tag}`);
+    if (lookup.failure) throw new Error(lookup.failure);
+    if (!lookup.commit) {
+      return pr.labels.some((label) => String(label.name).toLowerCase() === 'atdd')
+        ? { reason: `The oracle tag ${tag} is missing on ${remote}; the pull request carries atdd.` }
+        : { evidence: `No oracle was checked: ${tag} is absent on ${remote}.` };
+    }
+    const commit = lookup.commit;
+    if (!matching) throw new Error(`no local clone of the base repository holds ${tag} at ${commit}`);
+    if (typeof pr.headRefOid !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(pr.headRefOid)) {
+      throw new Error('gh returned no valid headRefOid');
+    }
+    const compareDeadline = performance.now() + 5000;
+    const read = (root, args) => localGit(root, args, compareDeadline);
+    read(cwd, ['cat-file', '-e', `${commit}^{commit}`]);
+    read(cwd, ['cat-file', '-e', `${pr.headRefOid}^{commit}`]);
+    const root = read(cwd, ['rev-parse', '--show-toplevel']).trim();
+    const matchers = testMatchers(root, commit, read);
+    const changed = read(root, ['diff', '--no-ext-diff', '--no-renames', '--name-only', '-z', commit, pr.headRefOid, '--'])
+      .split('\0').filter((path) => path && isTest(matchers, path));
+    return changed.length > 0
+      ? { reason: `Oracle ${tag} at ${commit} differs from the pull request head in test paths: ${changed.join(', ')}.` }
+      : { evidence: `Oracle ${tag} at ${commit}: test paths unchanged against the pull request head.` };
+  } catch (error) {
+    return { reason: `Could not read the oracle${tag ? ` ${tag}` : ''}: ${error.message}.` };
+  }
+}
+
 // What the hook may say about a merge: reasons to ask, or none when every
-// condition of ADR 0010 and ADR 0024 holds. Never throws: a merge cannot be undone.
-function mergeReasons(args, cwd) {
+// condition of ADR 0010, ADR 0024 and ADR 0030 holds.
+async function mergeReasons(args, cwd) {
   const rest = args.slice(2);
   const { positional } = parseOptions(rest, {
     shortWithValue: ['R', 't', 'b', 'F', 'A'],
@@ -598,17 +669,17 @@ function mergeReasons(args, cwd) {
   });
   const repoFlag = optionValue(rest, ['-R', '--repo']);
   const view = gh(['pr', 'view', ...(positional[0] ? [positional[0]] : []), ...(repoFlag ? ['-R', repoFlag] : []), '--json', PR_FIELDS], cwd);
-  if (view.failure) return [`Could not read the pull request: ${view.failure}.`];
+  if (view.failure) return { reasons: [`Could not read the pull request: ${view.failure}.`] };
 
   let pr;
   try {
     pr = JSON.parse(view.stdout);
   } catch {
-    return ['Could not read the pull request: gh did not return JSON.'];
+    return { reasons: ['Could not read the pull request: gh did not return JSON.'] };
   }
   const complete = pr && typeof pr.baseRefName === 'string' && typeof pr.url === 'string' && typeof pr.isDraft === 'boolean'
     && typeof pr.changedFiles === 'number' && Array.isArray(pr.files) && Array.isArray(pr.labels) && Array.isArray(pr.statusCheckRollup);
-  if (!complete) return ['Could not read the pull request: gh returned incomplete data.'];
+  if (!complete) return { reasons: ['Could not read the pull request: gh returned incomplete data.'] };
 
   const reasons = [];
   if (pr.isDraft) reasons.push('The pull request is a draft.');
@@ -646,7 +717,9 @@ function mergeReasons(args, cwd) {
   }
   const sensitive = controlPlaneFiles(paths, extra);
   if (sensitive.length > 0) reasons.push(`Control-plane files changed: ${sensitive.join(', ')}.`);
-  return reasons;
+  const oracle = await mergeOracle(pr, where, cwd);
+  if (oracle.reason) reasons.push(oracle.reason);
+  return { reasons, oracle };
 }
 
 const couldNotDecide = (error) => `Could not decide this merge (${error?.message ?? error}).`;
@@ -655,25 +728,29 @@ function askHuman(verdict, reasons) {
   verdict.add('ask', `${reasons.join(' ')} The human decides this merge (ADR 0010).`);
 }
 
-// Returns true when a merge was verified end to end. Without readPullRequest only the
-// denials that need no network apply, and nothing is verified.
-function checkGh(args, verdict, cwd, readPullRequest) {
+// Returns oracle evidence when a merge was verified end to end. Without
+// readPullRequest only the denials that need no network apply; nothing is verified.
+async function checkGh(args, verdict, cwd, readPullRequest, permissionMode) {
   if (args[0] !== 'pr' || args[1] !== 'merge') return false;
   if (hasFlag(args, '--admin')) {
     verdict.add('deny', 'Never merge with --admin: it bypasses every rule of the ruleset, required checks included.');
   }
-  if (!hasFlag(args, '--squash', '-s')) {
+  if (!args.some((arg) => ['--squash', '-s'].includes(arg))
+      || hasFlag(args, '--merge', '-m', '--rebase', '-r')
+      || args.some((arg) => /^(?:--(?:squash|merge|rebase)|-[smr])=/.test(arg))) {
     verdict.add('deny', 'Merge with --squash: main keeps a linear history.');
   }
   if (verdict.decision === 'deny' || !readPullRequest) return false;
-  let reasons;
+  let result;
   try {
-    reasons = mergeReasons(args, cwd);
+    result = await mergeReasons(args, cwd);
   } catch (error) {
-    reasons = [couldNotDecide(error)];
+    result = { reasons: [couldNotDecide(error)] };
   }
-  if (reasons.length === 0) return true;
-  askHuman(verdict, reasons);
+  if (result.reasons.length === 0) return result.oracle.evidence;
+  if (result.oracle?.reason && permissionMode === 'bypassPermissions') {
+    verdict.add('deny', `${result.reasons.join(' ')} The oracle requires human approval; switch from bypassPermissions to a mode that shows permission prompts.`);
+  } else askHuman(verdict, result.reasons);
   return false;
 }
 
@@ -753,10 +830,10 @@ try {
       refsMayChange = await checkGit(w.slice(1), cwd, verdict, branches, {
         subagent, permissionMode: event.permission_mode, refsMayChange,
       }) || refsMayChange;
-    } else if (w[0] === 'gh' && !subagent) {
+    } else if (program(w[0]) === 'gh' && !subagent) {
       // A subagent's gh is decided by the read-only list alone, so it never reaches the
       // merge decision and never earns its explicit allow.
-      merged = checkGh(w.slice(1), verdict, cwd, !skipMerge) || merged;
+      merged = await checkGh(w.slice(1), verdict, cwd, !skipMerge, event.permission_mode) || merged;
     } else if (!mergeOnly && (w[0] === 'supabase' || (w[0] === 'npx' && w[1] === 'supabase'))) {
       checkSupabase(w.slice(w[0] === 'npx' ? 2 : 1), verdict);
     }
@@ -764,7 +841,7 @@ try {
   // An explicit allow lifts the prompt for the whole command, so it is only given to a
   // command that is nothing but one plain merge, with no quotes, chains or redirections.
   if (merged && !subagent && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
-    verdict.allowExplicitly('Checks passed, no control-plane files, no needs-human label, the local copy holds nothing missing from the pull request, opened by the authenticated gh user from a branch in the base repository (ADR 0010, ADR 0024).');
+    verdict.allowExplicitly(`Checks passed, no control-plane files, no needs-human label, the local copy holds nothing missing from the pull request, opened by the authenticated gh user from a branch in the base repository (ADR 0010, ADR 0024). ${merged}`);
   }
   verdict.emit();
 } catch (error) {
