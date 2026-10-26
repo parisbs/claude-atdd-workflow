@@ -12,7 +12,8 @@
 //   its pushed head and uncommitted changes in its branch's worktrees ask too.
 //   The merge guard compares the head with oracle/<head branch> on the base
 //   repository's remote: changed tests, atdd without a tag, or an unreadable
-//   oracle ask, and deny in bypassPermissions (ADR 0030). Anything unreadable asks;
+//   oracle ask, and deny in bypassPermissions (ADR 0030). Anything unreadable asks
+//   in the main session and denies in bypassPermissions;
 // - deploys to a linked Supabase project ask first;
 // - creating an ATDD oracle tag asks; deleting or moving one asks in the main
 //   session and is denied for subagents and bypassPermissions, including forced
@@ -28,7 +29,8 @@
 // global/settings.json runs it from two entries. With --skip-merge it
 // runs for every Bash command and fails open like the other hooks; of the merge
 // decision it keeps only the denials that need no network. With --merge-only it
-// decides merges and nothing else, and asks when it cannot decide. Claude Code runs
+// decides merges and nothing else, and asks when it cannot decide (denies in
+// bypassPermissions). Claude Code runs
 // its entry when the `if` matches gh pr merge or cannot rule a command out. The entry
 // uses shell builtins to look for literal merge, including a whole-quoted word,
 // between the command and following description keys in compact events of at most
@@ -332,7 +334,17 @@ function oracleDeletionReason(dir, name) {
 // command; otherwise use BatchMode. Peel annotated tags to their commits.
 async function remoteOracleLookup(dir, remote, ref) {
   const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-  if (env.GIT_SSH_COMMAND === undefined && git(dir, ['config', '--get', 'core.sshCommand']) === undefined) {
+  const configLimit = Math.floor(Math.min(5000, ghBudget() - performance.now()));
+  if (configLimit < 1) return { failure: `could not read ${remote}: time budget exhausted` };
+  const config = env.GIT_SSH_COMMAND === undefined
+    ? spawnSync('git', ['config', '--get', 'core.sshCommand'], {
+      cwd: dir, encoding: 'utf8', timeout: configLimit, killSignal: 'SIGKILL',
+    }) : undefined;
+  // Exit 1 with no output means the setting is absent; other failures are unreadable.
+  if (config && (config.error || (config.status !== 0 && (config.status !== 1 || config.stdout || config.stderr)))) {
+    return { failure: `could not read core.sshCommand: ${config.error?.message || brief(config.stderr) || `git exited with ${config.status}`}` };
+  }
+  if (config?.status === 1) {
     const ssh = env.GIT_SSH ? `'${env.GIT_SSH.replace(/'/g, "'\\''")}'` : 'ssh';
     env.GIT_SSH_COMMAND = `${ssh} -o BatchMode=yes`;
   }
@@ -416,11 +428,56 @@ async function checkOracleChange(dir, name, action, target, verdict, session, re
   verdict.add('ask', `Move ${name}${remote ? ` on ${remote}` : ''} from ${before} to ${after}?${timing} Confirm the human approved changing the frozen oracle.`);
 }
 
-function optionValue(args, names) {
-  const at = args.findIndex((a) => names.includes(a));
-  if (at >= 0) return args[at + 1];
-  const joined = args.find((a) => names.some((n) => n.startsWith('--') && a.startsWith(`${n}=`)));
-  return joined?.slice(joined.indexOf('=') + 1);
+// gh uses pflag: boolean shorthands take true unless followed by =value;
+// value shorthands consume the rest of their cluster. The last occurrence wins.
+function mergeOptions(args) {
+  const booleans = new Set(['squash', 'merge', 'rebase', 'delete-branch', 'auto', 'disable-auto', 'admin', 'help']);
+  const strings = new Set(['repo', 'subject', 'body', 'body-file', 'author-email', 'match-head-commit']);
+  const short = { s: 'squash', m: 'merge', r: 'rebase', d: 'delete-branch', h: 'help',
+    R: 'repo', t: 'subject', b: 'body', F: 'body-file', A: 'author-email' };
+  const values = new Map();
+  const positional = [];
+  let failure;
+  let valuedMethod = false;
+  let onlyPositional = false;
+  const set = (name, value) => {
+    if (booleans.has(name)) {
+      const yes = ['1', 't', 'T', 'TRUE', 'true', 'True'];
+      const no = ['0', 'f', 'F', 'FALSE', 'false', 'False'];
+      if (!yes.includes(value) && !no.includes(value)) failure = `unreadable --${name} value`;
+      else values.set(name, yes.includes(value));
+    } else if (strings.has(name) && value !== undefined) {
+      values.set(name, value);
+      if (name === 'repo' && !value) failure = 'empty --repo value';
+    } else failure = `unreadable --${name} option`;
+  };
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (onlyPositional || !arg.startsWith('-') || arg === '-') positional.push(arg);
+    else if (arg === '--') onlyPositional = true;
+    else if (arg.startsWith('--')) {
+      const at = arg.indexOf('=');
+      const name = arg.slice(2, at < 0 ? undefined : at);
+      if (at >= 0 && ['squash', 'merge', 'rebase'].includes(name)) valuedMethod = true;
+      set(name, at >= 0 ? arg.slice(at + 1) : booleans.has(name) ? 'true' : args[++i]);
+    } else {
+      for (let k = 1; k < arg.length; k += 1) {
+        const name = short[arg[k]];
+        if (!name) {
+          failure = `unreadable -${arg[k]} option`;
+          break;
+        }
+        const tail = arg.slice(k + 1);
+        if (booleans.has(name) && !tail.startsWith('=')) set(name, 'true');
+        else {
+          if (['squash', 'merge', 'rebase'].includes(name)) valuedMethod = true;
+          set(name, tail ? tail.replace(/^=/, '') : args[++i]);
+          break;
+        }
+      }
+    }
+  }
+  return { values, positional, failure, valuedMethod };
 }
 
 function checkIssue(check) {
@@ -430,14 +487,18 @@ function checkIssue(check) {
   return `${name} (${check.conclusion || check.status})`;
 }
 
+const mergeReadFailure = (reason) => ({ reasons: [reason], unreadable: true });
+
 // Who opened the pull request and where its head branch lives (ADR 0024). Only the
 // authenticated gh user is a trusted author, bots included in the rest; the user is
 // read on the pull request's own host, so GH_HOST cannot point the lookup elsewhere.
 // A head branch in another repository asks even when the user opened it.
 function provenanceReasons(pr, host, cwd) {
   const reasons = [];
+  let unreadable = false;
   if (typeof pr.isCrossRepository !== 'boolean') {
     reasons.push('Could not read where the head branch lives: gh returned no isCrossRepository.');
+    unreadable = true;
   } else if (pr.isCrossRepository) {
     // A deleted fork has no headRepository but keeps its owner.
     const owner = pr.headRepositoryOwner?.login;
@@ -449,11 +510,11 @@ function provenanceReasons(pr, host, cwd) {
   const author = pr.author?.login;
   if (typeof author !== 'string' || author === '') {
     reasons.push('Could not read who opened the pull request: gh returned no author.');
-    return reasons;
+    return { reasons, unreadable: true };
   }
   if (!host) {
     reasons.push('Could not read the authenticated gh user: the pull request URL has an unexpected shape.');
-    return reasons;
+    return { reasons, unreadable: true };
   }
   const lookup = gh(['api', '--hostname', host, 'user'], cwd);
   let user;
@@ -464,10 +525,11 @@ function provenanceReasons(pr, host, cwd) {
   }
   if (typeof user !== 'string' || user === '') {
     reasons.push(`Could not read the authenticated gh user on ${host}: ${lookup.failure ?? 'gh returned no login'}.`);
+    unreadable = true;
   } else if (user !== author) {
     reasons.push(`The pull request was opened by ${author}, not by the authenticated gh user ${user} on ${host}.`);
   }
-  return reasons;
+  return { reasons, unreadable };
 }
 
 // Normalizes HTTPS, scp and SSH remote URLs so another repository's local work
@@ -484,7 +546,8 @@ function remoteRepository(remote) {
 }
 
 // Reads local git without trimming paths, taking optional locks or lazily fetching.
-// All reads share five seconds so a broken local copy leaves time to print an ask.
+// Each caller supplies a deadline: local work, oracle discovery and oracle
+// comparison each share five seconds across their reads.
 function localGit(cwd, args, deadline) {
   const left = Math.floor(deadline - performance.now());
   if (left < 1) throw new Error(`Could not read the local copy in ${cwd}: git exhausted its time budget.`);
@@ -546,13 +609,13 @@ function outsideRepository(cwd) {
 // Check named and upstream-tracking branches without fetching; local failures
 // add reasons to ask and never grant permission for a merge.
 function localWorkReasons(pr, where, cwd) {
-  if (!where) return [];
+  if (!where) return { reasons: [] };
   const deadline = performance.now() + 5000;
   try {
     try {
       localGit(cwd, ['rev-parse', '--absolute-git-dir'], deadline);
     } catch (error) {
-      if (!error.cause?.error && error.cause?.status === 128 && outsideRepository(cwd)) return [];
+      if (!error.cause?.error && error.cause?.status === 128 && outsideRepository(cwd)) return { reasons: [] };
       throw error;
     }
     const remotes = localGit(cwd, ['remote', '-v'], deadline);
@@ -561,9 +624,9 @@ function localWorkReasons(pr, where, cwd) {
       const [name, url] = line.split(/\s+/);
       return url && remoteRepository(url) === repository ? [name] : [];
     }));
-    if (matching.size === 0) return [];
+    if (matching.size === 0) return { reasons: [] };
     if (typeof pr.headRefName !== 'string' || !pr.headRefName) {
-      return ['Could not read the local branch: gh returned no headRefName.'];
+      return mergeReadFailure('Could not read the local branch: gh returned no headRefName.');
     }
     const refs = localGit(cwd, [
       'for-each-ref', '--format=%(refname)%00%(upstream:remotename)%00%(upstream:remoteref)', 'refs/heads/',
@@ -573,14 +636,14 @@ function localWorkReasons(pr, where, cwd) {
       return ref === `refs/heads/${pr.headRefName}`
         || (matching.has(remote) && upstream === `refs/heads/${pr.headRefName}`) ? [ref] : [];
     });
-    if (branches.length === 0) return [];
+    if (branches.length === 0) return { reasons: [] };
     if (typeof pr.headRefOid !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(pr.headRefOid)) {
-      return ['Could not read the pushed head: gh returned no valid headRefOid.'];
+      return mergeReadFailure('Could not read the pushed head: gh returned no valid headRefOid.');
     }
     try {
       localGit(cwd, ['cat-file', '-e', `${pr.headRefOid}^{commit}`], deadline);
     } catch (error) {
-      return [`The pushed head ${pr.headRefOid.slice(0, 7)} is unavailable in the local repository; fetch the pull request's head and retry. ${error.message}`];
+      return mergeReadFailure(`The pushed head ${pr.headRefOid.slice(0, 7)} is unavailable in the local repository; fetch the pull request's head and retry. ${error.message}`);
     }
     const missing = localGit(cwd, ['log', '--no-show-signature', '--format=%h %s', ...branches, '--not', pr.headRefOid, '--'], deadline).trim();
     const reasons = [];
@@ -602,9 +665,9 @@ function localWorkReasons(pr, where, cwd) {
       const paths = changedPaths(localGit(path, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], deadline));
       if (paths.length > 0) reasons.push(`Uncommitted changes in worktree ${path}: ${summarize(paths, ', ')}.`);
     }
-    return reasons;
+    return { reasons };
   } catch (error) {
-    return [error.message];
+    return mergeReadFailure(error.message);
   }
 }
 
@@ -661,27 +724,24 @@ async function mergeOracle(pr, where, cwd) {
 
 // What the hook may say about a merge: reasons to ask, or none when every
 // condition of ADR 0010, ADR 0024 and ADR 0030 holds.
-async function mergeReasons(args, cwd) {
-  const rest = args.slice(2);
-  const { positional } = parseOptions(rest, {
-    shortWithValue: ['R', 't', 'b', 'F', 'A'],
-    longWithValue: ['--repo', '--subject', '--body', '--body-file', '--author-email', '--match-head-commit'],
-  });
-  const repoFlag = optionValue(rest, ['-R', '--repo']);
+async function mergeReasons(options, cwd) {
+  const { positional, values } = options;
+  const repoFlag = values.get('repo');
   const view = gh(['pr', 'view', ...(positional[0] ? [positional[0]] : []), ...(repoFlag ? ['-R', repoFlag] : []), '--json', PR_FIELDS], cwd);
-  if (view.failure) return { reasons: [`Could not read the pull request: ${view.failure}.`] };
+  if (view.failure) return mergeReadFailure(`Could not read the pull request: ${view.failure}.`);
 
   let pr;
   try {
     pr = JSON.parse(view.stdout);
   } catch {
-    return { reasons: ['Could not read the pull request: gh did not return JSON.'] };
+    return mergeReadFailure('Could not read the pull request: gh did not return JSON.');
   }
   const complete = pr && typeof pr.baseRefName === 'string' && typeof pr.url === 'string' && typeof pr.isDraft === 'boolean'
     && typeof pr.changedFiles === 'number' && Array.isArray(pr.files) && Array.isArray(pr.labels) && Array.isArray(pr.statusCheckRollup);
-  if (!complete) return { reasons: ['Could not read the pull request: gh returned incomplete data.'] };
+  if (!complete) return mergeReadFailure('Could not read the pull request: gh returned incomplete data.');
 
   const reasons = [];
+  let unreadable = false;
   if (pr.isDraft) reasons.push('The pull request is a draft.');
   if (pr.labels.some((label) => String(label.name).toLowerCase() === 'needs-human')) {
     reasons.push('The pull request carries needs-human.');
@@ -693,16 +753,20 @@ async function mergeReasons(args, cwd) {
   const paths = pr.files.map((file) => file.path);
   if (paths.length < pr.changedFiles) {
     reasons.push(`GitHub lists only ${paths.length} of ${pr.changedFiles} changed files, so the control plane cannot be checked.`);
+    unreadable = true;
   }
 
   const where = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/.exec(pr.url);
-  reasons.push(...provenanceReasons(pr, where?.[1], cwd));
-  reasons.push(...localWorkReasons(pr, where, cwd));
+  const provenance = provenanceReasons(pr, where?.[1], cwd);
+  const local = localWorkReasons(pr, where, cwd);
+  reasons.push(...provenance.reasons, ...local.reasons);
+  unreadable ||= provenance.unreadable || local.unreadable;
 
   // The list a pull request is judged by comes from its base branch, never from its own copy.
   let extra = [];
   if (!where) {
     reasons.push('Could not read CLAUDE.md of the base branch: the pull request URL has an unexpected shape.');
+    unreadable = true;
   } else {
     const [, host, owner, name] = where;
     // An explicit host, github.com included: without it gh follows GH_HOST, and a 404
@@ -713,13 +777,16 @@ async function mergeReasons(args, cwd) {
       `repos/${owner}/${name}/contents/CLAUDE.md?ref=${encodeURIComponent(pr.baseRefName)}`,
     ], cwd);
     if (file.stdout !== undefined) extra = humanMergeMatchers(file.stdout);
-    else if (!/HTTP 404/.test(file.stderr ?? '')) reasons.push(`Could not read CLAUDE.md of the base branch: ${file.failure}.`);
+    else if (!/HTTP 404/.test(file.stderr ?? '')) {
+      reasons.push(`Could not read CLAUDE.md of the base branch: ${file.failure}.`);
+      unreadable = true;
+    }
   }
   const sensitive = controlPlaneFiles(paths, extra);
   if (sensitive.length > 0) reasons.push(`Control-plane files changed: ${sensitive.join(', ')}.`);
   const oracle = await mergeOracle(pr, where, cwd);
   if (oracle.reason) reasons.push(oracle.reason);
-  return { reasons, oracle };
+  return { reasons, oracle, unreadable };
 }
 
 const couldNotDecide = (error) => `Could not decide this merge (${error?.message ?? error}).`;
@@ -728,29 +795,38 @@ function askHuman(verdict, reasons) {
   verdict.add('ask', `${reasons.join(' ')} The human decides this merge (ADR 0010).`);
 }
 
+function mergeDecision(verdict, reasons, permissionMode, unreadable) {
+  if (unreadable && permissionMode === 'bypassPermissions') {
+    verdict.add('deny', `${reasons.join(' ')} The oracle requires human approval; switch from bypassPermissions to a mode that shows permission prompts.`);
+  } else askHuman(verdict, reasons);
+}
+
 // Returns oracle evidence when a merge was verified end to end. Without
 // readPullRequest only the denials that need no network apply; nothing is verified.
 async function checkGh(args, verdict, cwd, readPullRequest, permissionMode) {
   if (args[0] !== 'pr' || args[1] !== 'merge') return false;
+  const options = mergeOptions(args.slice(2));
+  const { values } = options;
   if (hasFlag(args, '--admin')) {
     verdict.add('deny', 'Never merge with --admin: it bypasses every rule of the ruleset, required checks included.');
   }
-  if (!args.some((arg) => ['--squash', '-s'].includes(arg))
-      || hasFlag(args, '--merge', '-m', '--rebase', '-r')
-      || args.some((arg) => /^(?:--(?:squash|merge|rebase)|-[smr])=/.test(arg))) {
+  if (values.get('squash') !== true || values.get('merge') === true || values.get('rebase') === true) {
     verdict.add('deny', 'Merge with --squash: main keeps a linear history.');
   }
   if (verdict.decision === 'deny' || !readPullRequest) return false;
+  if (options.failure) {
+    mergeDecision(verdict, [couldNotDecide(options.failure)], permissionMode, true);
+    return false;
+  }
   let result;
   try {
-    result = await mergeReasons(args, cwd);
+    result = await mergeReasons(options, cwd);
   } catch (error) {
-    result = { reasons: [couldNotDecide(error)] };
+    result = mergeReadFailure(couldNotDecide(error));
   }
-  if (result.reasons.length === 0) return result.oracle.evidence;
-  if (result.oracle?.reason && permissionMode === 'bypassPermissions') {
-    verdict.add('deny', `${result.reasons.join(' ')} The oracle requires human approval; switch from bypassPermissions to a mode that shows permission prompts.`);
-  } else askHuman(verdict, result.reasons);
+  // Valued merge-method flags keep the normal permission prompt (ADR 0030).
+  if (result.reasons.length === 0) return options.valuedMethod || options.positional.length > 1 ? false : result.oracle.evidence;
+  mergeDecision(verdict, result.reasons, permissionMode, result.unreadable || !!result.oracle?.reason);
   return false;
 }
 
@@ -802,8 +878,10 @@ function checkWrappers(command, verdict) {
 
 const isMerge = (w) => program(w[0]) === 'gh' && w[1] === 'pr' && w[2] === 'merge';
 
+let permissionMode;
 try {
   const event = readEvent();
+  permissionMode = event?.permission_mode;
   const command = event?.tool_input?.command;
   if (typeof command !== 'string') {
     if (mergeOnly) throw new Error('the event carries no Bash command');
@@ -846,9 +924,9 @@ try {
   verdict.emit();
 } catch (error) {
   if (mergeOnly) {
-    // A merge cannot be undone, so the merge entry asks rather than letting the call through.
+    // A merge cannot be undone: an unreadable decision needs human approval.
     const verdict = new Verdict();
-    askHuman(verdict, [couldNotDecide(error)]);
+    mergeDecision(verdict, [couldNotDecide(error)], permissionMode, true);
     verdict.emit();
   }
   failOpen('guard-git', error);
