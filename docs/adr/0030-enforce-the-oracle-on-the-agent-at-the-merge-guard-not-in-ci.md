@@ -102,7 +102,12 @@ command that string matching misses.
 - Accepted risk: when the human merges on the web there is no independent
   evidence of the oracle, and the guard is a net: forms it does not read
   (such as `gh api` merges, `git -c alias...` aliases, `--git-dir` or
-  `GIT_DIR`) pass. They are named as known gaps.
+  `GIT_DIR`, `gh` run through `env`, `command`, `time` or as `\gh`) pass.
+  They are named as known gaps.
+- The decision reads the pull request once, before the merge runs: a head
+  pushed between that read and the merge is not compared, and
+  `gh pr merge --auto` lets GitHub merge later pushes without the hook. Both
+  are known gaps.
 - The merge decision makes one more network call inside its 10 s budget;
   exhausting the budget asks. Both commits must be in the local clone, which
   the merge decision does not fetch.
