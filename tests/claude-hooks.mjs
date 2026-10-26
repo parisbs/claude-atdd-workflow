@@ -11,7 +11,13 @@
 // Two simplifications. An entry without a matcher is skipped: only guard-codex ships without one, and
 // the installer derives it. And `if` is approximated: Bash(<words> *) runs the hook when the command
 // holds those words in that order, which reaches every form Claude Code matched in
-// docs/experiments/2026-10-21-hook-if-and-onfailure-probes.md, and more. It also runs it, as Claude Code
+// docs/experiments/2026-10-21-hook-if-and-onfailure-probes.md, and more. A leading `*`, as in
+// Bash(*gh pr merge *), lets the first word end a longer word of the command, a path included: Claude Code
+// 2.1.308 ran it for `/opt/homebrew/bin/gh pr merge 12`, `./gh pr merge 5`,
+// `cd /tmp && /usr/local/bin/gh pr merge 5`, `GH_HOST=github.com /usr/bin/gh pr merge 5 -s` and
+// `echo gh pr merge 5`, and not for `ghx pr merge 5`, `gh pr view 5` or `gh pr list`
+// (docs/experiments/2026-10-26-merge-if-absolute-gh-probe.md). A rule without it keeps the approximation
+// above, which does not tell a path form from the plain one. The harness also runs the hook, as Claude Code
 // does for a pattern that names more than the command, whenever the command holds a form `if` cannot
 // rule out: $(), backticks, ${...}, a for, while or until loop in any spelling, a function definition with
 // or without the function keyword, a variable in command position, or test or [ with a variable (issue #31,
@@ -68,7 +74,10 @@ export function ifApplies(rule, toolName, input) {
   if (!match) throw new Error(`claude-hooks: unsupported if rule ${rule}`);
   if (toolName !== 'Bash') return false;
   if (match[1].includes(' ') && UNREADABLE.test(input.command ?? '')) return true;
-  const words = match[1].split(' ').map((word) => `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+  // A leading `*` lets the first word start anywhere in the command, as the end of a path or of a prefix.
+  const prefixed = match[1].startsWith('*');
+  const words = (prefixed ? match[1].slice(1) : match[1]).split(' ')
+    .map((word, i) => `${i === 0 && prefixed ? '' : '\\b'}${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
   return new RegExp(words.join('[\\s\\S]*')).test(input.command ?? '');
 }
 
