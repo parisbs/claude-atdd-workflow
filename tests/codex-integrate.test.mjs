@@ -4,7 +4,7 @@
 // $CODEX_HOME/worktrees/<id>/<repository>, with CODEX_HOME pointed at a scratch directory.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -61,7 +61,7 @@ function codexWorktree(dir) {
   const path = join(codexHome, 'worktrees', `w${ids}`, 'repo');
   mkdirSync(dirname(path), { recursive: true });
   sh(dir, 'worktree', 'add', '-q', '--detach', path, 'HEAD');
-  return path;
+  return realpathSync(path);
 }
 
 const integrate = (cwd, ...args) =>
@@ -93,7 +93,7 @@ describe('codex-integrate', () => {
     assert.match(r.stdout, /oracle-check against oracle\/feature\/x/);
     assert.match(r.stdout, /test paths: unchanged/);
     assert.equal(existsSync(worktree), false, 'the worktree is removed once the changes are applied');
-    assert.ok(!sh(dir, 'worktree', 'list', '--porcelain').includes(`w${ids}`), 'git no longer lists the worktree');
+    assert.ok(!sh(dir, 'worktree', 'list', '--porcelain', '-z').split('\0').includes(`worktree ${worktree}`), 'git no longer lists the worktree');
     assert.equal(sh(dir, 'rev-parse', 'HEAD'), head, 'the script does not commit');
   });
 
