@@ -14,6 +14,7 @@
 // is left untouched and the worktree is kept.
 // Before applying anything, changes, additions or deletions at frozen test
 // paths of the work branch's oracle stop integration with exit 2 (ADR 0033).
+// Unreadable oracle test paths also stop before applying anything (ADR 0033).
 // Test-configuration changes still apply and are reported by oracle-check.
 //
 // The worktree's files are read into a scratch index, so its own index is not
@@ -123,7 +124,11 @@ function integrate(arg, scratch, state) {
   if (tag) {
     const changed = run(work, ['diff-tree', '--no-commit-id', '--name-only', '--no-renames', '-r', '-z', base, snapshot]);
     if (!ok(changed)) stop(`could not read the changed paths of ${tree}: ${why(changed)}`);
-    const matchers = testMatchers(work, tag);
+    const matchers = testMatchers(work, tag, (cwd, args) => {
+      const result = run(cwd, args);
+      if (!ok(result)) stop(`could not read the oracle test paths at ${tag}: git ${args.join(' ')}: ${why(result)}. Nothing was applied; the worktree is kept.`);
+      return result.stdout.trim();
+    });
     const frozen = changed.stdout.split('\0').filter((path) => path && isTest(matchers, path));
     if (frozen.length) stop(`the changes of ${tree} touch frozen test paths at ${tag}:\n${frozen.map((path) => `- ${path}`).join('\n')}\nNothing was applied; the work branch is untouched and the worktree is kept.`);
   }

@@ -8,22 +8,15 @@
 // Unread shell forms pass; errors fail open visibly without losing findings
 // already collected (ADR 0002). oracle-check and the merge guard catch what
 // passes (ADR 0030). An allow prints nothing.
-import { existsSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { realPath } from './codex.mjs';
 import { Verdict, git, readEvent } from './lib.mjs';
 import { isTest, isTestConfig, oracleTag, testMatchers } from './oracle.mjs';
 import { shellWrites } from './shell-writes.mjs';
 
-// Resolve the existing part of a path, including /var on macOS and symlinked
-// directories. Write can name a file whose parents do not yet exist.
-function realPath(path) {
-  let dir = dirname(path);
-  while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
-  const real = realpathSync(dir);
-  return { dir: real, file: join(real, relative(dir, path)) };
-}
-
-const verdict = new Verdict();
+// Git and CPU work share an overall deadline below the entry's 15 s timeout.
+const verdict = new Verdict(20);
 const report = (error) => process.stderr.write(`guard-tests: could not evaluate, allowing unread remainder (${error?.message ?? error})\n`);
 try {
   const event = readEvent();
@@ -37,11 +30,22 @@ try {
     // repository fails open with a message instead of being killed before the verdict is printed.
     // The environment overrides exist for the tests, as GUARD_GIT_GH_TIMEOUT_MS does for guard-git.
     const limit = Number(process.env.GUARD_TESTS_GIT_TIMEOUT_MS) || 5000;
-    const deadline = Date.now() + (Number(process.env.GUARD_TESTS_GIT_BUDGET_MS) || 12000);
+    const started = performance.now();
+    const cpuStarted = process.cpuUsage();
+    const deadline = started + Math.min(Number(process.env.GUARD_TESTS_GIT_BUDGET_MS) || 10000, 10000);
+    // CPU spent reading the command and matching the inventory; 8 s leaves room for the 10 s deadline.
+    const cpuLimit = (Number(process.env.GUARD_TESTS_CPU_BUDGET_MS) || 8000) * 1000;
+    const check = () => {
+      const cpu = process.cpuUsage(cpuStarted);
+      if (performance.now() >= deadline || cpu.user + cpu.system >= cpuLimit) throw new Error('oracle CPU or read budget exhausted');
+    };
     const read = (dir, args) => {
-      const remaining = deadline - Date.now();
+      const remaining = Math.floor(deadline - performance.now());
       if (remaining <= 0) throw new Error('oracle read budget exhausted');
-      return git(dir, args, { timeout: Math.min(limit, remaining), onError: (error) => { throw error; } });
+      return git(dir, args, {
+        timeout: Math.min(limit, remaining), killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024,
+        env: { ...process.env, GIT_NO_LAZY_FETCH: '1' }, onError: (error) => { throw error; },
+      });
     };
     const repository = (dir) => {
       if (!roots.has(dir)) {
@@ -58,18 +62,43 @@ try {
           const commit = read(root, ['rev-parse', '--verify', `${tag}^{commit}`]);
           if (!commit) throw new Error(`could not read the commit of ${tag}`);
           const matchers = testMatchers(root, tag, read);
-          const tree = read(root, ['ls-tree', '-rz', '--name-only', commit]);
-          if (tree === undefined) throw new Error(`could not read the files at ${tag}`);
-          const files = tree.split('\0').filter((path) => path && (isTest(matchers, path) || isTestConfig(path)));
-          for (const path of files) roots.set(dirname(resolve(root, path)), root);
-          repositories.set(root, { root, tag, commit, matchers, files, frozen: new Set(files) });
+          const oracle = { root, tag, commit, matchers };
+          repositories.set(root, oracle);
+          try {
+            const tree = read(root, ['ls-tree', '-rz', '--name-only', commit]);
+            if (tree === undefined) throw new Error(`could not read the files at ${tag}`);
+            const files = [];
+            const byPath = new Map();
+            const byDirectory = new Map();
+            for (const path of tree.split('\0')) {
+              check();
+              if (!path || !(isTest(matchers, path) || isTestConfig(path))) continue;
+              const file = { path: resolve(root, path), root };
+              files.push(file);
+              byPath.set(file.path, file);
+              let dir = dirname(file.path);
+              roots.set(dir, root);
+              while (dir === root || dir.startsWith(`${root}${sep}`)) {
+                if (!byDirectory.has(dir)) byDirectory.set(dir, []);
+                byDirectory.get(dir).push(file);
+                if (dir === root) break;
+                dir = dirname(dir);
+              }
+            }
+            oracle.files = Object.assign(files, { byPath, byDirectory, root });
+            oracle.frozen = new Set(files.map((file) => relative(root, file.path).split(sep).join('/')));
+          } catch (error) {
+            report(new Error(`change label could not be read at ${tag}: ${error.message}`));
+          }
         }
       }
       return repositories.get(root);
     };
     const record = (path, action = 'changed') => {
       try {
-        const { dir, file } = realPath(isAbsolute(path) ? path : resolve(cwd, path));
+        const file = realPath(isAbsolute(path) ? path : resolve(cwd, path));
+        let dir = dirname(file);
+        while (!existsSync(dir)) dir = dirname(dir);
         const key = `${action}:${file}`;
         if (seen.has(key)) return;
         seen.add(key);
@@ -79,7 +108,7 @@ try {
         const rel = relative(root, file).split(sep).join('/');
         if (rel.startsWith('../')) return;
         if (isTest(matchers, rel)) {
-          const change = action === 'deleted' ? 'deleted' : frozen.has(rel) ? 'amended' : 'added';
+          const change = !frozen ? 'changed (change label could not be read)' : action === 'deleted' ? 'deleted' : frozen.has(rel) ? 'amended' : 'added';
           const evidence = `${rel} would be ${change} against the test oracle ${tag} (${commit}).`;
           if (typeof event.agent_id === 'string' && event.agent_id.length > 0) {
             verdict.add('deny', `${evidence} A subagent must not change frozen tests; return to the main session for human approval.`);
@@ -95,12 +124,15 @@ try {
         report(error);
       }
     };
-    const files = (dir) => {
-      const oracle = repository(realpathSync(dir));
-      return oracle ? oracle.files.map((path) => ({ path: resolve(oracle.root, path), root: oracle.root, test: isTest(oracle.matchers, path) })) : [];
+    const files = (path) => {
+      check();
+      let dir = realPath(path);
+      while (!existsSync(dir)) dir = dirname(dir);
+      if (!statSync(dir).isDirectory()) dir = dirname(dir);
+      return repository(dir)?.files ?? [];
     };
     if (event.tool_name === 'Bash' && typeof input.command === 'string') {
-      shellWrites(input.command, cwd, { files, write: record, error: report });
+      shellWrites(input.command, cwd, { files, write: record, error: report, check });
     } else {
       const raw = input.file_path ?? input.notebook_path;
       if (typeof raw === 'string') record(raw);

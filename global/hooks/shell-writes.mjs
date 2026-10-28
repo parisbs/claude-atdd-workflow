@@ -7,10 +7,11 @@ import { homedir } from 'node:os';
 import { basename, dirname, relative, resolve, sep } from 'node:path';
 import { gitCommand, program } from './commands.mjs';
 import { globToRegExp } from './oracle.mjs';
+import { realPath } from './codex.mjs';
 
 // Keep quoted scripts literal and attach heredoc bodies to their input
 // operator. An unread input must not swallow later command segments.
-function tokens(command, error) {
+function tokens(command, error, check) {
   const result = [];
   let word = '';
   let started = false;
@@ -27,6 +28,7 @@ function tokens(command, error) {
     started = false;
   };
   for (let i = 0; i < command.length; i += 1) {
+    if (i % 1024 === 0) check();
     const ch = command[i];
     if (quote === "'") {
       if (ch === quote) quote = undefined;
@@ -93,13 +95,13 @@ function tokens(command, error) {
   return result;
 }
 
-function braces(path) {
+function braces(path, check) {
+  check();
   const match = /\{([^{}]*,[^{}]*)\}/.exec(path);
-  return match ? match[1].split(',').flatMap((part) => braces(path.slice(0, match.index) + part + path.slice(match.index + match[0].length))) : [path];
+  return match ? match[1].split(',').flatMap((part) => braces(path.slice(0, match.index) + part + path.slice(match.index + match[0].length), check)) : [path];
 }
 
 const absolute = (cwd, path) => resolve(cwd, path === '~' ? homedir() : path.startsWith('~/') ? resolve(homedir(), path.slice(2)) : path);
-const beneath = (dir, path) => path === dir || path.startsWith(`${dir}${sep}`);
 const quoteWord = (word) => `'${word.replaceAll("'", "'\\''")}'`;
 
 // Positional operands of common writers, with their value-taking options.
@@ -115,9 +117,10 @@ function operands(args, values = []) {
   return out;
 }
 
-function scriptOf(args, flags) {
+function scriptOf(args, flags, shell = false) {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
+    if (!arg.startsWith('-') || arg === '-' || arg === '-m') return undefined;
     if (flags.includes(arg)) return args[i + 1];
     const long = flags.find((flag) => flag.startsWith('--') && arg.startsWith(`${flag}=`));
     if (long) return arg.slice(long.length + 1);
@@ -127,7 +130,7 @@ function scriptOf(args, flags) {
       const at = [...arg].findIndex((ch, index) => index > 0 && flags.includes(`-${ch}`));
       if (at > 0) {
         const tail = arg.slice(at + 1);
-        return tail && ![...tail].every((ch) => flags.includes(`-${ch}`)) ? tail : args[i + 1];
+        return !shell && tail && ![...tail].every((ch) => flags.includes(`-${ch}`)) ? tail : args[i + 1];
       }
     }
   }
@@ -176,10 +179,12 @@ function writeOperands(cmd, args) {
 function unwrap(words) {
   for (;;) {
     const cmd = program(words[0]);
-    if (/^[A-Za-z_][A-Za-z_0-9]*=/.test(words[0] ?? '') || ['then', 'do', 'else', '{', '!', 'time'].includes(cmd)) words.shift();
-    else if (['sudo', 'nohup', 'exec', 'command', 'env'].includes(cmd)) {
+    if (/^[A-Za-z_][A-Za-z_0-9]*=/.test(words[0] ?? '') || ['if', 'elif', 'while', 'until', 'then', 'do', 'else', '{', '!', 'time'].includes(cmd)) words.shift();
+    else if (['sudo', 'doas', 'nice', 'stdbuf', 'nohup', 'exec', 'command', 'env'].includes(cmd)) {
       words.shift();
-      const values = cmd === 'sudo' ? ['-u', '-g', '-h', '-p'] : cmd === 'env' ? ['-u', '--unset', '-C', '--chdir'] : [];
+      const values = ['sudo', 'doas'].includes(cmd) ? ['-u', '-g', '-h', '-p']
+        : cmd === 'env' ? ['-u', '--unset', '-C', '--chdir']
+          : cmd === 'nice' ? ['-n', '--adjustment'] : cmd === 'stdbuf' ? ['-i', '-o', '-e', '--input', '--output', '--error'] : [];
       while (words[0]?.startsWith('-')) {
         const arg = words.shift();
         if (values.includes(arg)) words.shift();
@@ -198,38 +203,69 @@ function unwrap(words) {
 // inventory and records each write immediately, before later work can fail.
 export function shellWrites(command, cwd, options = {}, depth = 0) {
   if (depth > 8) return [];
-  cwd = realpathSync(cwd);
+  cwd = realPath(cwd);
   const results = [];
   const error = options.error ?? (() => {});
-  const inventory = (dir = cwd) => options.files?.(dir) ?? [];
+  const check = options.check ?? (() => {});
+  const inventories = options.inventories ??= new Map();
+  const directories = options.directories ??= new Set();
+  const inventory = (dir = cwd) => {
+    check();
+    if (!inventories.has(dir)) inventories.set(dir, options.files?.(dir) ?? []);
+    return inventories.get(dir);
+  };
+  const under = (target) => {
+    const files = inventory(target);
+    const exact = files.byPath?.get(target);
+    return exact ? [exact] : files.byDirectory?.get(target) ?? [];
+  };
   const emit = (path, action) => {
+    check();
     results.push(path);
     options.write?.(path, action);
   };
   const expand = (path, dir = cwd) => {
     if (!path || /[$`]/.test(path)) return [];
-    return braces(path).flatMap((part) => {
+    inventory(dir);
+    return braces(path, check).flatMap((part) => {
       const target = absolute(dir, part);
-      return /[*?]/.test(target)
-        ? inventory(dir).filter((file) => globToRegExp(target).test(file.path)).map((file) => file.path)
-        : [target];
+      if (!/[*?]/.test(target)) return [realPath(target)];
+      const prefix = target.slice(0, target.search(/[*?]/));
+      const base = prefix.endsWith(sep) ? prefix : dirname(prefix);
+      const anchor = realPath(base);
+      const pattern = resolve(anchor, relative(base, target));
+      const re = globToRegExp(pattern);
+      const files = inventory(anchor);
+      const candidates = [...(files.byDirectory?.keys() ?? []), ...(files.byPath?.keys() ?? [])];
+      return candidates.filter((path) => { check(); return re.test(path); });
     });
   };
   const add = (path, action = 'changed', dir = cwd) => {
     for (const target of expand(path, dir)) {
-      const files = inventory(dir).filter((file) => beneath(target, file.path));
+      const files = under(target);
       if (files.length) files.forEach((file) => emit(file.path, action));
       else if (!existsSync(target) || !statSync(target).isDirectory()) emit(target, action);
     }
   };
   const nested = (script, dir = cwd) => results.push(...shellWrites(script, dir, options, depth + 1));
   const inline = (script) => {
-    const names = script.split(/[\s'"`(){}\[\],;=]+/).filter((name) => name && name !== '.' && !/[*?$`]/.test(name));
-    for (const file of inventory()) {
-      if (file.test && names.some((name) => absolute(cwd, name) === file.path || absolute(file.root, name) === file.path)) emit(file.path, 'changed');
+    const names = new Set(script.split(/[\s'"`(){}\[\],;=]+/).filter((name) => name && name !== '.' && !/[*?$`]/.test(name)));
+    const files = inventory();
+    for (const name of names) {
+      check();
+      const paths = new Set([absolute(cwd, name), ...(files.root ? [absolute(files.root, name)] : [])]);
+      for (const path of paths) {
+        let file = files.byPath?.get(path);
+        if (!file && name.includes('/') && existsSync(path)) {
+          const target = realPath(path);
+          file = inventory(target).byPath?.get(target);
+        }
+        if (file) emit(file.path, 'changed');
+      }
     }
   };
   const stack = [];
+  const directoryStack = [];
   let words = [];
   let redirects = [];
   let bodies = [];
@@ -245,9 +281,28 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
     const cmd = program(current[0]);
     const args = current.slice(1);
     let found = piped;
-    if (cmd === 'cd' && args.length === 1 && !/[$`]/.test(args[0])) cwd = realpathSync(absolute(cwd, args[0]));
-    else if (['bash', 'sh', 'zsh'].includes(cmd)) {
-      const script = scriptOf(args, ['-c']);
+    if (['cd', 'pushd'].includes(cmd)) {
+      const paths = operands(args);
+      if (paths.length === 1 && !/[$`]/.test(paths[0])) {
+        const target = absolute(cwd, paths[0]);
+        const dir = realPath(target);
+        if (!existsSync(dir) && !directories.has(dir)) realpathSync(target);
+        if (cmd === 'pushd') directoryStack.push(cwd);
+        cwd = dir;
+      }
+    } else if (cmd === 'popd') {
+      if (directoryStack.length) cwd = directoryStack.pop();
+    } else if (cmd === 'mkdir') {
+      for (const path of operands(args, ['-m', '--mode'])) {
+        const target = realPath(absolute(cwd, path));
+        directories.add(target);
+        if (args.includes('-p') || args.includes('--parents')) {
+          let parent = dirname(target);
+          while (!existsSync(parent)) { check(); directories.add(parent); parent = dirname(parent); }
+        }
+      }
+    } else if (['bash', 'sh', 'zsh'].includes(cmd)) {
+      const script = scriptOf(args, ['-c'], true);
       if (script !== undefined) nested(script);
       stdin.forEach((body) => nested(body));
     } else if (cmd === 'find') {
@@ -265,14 +320,25 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         else if (arg === '-type') supported &&= predicates[++i] === 'f';
         else if (!['-delete', '-print', '-print0', '-depth'].includes(arg)) supported = false;
       }
-      found = supported && (pipe || exec >= 0 || args.includes('-delete'))
-        ? inventory().filter((file) => (roots.length ? roots : ['.']).some((root) => beneath(absolute(cwd, root), file.path))
-          && (!name || globToRegExp(name).test(basename(file.path)))).map((file) => file.path) : [];
+      const namePattern = name && globToRegExp(name);
+      const candidates = new Map();
+      if (supported && (pipe || exec >= 0 || args.includes('-delete'))) {
+        for (const root of roots.length ? roots : ['.']) {
+          for (const target of expand(root)) {
+            for (const file of under(target)) {
+              check();
+              if (!namePattern || namePattern.test(basename(file.path))) candidates.set(file.path, file);
+            }
+          }
+        }
+      }
+      found = [...candidates.keys()];
       if (args.includes('-delete')) found.forEach((path) => emit(path, 'deleted'));
       if (exec >= 0) {
         const rest = args.slice(exec + 1);
         const end = rest.findIndex((arg) => arg === ';' || arg === '+');
         for (const path of found) {
+          check();
           const dir = args[exec] === '-execdir' ? dirname(path) : cwd;
           const replacement = args[exec] === '-execdir' ? `./${basename(path)}` : path;
           nested((end < 0 ? rest : rest.slice(0, end)).map((arg) => quoteWord(arg.replaceAll('{}', replacement))).join(' '), dir);
@@ -286,12 +352,13 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         if (arg === '--') { i += 1; break; }
         if (arg === '-I') replacement = args[++i];
         else if (arg === '-i' || arg === '--replace') replacement = '{}';
-        else if (arg.startsWith('-I')) replacement = arg.slice(2);
+        else if (arg.startsWith('-I') || arg.startsWith('-i')) replacement = arg.slice(2);
         else if (arg.startsWith('--replace=')) replacement = arg.slice('--replace='.length);
         else if (['-n', '-L', '-P', '-s', '-E', '-d', '-a', '--max-args', '--max-lines', '--max-procs', '--max-chars', '--eof', '--delimiter', '--arg-file'].includes(arg)) i += 1;
       }
       if (!piped) nested(args.slice(i).map(quoteWord).join(' '));
       for (const path of piped ?? []) {
+        check();
         const invocation = args.slice(i);
         nested((replacement ? invocation.map((arg) => arg.replaceAll(replacement, path)) : [...invocation, path]).map(quoteWord).join(' '));
       }
@@ -301,9 +368,9 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
       const separator = rest.indexOf('--');
       if (subcommand === 'checkout') {
         const paths = separator >= 0 ? rest.slice(separator + 1) : operands(rest);
-        // A branch checkout is not a path write. Only an exact frozen path
-        // without -- is read; switching branches remains a known gap.
-        paths.filter((path) => separator >= 0 || inventory(dir).some((file) => file.path === absolute(dir, path))).forEach((path) => add(path, 'changed', dir));
+        // Existing directories and exact frozen files are path writes; a
+        // branch checkout remains a known gap.
+        paths.filter((path) => separator >= 0 || inventory(realPath(absolute(dir, path))).byPath?.has(realPath(absolute(dir, path))) || (existsSync(absolute(dir, path)) && statSync(absolute(dir, path)).isDirectory())).forEach((path) => add(path, 'changed', dir));
       } else if (['restore', 'rm'].includes(subcommand)) {
         operands(rest, ['--source', '-s', '--pathspec-from-file']).forEach((path) => add(path, subcommand === 'rm' ? 'deleted' : 'changed', dir));
       } else if (subcommand === 'mv') nested(['mv', ...rest].map(quoteWord).join(' '), dir);
@@ -318,7 +385,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
             if (existsSync(dest) && statSync(dest).isDirectory()) {
               for (const source of sources.flatMap((path) => expand(path))) {
                 add(resolve(dest, basename(source)));
-                for (const file of inventory().filter((file) => beneath(source, file.path))) add(resolve(dest, basename(source), relative(source, file.path)));
+                for (const file of under(source)) add(resolve(dest, basename(source), relative(source, file.path)));
               }
             } else add(dest);
           }
@@ -342,8 +409,9 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
       piped = undefined;
     }
   };
-  const parts = tokens(command, error);
+  const parts = tokens(command, error, check);
   for (let i = 0; i < parts.length; i += 1) {
+    check();
     const token = parts[i];
     if (typeof token === 'string') words.push(token);
     else if (['>', '>>', '&>', '&>>', '>|', '<', '<<', '<<-', '<<<', '<>', '>&', '<&'].includes(token.op)) {

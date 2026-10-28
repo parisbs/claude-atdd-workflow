@@ -48,36 +48,50 @@ merge unnoticed, but both were found only at the end.
   heredocs, `tee`, in-place editing (`sed -i`, `perl -i`, `ruby -i`), `cp`,
   `mv`, `install`, `ln` (including `-s` without `-f`), `rm`, `touch` and
   `truncate` on the path, `git checkout -- <path>`, `git checkout <path>`
-  when the operand names a frozen file, `git restore`, `git rm` and `git mv`.
+  when the operand names a frozen file or an existing directory, `git restore`, `git rm` and `git mv`.
   File-descriptor redirects (`2>`, `2>&1`, `1>`, `&>` and `>& file`) are read.
-  Inline interpreters ask only when their script text names a frozen file,
+  Inline interpreters ask only when their script text names a frozen file or
+  test-configuration path,
   relative to the repository or command's working directory. This includes
   `node -pe`, `perl -we`/`-pie`, versioned `python3.x -c`, and interpreter
   scripts supplied through a heredoc (`python3 -`, `node`). `bash -c`,
-  `bash -lc`, `sh -ec`, `zsh -c` and shell heredocs are read as nested commands.
+  `bash -lc`/`-ce`, `sh -ec`/`-cx`, `zsh -c` and shell heredocs are read as nested commands.
   The reader handles compound commands, a leading `cd <dir> &&`, keyword
-  prefixes (`then`, `do`, `else`, `{`, `!`, `time`), wrappers (`sudo`, `nohup`,
+  prefixes (`if`, `elif`, `while`, `until`, `then`, `do`, `else`, `{`, `!`,
+  `time`), wrappers (`sudo`, `doas`, `nice`, `stdbuf`, `nohup`,
   `timeout <n>`, `exec`, `command`, `env` with or without assignments),
   combined in-place flags (`sed -Ei`/`-ri`/`-ni`/`-i.bak`), brace alternatives
-  in targets, globs matched against the oracle inventory, and `find` with
+  in targets, globs (including `**` and directory matches) against the oracle inventory, and `find` with
   `-delete`, `-exec`, `-execdir` or `xargs`. `find` reads `-name`, `-type f`,
   `-depth`, `-print` and `-print0`; `xargs` options and `-I` replacements are
-  read even after intervening pipeline stages such as `sort`. A command that
+  read even after any intervening pipeline stage. The reader carries the
+  original `find` candidates through these stages without applying their
+  transformations: `grep -v`, for example, does not remove a candidate. A command that
   only reads or runs the tests gets no verdict. A test-configuration path
   written this way asks, as for an Edit.
 - Directory targets and `find` candidates use the frozen test and configuration
   paths recorded in the oracle commit, read once per repository. They never
   walk the working tree: untracked dependency and build trees contribute no
   candidates. Explicit file targets still protect new test paths as additions.
-  Repository discovery is cached per directory and git reads have a time budget
-  below the hook's timeout. Errors are reported on stderr and fail open for
+  Targets resolve symlinks before repository discovery, including external
+  repositories and linked worktrees. Directory and exact-path indexes are built
+  once per repository; inline names use exact lookups. A preceding `mkdir`
+  supplies directories for later `cd`, including `cd -P` and `cd --`;
+  `pushd` and `popd` track the working directory too. Repository discovery is
+  cached per directory. Git reads use a 64 MiB buffer, disable lazy fetching
+  and kill stalled git processes with SIGKILL. Git and CPU work share a 10 s
+  deadline, with at most 8 s of CPU for reading and matching, below the 15 s entry
+  timeout. If the inventory cannot be read, explicit test targets still get
+  the session's verdict and say the change label could not be read. Reasons
+  list at most 20 paths, then count the remaining paths. Errors are reported on stderr and fail open for
   unread work; an ask or deny already collected is still emitted. Here-strings
   (`<<<`), process substitutions (`<(...)`, `>(...)`), read-write redirects
   (`<>`), arithmetic shifts (`$((1<<2))`) and unterminated heredocs do not
   discard later commands.
 - `codex-integrate` applies nothing when the Codex worktree changes, adds or
   deletes a frozen test path; it exits 2, keeps the worktree and names the
-  paths.
+  paths. An unreadable oracle test-path declaration also stops integration
+  before anything is applied, with exit 2 and the worktree kept.
 - After an approved amendment, the oracle tag is moved to the commit that
   holds it, which asks (ADR 0029). Until it moves, the merge guard finds test
   paths changed against the tag, and the agent's merge does not go through
@@ -119,14 +133,16 @@ merge unnoticed, but both were found only at the end.
   Other unread forms are `find` predicates beyond the list above (including
   `-type d`, `-empty`, `-path`, boolean expressions and pruning), `find`
   traversal through symlinks or nested repositories, directory contents absent
-  from the oracle commit, recursive `**` shell globs and brace ranges
+  from the oracle commit and brace ranges
   (`{1..3}`), dynamically generated stdin scripts, here-string scripts,
   command/process substitutions and shell functions. Pipeline transformations
-  other than sorting are not evaluated, and `xargs` input from sources other
+  are not evaluated, and `xargs` input from sources other
   than `find` is not inferred. Unlisted wrapper options and interpreter flag
   combinations may also pass unread.
 - Naming a frozen path in an inline interpreter's script asks even when the
-  script only reads it. If that proves noisy, moving the form to the known
+  script only reads it. Interpreter flags are read only before a script-file
+  operand or `-m`; arguments to a module or script that runs tests give no
+  verdict. If that proves noisy, moving the form to the known
   gaps is a new decision.
 - `git checkout oracle/<branch> -- <path>`, which restores the frozen version,
   also asks: the hook does not compare contents.
