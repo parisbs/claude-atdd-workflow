@@ -261,6 +261,80 @@ describe('guard-git asks before deleting or moving an oracle tag (#55)', () => {
       assert.match(r.reason, /prompt/i, command);
     }
   });
+
+  // Issue #57, AC-9 (ADR 0030). Git accepts an unambiguous abbreviation of a long option (`--del` is
+  // `--delete`, `--forc` is `--force`; `--for` is ambiguous with `--format` and git rejects it), and a push
+  // refspec such as `tags/oracle/x` names refs/tags/oracle/x. The guard read neither, so these forms deleted
+  // or moved an oracle tag with the generic question or none. They are verified against real git.
+  const ABBREVIATED_DELETES = [
+    `git tag --del ${ORACLE}`,
+    `git tag --delet ${ORACLE}`,
+    `git push origin --del ${ORACLE}`,
+    `git push origin :tags/${ORACLE}`,
+    `git push origin --delete tags/${ORACLE}`,
+  ];
+  // These move the tag from the commit the remote holds (A in `fixture({ local: 'b', remote: 'a' })`) to the
+  // local one (B), except `--forc`, which moves the local tag.
+  const ABBREVIATED_PUSH_MOVES = [
+    `git push origin +tags/${ORACLE}`,
+    `git push --force origin tags/${ORACLE}`,
+  ];
+
+  test('AC-9 (#57) denies a subagent that deletes or moves an oracle tag with an abbreviated option or a refspec without refs/', () => {
+    const { dir, b } = fixture({ local: 'b', remote: 'a' });
+    for (const command of [...ABBREVIATED_DELETES, ...ABBREVIATED_PUSH_MOVES, `git tag --forc ${ORACLE} ${b}`]) {
+      const r = decide(dir, command, { extra: { agent_id: 'agent-1' } });
+      assert.equal(r.decision, 'deny', `${command}: ${r.reason}`);
+    }
+  });
+
+  test('AC-9 (#57) denies, in bypassPermissions, a command that deletes or moves an oracle tag with an abbreviated option or a refspec without refs/', () => {
+    const { dir, a } = fixture({ local: 'b', remote: 'a' });
+    for (const command of [...ABBREVIATED_DELETES, ...ABBREVIATED_PUSH_MOVES, `git tag --forc ${ORACLE} ${a}`]) {
+      const r = decide(dir, command, { extra: { permission_mode: 'bypassPermissions' } });
+      assert.equal(r.decision, 'deny', `${command}: ${r.reason}`);
+      assert.ok(r.reason.includes('bypassPermissions'), `${command}: the reason does not name bypassPermissions: ${r.reason}`);
+    }
+  });
+
+  test('AC-9 (#57) asks as a deletion, in the main session, for an abbreviated option or a refspec without refs/, and says the pull request is still open', () => {
+    const { dir } = fixture();
+    for (const mode of MODES) {
+      for (const command of ABBREVIATED_DELETES) {
+        const extra = mode === undefined ? {} : { permission_mode: mode };
+        const open = decide(dir, command, { extra, gh: { head: 'feature/x', list: { stdout: [OPEN_PR] } } });
+        assert.equal(open.decision, 'ask', `${command} (permission_mode ${mode}): ${open.reason}`);
+        assert.match(open.reason, new RegExp(`Delete ${ORACLE}\\b`), `${command}: not asked as a deletion: ${open.reason}`);
+        assert.match(open.reason, /still open/i, command);
+        assert.ok(open.reason.includes(OPEN_PR.url), `${command}: the reason lacks the URL: ${open.reason}`);
+        const none = decide(dir, command, { extra, gh: { head: 'feature/x', list: { stdout: [] } } });
+        assert.equal(none.decision, 'ask', `${command}: ${none.reason}`);
+        assert.match(none.reason, new RegExp(`Delete ${ORACLE}\\b`), command);
+        assert.doesNotMatch(none.reason, /still open/i, command);
+      }
+    }
+  });
+
+  test('AC-9 (#57) asks as a move, in the main session, for --forc and for a refspec without refs/, naming the commit the tag points to and the one it would point to', () => {
+    // `--forc` moves the local tag from A to B; the pushes move the remote tag from A to B.
+    const local = fixture();
+    const forc = decide(local.dir, `git tag --forc ${ORACLE} ${local.b}`);
+    assert.equal(forc.decision, 'ask', forc.reason);
+    assert.match(forc.reason, new RegExp(`Move ${ORACLE}\\b`), forc.reason);
+    assert.ok(forc.reason.includes(local.short.a) && forc.reason.includes(local.short.b), forc.reason);
+
+    const { dir, short } = fixture({ local: 'b', remote: 'a' });
+    for (const mode of MODES) {
+      for (const command of ABBREVIATED_PUSH_MOVES) {
+        const extra = mode === undefined ? {} : { permission_mode: mode };
+        const r = decide(dir, command, { extra });
+        assert.equal(r.decision, 'ask', `${command} (permission_mode ${mode}): ${r.reason}`);
+        assert.match(r.reason, new RegExp(`Move ${ORACLE}\\b`), `${command}: not asked as a move: ${r.reason}`);
+        assert.ok(r.reason.includes(short.a), `${command}: the reason lacks the remote value ${short.a}: ${r.reason}`);
+        assert.ok(r.reason.includes(short.b), `${command}: the reason lacks the pushed value ${short.b}: ${r.reason}`);
+      }
+    }
+  });
 });
 
 // The three files that describe deleting or moving an oracle tag. A unit is a paragraph or a list item.

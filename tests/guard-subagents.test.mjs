@@ -63,6 +63,25 @@ if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'stri
 process.exit(step.exit === undefined ? 0 : step.exit);
 `;
 
+// Since #57 the merge decision also asks the remote for the oracle tag with `git ls-remote`. A fake `git` first
+// on PATH answers that call with "no tag" and logs it, so these cases never reach the network; it runs the real
+// git, by absolute path, for everything else.
+const REAL_GIT = spawnSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+const FAKE_GIT = String.raw`#!/bin/sh
+case " $* " in
+  *" ls-remote "*) exec node "$FAKE_LS_REMOTE" "$@" ;;
+esac
+exec "$REAL_GIT" "$@"
+`;
+const FAKE_LS_REMOTE = String.raw`require('node:fs').appendFileSync(process.env.FAKE_GIT_LOG, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + '\n');
+`;
+// Installs the fake git in `bin` and returns the environment that makes it answer with no tag.
+function installFakeGit(root, bin) {
+  writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+  writeFileSync(join(root, 'ls-remote.js'), FAKE_LS_REMOTE);
+  return { FAKE_LS_REMOTE: join(root, 'ls-remote.js'), FAKE_GIT_LOG: join(root, 'ls-remote.log'), REAL_GIT };
+}
+
 const NOT_FOUND = { exit: 1, stderr: 'gh: Not Found (HTTP 404)' };
 const PASSED = { __typename: 'CheckRun', name: 'Test', status: 'COMPLETED', conclusion: 'SUCCESS' };
 const FAILED = { __typename: 'CheckRun', name: 'Test', status: 'COMPLETED', conclusion: 'FAILURE' };
@@ -82,6 +101,7 @@ function green(overrides = {}) {
     files: [{ path: 'src/app.ts' }],
     changedFiles: 1,
     statusCheckRollup: [PASSED],
+    headRefName: 'feature/work', // the oracle tag of #57 is oracle/<head branch>
     ...overrides,
   };
 }
@@ -90,12 +110,14 @@ describe('guard-git for subagents', () => {
   let dir;
   let tmp;
   let bin;
+  let gitEnv;
   before(() => {
     dir = repo();
     tmp = mkdtempSync(join(tmpdir(), 'cw-subagent-gh-'));
     bin = join(tmp, 'bin');
     mkdirSync(bin);
     writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+    gitEnv = installFakeGit(tmp, bin);
   });
   after(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -107,7 +129,7 @@ describe('guard-git for subagents', () => {
     writeFileSync(scenario, JSON.stringify({ view: { stdout: pr }, api: NOT_FOUND }));
     const event = { cwd: dir, tool_name: 'Bash', tool_input: { command } };
     if (agent) Object.assign(event, { agent_id: 'agent-7f3a', agent_type: 'claude-implementer' });
-    return run(event, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario });
+    return run(event, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...gitEnv });
   }
   const asSubagent = (command, options) => call(command, options);
   const asOrchestrator = (command, options) => call(command, { ...options, agent: false });

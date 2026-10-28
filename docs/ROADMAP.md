@@ -281,8 +281,9 @@ Items from the original design that the basic form defers:
 
 - **Held-out tests** in a separate private repository that only CI downloads,
   composing real usage scenarios. Needed because Codex reads are not confined.
-- **CI oracle check** in each repository: compare the test tree, test resources
-  and test configuration (for example in `build.gradle.kts`) with the approved
+- **CI oracle check**: ADR 0030 keeps this as an optional tool outside the core,
+  unbuilt until requested. It would compare the test tree, test resources and
+  test configuration (for example in `build.gradle.kts`) with the approved
   oracle commit, and fail on any unauthorised difference.
 - **Escape valve as a state machine**: the agent posts its justification on the
   issue or pull request, the human applies an approval, and CI accepts test

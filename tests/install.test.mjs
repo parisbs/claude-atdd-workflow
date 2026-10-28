@@ -226,7 +226,7 @@ describe('install (#27)', () => {
   test('AC-1 (#27) an install replaces the single guard-git entry with a general one and a merge one that blocks when it fails', () => {
     assert.deepEqual(handlers('guard-git.mjs').map((h) => [h.matcher, / (--skip-merge|--merge-only)\b/.exec(h.command)?.[1], h.if, h.onFailure]), [
       ['Bash', '--skip-merge', undefined, undefined],
-      ['Bash', '--merge-only', 'Bash(gh pr merge *)', 'block'],
+      ['Bash', '--merge-only', 'Bash(*gh pr merge *)', 'block'],
     ]);
   });
 

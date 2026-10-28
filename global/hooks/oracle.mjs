@@ -1,6 +1,6 @@
 // What the ATDD oracle protects (ADR 0003). Shared by the edit guard and by
-// oracle-check, so the paths the guard freezes and the paths the pre-PR check
-// compares are the same by construction.
+// oracle-check and the merge guard, so the paths they compare and freeze are
+// the same by construction.
 import { resolve } from 'node:path';
 import { git } from './lib.mjs';
 
@@ -82,9 +82,11 @@ function nearestAncestorTag(root) {
 }
 
 // Test paths as recorded in the oracle commit, so a later edit to
-// .atdd/test-paths cannot widen what may change.
-export function testMatchers(root, tag) {
-  const declared = git(root, ['show', `${tag}:.atdd/test-paths`]);
+// .atdd/test-paths cannot widen what may change. The merge guard supplies a
+// strict reader so a failed read cannot silently fall back to the defaults.
+export function testMatchers(root, tag, read = git) {
+  const paths = read(root, ['ls-tree', '--name-only', tag, '--', '.atdd/test-paths']);
+  const declared = paths ? read(root, ['show', `${tag}:.atdd/test-paths`])?.trim() : undefined;
   const base = declared
     ? declared.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map(globToRegExp)
     : DEFAULT_TESTS;

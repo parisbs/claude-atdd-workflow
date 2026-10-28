@@ -131,7 +131,10 @@ cannot separate the effects of the workflow, developer, project and model.
     when its checks passed, it touches no control-plane path, the local copy
     holds nothing missing from the pull request's head, and the
     authenticated `gh` user opened it from a branch in the base repository, not
-    a fork, ADR 0024; and for a subagent's call, no `git push` and only
+    a fork, ADR 0024. It compares the pull request's head with the remote
+    `oracle/<head branch>` tag: changed tests, `atdd` without a tag, or an
+    unreadable oracle ask in the main session and deny in bypassPermissions
+    (ADR 0030); and for a subagent's call, no `git push` and only
     read-only `gh` commands, ADR 0013), `guard-readonly.mjs` (the researcher's
     closed list of shell reads; denies writes, execution and unread forms, and
     fails closed), `commands.mjs` (command knowledge shared by both guards),

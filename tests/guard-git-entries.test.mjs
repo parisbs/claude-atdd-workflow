@@ -65,6 +65,25 @@ const finish = () => {
 if (step.delayMs) setTimeout(finish, step.delayMs); else finish();
 `;
 
+// Since #57 the merge decision also asks the remote for the oracle tag with `git ls-remote`. A fake `git` first
+// on PATH answers that call with "no tag" and logs it, so these cases never reach the network; it runs the real
+// git, by absolute path, for everything else.
+const REAL_GIT = spawnSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+const FAKE_GIT = String.raw`#!/bin/sh
+case " $* " in
+  *" ls-remote "*) exec node "$FAKE_LS_REMOTE" "$@" ;;
+esac
+exec "$REAL_GIT" "$@"
+`;
+const FAKE_LS_REMOTE = String.raw`require('node:fs').appendFileSync(process.env.FAKE_GIT_LOG, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + '\n');
+`;
+// Installs the fake git in `bin` and returns the environment that makes it answer with no tag.
+function installFakeGit(root, bin) {
+  writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+  writeFileSync(join(root, 'ls-remote.js'), FAKE_LS_REMOTE);
+  return { FAKE_LS_REMOTE: join(root, 'ls-remote.js'), FAKE_GIT_LOG: join(root, 'ls-remote.log'), REAL_GIT };
+}
+
 const NOT_FOUND = { exit: 1, stderr: 'gh: Not Found (HTTP 404)' };
 const PASSED = { __typename: 'CheckRun', name: 'Test', status: 'COMPLETED', conclusion: 'SUCCESS' };
 
@@ -83,6 +102,7 @@ function green({ files = ['src/app.ts'], ...rest } = {}) {
     files: files.map((path) => ({ path })),
     changedFiles: files.length,
     statusCheckRollup: [PASSED],
+    headRefName: 'feature/x', // the oracle tag of #57 is oracle/<head branch>
     ...rest,
   };
 }
@@ -92,12 +112,14 @@ describe('guard-git entries of global/settings.json (#27)', () => {
   let root;
   let bin;
   let broken;
+  let gitEnv;
   before(() => {
     dir = repo();
     root = mkdtempSync(join(tmpdir(), 'cw-entries-'));
     bin = join(root, 'bin');
     mkdirSync(bin);
     writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+    gitEnv = installFakeGit(root, bin);
     // A hooks directory caught halfway through an install: guard-git.mjs is there, lib.mjs is not.
     broken = join(root, 'hooks');
     mkdirSync(broken);
@@ -118,7 +140,7 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     scenarios += 1;
     scenario = join(root, `scenario-${scenarios}.json`);
     writeFileSync(scenario, JSON.stringify({ view, api, user }));
-    return { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario };
+    return { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...gitEnv };
   }
   const ghCalls = () => (existsSync(`${scenario}.calls`)
     ? readFileSync(`${scenario}.calls`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
@@ -131,7 +153,8 @@ describe('guard-git entries of global/settings.json (#27)', () => {
   test('AC-1 (#27) decides merges from an entry of its own that runs only for gh pr merge and blocks the call when it fails', () => {
     const merge = guardGitHandlers().filter((h) => / --merge-only\b/.test(h.command));
     assert.equal(merge.length, 1, 'one handler runs guard-git --merge-only');
-    assert.equal(merge[0].if, 'Bash(gh pr merge *)');
+    // A leading * starts the entry for gh by any path (#57, docs/experiments/2026-10-26-merge-if-absolute-gh-probe.md).
+    assert.equal(merge[0].if, 'Bash(*gh pr merge *)');
     assert.equal(merge[0].onFailure, 'block');
   });
 
@@ -345,6 +368,73 @@ describe('guard-git entries of global/settings.json (#27)', () => {
       assert.equal(run.stderr, '', command);
     }
   });
+
+  // Issue #57, AC-7. Claude Code 2.1.308 does not start an entry whose `if` is `Bash(gh pr merge *)` for gh
+  // by a path (docs/experiments/2026-10-26-merge-if-absolute-gh-probe.md), so the merge decision was skipped.
+  // The merge entry must start for these forms and decide as for `gh`: denials and asks apply, but the
+  // explicit allow is not given, because the hook read the pull request with the gh on PATH and not with the
+  // binary the command runs (an allow is printed only for a command verified end to end).
+  const PATH_FORMS = [
+    '/opt/homebrew/bin/gh pr merge 12 --squash',
+    './gh pr merge 12 --squash',
+    'cd /tmp && /usr/local/bin/gh pr merge 12 --squash',
+    'GH_HOST=github.com /usr/bin/gh pr merge 12 -s',
+  ];
+  const withFlag = (command, from, to) => command.replace(from, to);
+
+  test('AC-7 (#57) starts the merge entry for gh by a path and for gh in a chain', () => {
+    for (const command of PATH_FORMS) {
+      const result = runConfigured(event(command), { env: github() });
+      assert.ok(result.ran.some(isMergeEntry), `${command}: the merge entry did not run (ran: ${result.ran.length} handlers)`);
+      assert.deepEqual(result.failures, [], `${command}: ${result.stderr}`);
+    }
+  });
+
+  test('AC-7 (#57) denies --admin for gh by a path, as for gh', () => {
+    for (const command of PATH_FORMS) {
+      const admin = `${command} --admin`;
+      const result = runConfigured(event(admin), { env: github() });
+      assert.equal(result.decision, 'deny', `${admin}: ${result.reason}`);
+      assert.match(result.reason, /--admin/, admin);
+    }
+  });
+
+  test('AC-7 (#57) denies a merge without --squash for gh by a path, as for gh', () => {
+    for (const command of PATH_FORMS) {
+      const bare = withFlag(withFlag(command, ' --squash', ''), ' -s', '');
+      assert.ok(!/ (--squash|-s)\b/.test(bare), bare);
+      const result = runConfigured(event(bare), { env: github() });
+      assert.equal(result.decision, 'deny', `${bare}: ${result.reason}`);
+      assert.match(result.reason, /--squash/, bare);
+    }
+  });
+
+  test('AC-7 (#57) asks, as for gh, when a pull request merged with gh by a path carries needs-human', () => {
+    for (const command of PATH_FORMS) {
+      const result = runConfigured(event(command), { env: github({ pr: green({ labels: [{ name: 'needs-human' }] }) }) });
+      assert.equal(result.decision, 'ask', `${command}: ${result.reason}`);
+      assert.match(result.reason, /needs-human/, command);
+    }
+  });
+
+  test('AC-7 (#57) reads the pull request for gh by a path but never gives the explicit allow, even when it is green', () => {
+    for (const command of PATH_FORMS) {
+      const env = github();
+      const result = runConfigured(event(command), { env });
+      assert.deepEqual(outcome(result), ['allow', false], `${command}: ${result.reason}`);
+      assert.deepEqual(result.failures, [], `${command}: ${result.stderr}`);
+      assert.ok(ghCalls().some((call) => call[0] === 'pr' && call[1] === 'view'),
+        `${command}: the merge decision did not read the pull request`);
+    }
+  });
+
+  test('AC-7 (#57) denies a subagent that merges with gh by a path, as it denies gh', () => {
+    for (const command of PATH_FORMS) {
+      const result = runConfigured(event(command, { agent_id: 'agent-1' }), { env: github() });
+      assert.equal(result.decision, 'deny', `${command}: ${result.reason}`);
+      assert.match(result.reason, /subagent/i, command);
+    }
+  });
 });
 
 describe('the if of the test harness follows Claude Code (#31)', () => {
@@ -375,5 +465,37 @@ describe('the if of the test harness follows Claude Code (#31)', () => {
       assert.equal(runs(command), false, command);
     }
     assert.equal(runs('echo $(date)', 'Edit'), false, 'a Bash rule never runs for another tool');
+  });
+
+  // Issue #57, AC-7: the ten commands of docs/experiments/2026-10-26-merge-if-absolute-gh-probe.md, as
+  // Claude Code 2.1.308 decided them for `Bash(*gh pr merge *)`.
+  const STAR = 'Bash(*gh pr merge *)';
+  const starRuns = (command, tool = 'Bash') => ifApplies(STAR, tool, { command });
+
+  test('AC-7 (#57) a leading * runs the entry for gh by any path, in a chain, after an assignment, and for a mention', () => {
+    for (const command of [
+      'gh pr merge 5 --squash',
+      '/tmp/scratch/bin/gh pr merge 5 --squash',
+      '/opt/homebrew/bin/gh pr merge 12 --squash --delete-branch',
+      './gh pr merge 5 --squash',
+      'cd /tmp && /usr/local/bin/gh pr merge 5 --squash',
+      'GH_HOST=github.com /usr/bin/gh pr merge 5 -s',
+      'echo gh pr merge 5',
+    ]) {
+      assert.equal(starRuns(command), true, command);
+    }
+  });
+
+  test('AC-7 (#57) a leading * does not run the entry for another program or another gh command', () => {
+    for (const command of ['ghx pr merge 5', 'gh pr view 5', 'gh pr list']) {
+      assert.equal(starRuns(command), false, command);
+    }
+    assert.equal(starRuns('gh pr merge 5', 'Edit'), false, 'a Bash rule never runs for another tool');
+  });
+
+  test('AC-7 (#57) a leading * keeps the readable-form rule: a pattern that names more than the command runs for $() and loops', () => {
+    for (const command of ['echo $(date)', 'for f in a b; do echo $f; done']) {
+      assert.equal(starRuns(command), true, command);
+    }
   });
 });
