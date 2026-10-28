@@ -4,7 +4,7 @@
 // $CODEX_HOME/worktrees/<id>/<repository>, with CODEX_HOME pointed at a scratch directory.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -26,6 +26,10 @@ function sh(cwd, ...args) {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   return r.stdout.trim();
+}
+
+function gitListsWorktree(dir, canonicalWorktree) {
+  return sh(dir, 'worktree', 'list', '--porcelain', '-z').split('\0').includes(`worktree ${canonicalWorktree}`);
 }
 
 function write(dir, path, content) {
@@ -73,9 +77,16 @@ const BINARY = Buffer.from([0, 1, 2, 3, 255, 254, 0, 10, 13, 0, 128]);
 const snapshot = (dir) => ({ head: sh(dir, 'rev-parse', 'HEAD'), status: sh(dir, 'status', '--porcelain', '--untracked-files=all') });
 
 describe('codex-integrate', () => {
+  test('AC-5 (#66) the listing check detects a Codex worktree that git still lists', () => {
+    const dir = workBranch();
+    const worktree = codexWorktree(dir);
+    assert.equal(gitListsWorktree(dir, realpathSync(worktree)), true, 'git lists the worktree while it is present');
+  });
+
   test('AC-5 applies a modification, a deletion, a new file and a binary file, leaves ignored files out, runs oracle-check and removes the worktree', () => {
     const dir = workBranch();
     const worktree = codexWorktree(dir);
+    const canonicalWorktree = realpathSync(worktree);
     const head = sh(dir, 'rev-parse', 'HEAD');
     write(worktree, 'README.md', 'changed by codex\n');
     rmSync(join(worktree, 'old.txt'));
@@ -93,7 +104,7 @@ describe('codex-integrate', () => {
     assert.match(r.stdout, /oracle-check against oracle\/feature\/x/);
     assert.match(r.stdout, /test paths: unchanged/);
     assert.equal(existsSync(worktree), false, 'the worktree is removed once the changes are applied');
-    assert.ok(!sh(dir, 'worktree', 'list', '--porcelain').includes(`w${ids}`), 'git no longer lists the worktree');
+    assert.equal(gitListsWorktree(dir, canonicalWorktree), false, 'git no longer lists the worktree');
     assert.equal(sh(dir, 'rev-parse', 'HEAD'), head, 'the script does not commit');
   });
 

@@ -63,4 +63,5 @@ added, the legacy status and date lines removed, every other line identical.
 - [0029. Ask before deleting or moving an oracle tag in the main session](0029-ask-before-deleting-or-moving-an-oracle-tag-in-the-main-session.md)
 - [0030. Enforce the oracle on the agent at the merge guard, not in CI](0030-enforce-the-oracle-on-the-agent-at-the-merge-guard-not-in-ci.md)
 - [0031. Version releases by their effect on the public interface](0031-version-releases-by-their-effect-on-the-public-interface.md)
+- [0032. Reorient the workflow into a toolbox the human directs](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 - [0033. Ask before amending a frozen test in the main session](0033-ask-before-amending-a-frozen-test-in-the-main-session.md)

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { HOOKS, SETTINGS, handlersFor, ifApplies, runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 // guard-git run directly, with a mode or without one.
 function guardGit(event, env, ...args) {
@@ -79,7 +80,7 @@ const FAKE_LS_REMOTE = String.raw`require('node:fs').appendFileSync(process.env.
 `;
 // Installs the fake git in `bin` and returns the environment that makes it answer with no tag.
 function installFakeGit(root, bin) {
-  writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+  writeExecutable(join(bin, 'git'), FAKE_GIT);
   writeFileSync(join(root, 'ls-remote.js'), FAKE_LS_REMOTE);
   return { FAKE_LS_REMOTE: join(root, 'ls-remote.js'), FAKE_GIT_LOG: join(root, 'ls-remote.log'), REAL_GIT };
 }
@@ -118,7 +119,7 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     root = mkdtempSync(join(tmpdir(), 'cw-entries-'));
     bin = join(root, 'bin');
     mkdirSync(bin);
-    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+    writeExecutable(join(bin, 'gh'), FAKE_GH);
     gitEnv = installFakeGit(root, bin);
     // A hooks directory caught halfway through an install: guard-git.mjs is there, lib.mjs is not.
     broken = join(root, 'hooks');

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-09-29
 ---
 # 0002. Enforce with hooks, permissions and CI, and guide with prose

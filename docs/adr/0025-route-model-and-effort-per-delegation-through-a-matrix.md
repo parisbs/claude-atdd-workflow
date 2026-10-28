@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-10-21
 ---
 # 0025. Route model and effort per delegation through a matrix applied by a hook
