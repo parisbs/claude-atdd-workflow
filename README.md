@@ -199,6 +199,9 @@ node scripts/install.mjs --check
 node scripts/install.mjs
 ```
 
+This installs whatever the checkout holds. To install a release, check out its tag first
+([docs/releasing.md](docs/releasing.md#installing-a-release)).
+
 The personal files are optional: edit them to your own preferences first.
 `CODEX_BIN` and `CODEX_SUBAGENT_USAGE_LOG` overrides in the MCP example are
 optional: `CODEX_BIN` selects the Codex CLI path and must not be left empty,
