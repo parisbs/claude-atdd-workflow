@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { HOOKS, runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 // Git answers in the language of the machine and reads its user configuration; the fixtures and the hook
 // get neither, and a developer's signing configuration cannot reach the commits.
@@ -103,8 +104,8 @@ describe('guard-git merge decision: flags and repository as gh reads them, unrea
     scratch = mkdtempSync(join(tmpdir(), 'cw-merge-flags-'));
     bin = join(scratch, 'bin');
     mkdirSync(bin);
-    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
-    writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+    writeExecutable(join(bin, 'gh'), FAKE_GH);
+    writeExecutable(join(bin, 'git'), FAKE_GIT);
     // A clone of o/r on github.com, on feature/x with a clean working tree and one commit after main.
     const dir = mkdtempSync(join(scratch, 'clone-'));
     sh(dir, 'init', '-q', '-b', 'main');

@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 // Git answers in the language of the machine and reads its user configuration; the fixtures and the hook
 // get neither, and a developer's signing configuration cannot reach the commits.
@@ -128,8 +129,8 @@ describe('guard-git merge decision with the ATDD oracle (#57)', () => {
     scratch = mkdtempSync(join(tmpdir(), 'cw-oracle-gate-'));
     bin = join(scratch, 'bin');
     mkdirSync(bin);
-    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
-    writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+    writeExecutable(join(bin, 'gh'), FAKE_GH);
+    writeExecutable(join(bin, 'git'), FAKE_GIT);
     writeFileSync(join(scratch, 'ls-remote.js'), FAKE_LS_REMOTE);
   });
   after(() => rmSync(scratch, { recursive: true, force: true }));

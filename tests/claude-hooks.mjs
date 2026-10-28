@@ -97,7 +97,7 @@ function runHandler(handler, event, { env, hooksDir, timeoutMs, path }) {
   const stderr = run.stderr ?? '';
   let failure;
   if (run.error?.code === 'ETIMEDOUT') failure = `timed out after ${limit} ms`;
-  else if (run.error) failure = `could not run (${run.error.message})`;
+  else if (run.error && !(run.error.code === 'EPIPE' && typeof run.status === 'number')) failure = `could not run (${run.error.message})`;
   else if (run.status === 2) return { decision: 'deny', reason: stderr.trim(), stderr };
   else if (run.status !== 0) failure = `exited with ${run.status}`;
   else if (run.stdout.trim() === '') return { stderr };

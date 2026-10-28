@@ -15,6 +15,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -72,7 +73,7 @@ describe('guard-git asks before deleting or moving an oracle tag (#55)', () => {
     scratch = mkdtempSync(join(tmpdir(), 'cw-oracle-tags-'));
     bin = join(scratch, 'bin');
     mkdirSync(bin);
-    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+    writeExecutable(join(bin, 'gh'), FAKE_GH);
     // node and git alone: the PATH of a machine without gh.
     noGh = join(scratch, 'no-gh');
     mkdirSync(noGh);
