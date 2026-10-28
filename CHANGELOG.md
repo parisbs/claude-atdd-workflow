@@ -33,7 +33,7 @@ None.
 - **Breaking**: fix(agents): give claude-researcher a read-only shell ([#30](https://github.com/parisbs/claude-atdd-workflow/pull/30))
 - docs(adr): propose model and effort routing and compact delegation reports ([#33](https://github.com/parisbs/claude-atdd-workflow/pull/33))
 - feat(metrics): report delegation packages, result sizes and Codex usage from local transcripts ([#35](https://github.com/parisbs/claude-atdd-workflow/pull/35))
-- fix: close the gaps found in the review of the hook and test-output changes ([#36](https://github.com/parisbs/claude-atdd-workflow/pull/36))
+- **Breaking**: fix: close the gaps found in the review of the hook and test-output changes ([#36](https://github.com/parisbs/claude-atdd-workflow/pull/36))
 - **Breaking**: feat(settings): deny reading secrets and tidy the shipped and personal settings ([#38](https://github.com/parisbs/claude-atdd-workflow/pull/38))
 - fix(install): keep managed hooks when personal settings define hooks ([#40](https://github.com/parisbs/claude-atdd-workflow/pull/40))
 - docs: refresh the roadmap, add issue templates and tidy the project instructions ([#41](https://github.com/parisbs/claude-atdd-workflow/pull/41))
@@ -69,17 +69,18 @@ None.
 ### Changes
 
 - **Breaking**: feat(adr): make records immutable once accepted or rejected, not once merged ([claude-workflow#64](https://github.com/parisbs/claude-workflow/pull/64))
-- **Breaking**: feat(adr): enforce ADR immutability and the ADR index in CI ([claude-workflow#65](https://github.com/parisbs/claude-workflow/pull/65))
+- feat(adr): enforce ADR immutability and the ADR index in CI ([claude-workflow#65](https://github.com/parisbs/claude-workflow/pull/65))
 - **Breaking**: feat(adr): standardise ADR metadata on MADR 4 front matter and migrate records ([claude-workflow#67](https://github.com/parisbs/claude-workflow/pull/67))
 - docs(adr): accept ADR 0020 and mark ADR 0018 and 0019 as superseded in part ([claude-workflow#68](https://github.com/parisbs/claude-workflow/pull/68))
 - ci(bootstrap): stop persisting the checkout token in the ADR check workflow ([claude-workflow#69](https://github.com/parisbs/claude-workflow/pull/69))
-- **Breaking**: fix(adr): require a recognised status on added records and ignore index links in HTML comments ([claude-workflow#71](https://github.com/parisbs/claude-workflow/pull/71))
+- fix(adr): require a recognised status on added records and ignore index links in HTML comments ([claude-workflow#71](https://github.com/parisbs/claude-workflow/pull/71))
 - docs(adr): accept ADR 0021 and mark ADR 0020 as superseded in part ([claude-workflow#72](https://github.com/parisbs/claude-workflow/pull/72))
 - ci: pin actions by commit SHA and stop persisting the checkout token ([claude-workflow#73](https://github.com/parisbs/claude-workflow/pull/73))
 
 ### New tools
 
 - Scripts: `scripts/check-adrs.mjs`, `scripts/migrate-adrs.mjs`, also shipped as `repo-bootstrap` templates.
+- Workflow template: `common/github/workflows/check-adrs.yml`.
 
 ## [0.3.1] - 2026-10-09
 
@@ -108,14 +109,14 @@ None.
 - feat(task-package): say where a Claude worktree starts and which commit it builds on ([claude-workflow#51](https://github.com/parisbs/claude-workflow/pull/51))
 - feat(worktrees): ignore Claude Code worktrees here and in bootstrapped repositories ([claude-workflow#52](https://github.com/parisbs/claude-workflow/pull/52))
 - chore(skills): run pr-prep and drift-audit at medium effort ([claude-workflow#56](https://github.com/parisbs/claude-workflow/pull/56))
-- feat(delegation): bound tool output, block on Codex instead of polling, and slim the delegation instructions ([claude-workflow#58](https://github.com/parisbs/claude-workflow/pull/58))
+- **Breaking**: feat(delegation): bound tool output, block on Codex instead of polling, and slim the delegation instructions ([claude-workflow#58](https://github.com/parisbs/claude-workflow/pull/58))
 
 ### New tools
 
 - Agents: `claude-implementer`, `claude-researcher`.
 - Skill: `task-package`.
 - Hook: `guard-codex`.
-- Scripts: `task-package.mjs`, `codex-integrate.mjs`.
+- Scripts: `global/hooks/task-package.mjs`, `global/hooks/codex-integrate.mjs`.
 - MCP registrations: `codex-implementer`, `codex-reviewer`.
 
 ## [0.2.0] - 2026-10-02
@@ -125,12 +126,12 @@ None.
 - docs(global): hand the human the oracle tag cleanup commands after a merge ([claude-workflow#5](https://github.com/parisbs/claude-workflow/pull/5))
 - docs(adr): accept the control model and propose subagent delegation ([claude-workflow#6](https://github.com/parisbs/claude-workflow/pull/6))
 - fix(guard-git): ask on oracle tag creation and close the removal bypasses ([claude-workflow#13](https://github.com/parisbs/claude-workflow/pull/13))
-- feat(guard-git): decide gh pr merge from what GitHub shows ([claude-workflow#14](https://github.com/parisbs/claude-workflow/pull/14))
+- **Breaking**: feat(guard-git): decide gh pr merge from what GitHub shows ([claude-workflow#14](https://github.com/parisbs/claude-workflow/pull/14))
 - docs(adr): supersede ADR 0006 with CLAUDE.md alone ([claude-workflow#16](https://github.com/parisbs/claude-workflow/pull/16))
-- **Breaking**: feat(guard-git): read Human merge from CLAUDE.md ([claude-workflow#20](https://github.com/parisbs/claude-workflow/pull/20))
+- feat(guard-git): read Human merge from CLAUDE.md ([claude-workflow#20](https://github.com/parisbs/claude-workflow/pull/20))
 - docs(claude): add CLAUDE.md as the only instruction file ([claude-workflow#21](https://github.com/parisbs/claude-workflow/pull/21))
-- docs: stop naming AGENTS.md in skills, stack rules and docs ([claude-workflow#22](https://github.com/parisbs/claude-workflow/pull/22))
-- feat(bootstrap): ship a single CLAUDE.md skeleton with the workflow lines ([claude-workflow#23](https://github.com/parisbs/claude-workflow/pull/23))
+- **Breaking**: docs: stop naming AGENTS.md in skills, stack rules and docs ([claude-workflow#22](https://github.com/parisbs/claude-workflow/pull/22))
+- **Breaking**: feat(bootstrap): ship a single CLAUDE.md skeleton with the workflow lines ([claude-workflow#23](https://github.com/parisbs/claude-workflow/pull/23))
 - feat(skills): let the orchestrator start the workflow skills ([claude-workflow#24](https://github.com/parisbs/claude-workflow/pull/24))
 - docs(global): write the orchestration rules into the Delegation section ([claude-workflow#25](https://github.com/parisbs/claude-workflow/pull/25))
 
@@ -152,7 +153,7 @@ None.
 
 - Skills: `adr-draft`, `atdd-implement`, `atdd-oracle`, `drift-audit`, `issue-draft`, `pr-prep`, `release-prep`, `repo-bootstrap`.
 - Hooks: `guard-git`, `guard-tests`.
-- Scripts: `scripts/install.mjs`, `oracle-check.mjs`.
+- Scripts: `scripts/install.mjs`, `global/hooks/oracle-check.mjs`.
 - Stacks: `android`, `flutter`, `node-mcp`, `supabase`.
 
 [Unreleased]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.6.0...HEAD
