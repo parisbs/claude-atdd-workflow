@@ -61,3 +61,4 @@ added, the legacy status and date lines removed, every other line identical.
 - [0027. Keep installer backups in the XDG state directory as JSON bundles](0027-keep-installer-backups-in-the-xdg-state-directory-as-json-bundles.md)
 - [0028. Pin Codex subagent offline-first and set role ceilings](0028-pin-codex-subagent-offline-first-and-set-role-ceilings.md)
 - [0029. Ask before deleting or moving an oracle tag in the main session](0029-ask-before-deleting-or-moving-an-oracle-tag-in-the-main-session.md)
+- [0031. Version releases by their effect on the public interface](0031-version-releases-by-their-effect-on-the-public-interface.md)
