@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-28
 ---
 # 0031. Version releases by their effect on the public interface
