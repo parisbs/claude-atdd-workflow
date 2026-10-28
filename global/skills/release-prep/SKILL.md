@@ -11,8 +11,8 @@ after merging.
 
 The repository's own release procedure wins over the steps below: a
 `docs/releasing.md`, a release section in its `CLAUDE.md` or a project skill.
-When it has one, follow it step by step and use this skill only for what it
-leaves out. In claude-atdd-workflow that procedure is `docs/releasing.md`, with
+When it has one, follow it step by step; a step below that it does not
+mention, or that it says does not apply, is skipped. In claude-atdd-workflow that procedure is `docs/releasing.md`, with
 the version policy in ADR 0031.
 
 ## 1. Decide the version
@@ -44,11 +44,13 @@ Commit as `chore(release): prepare X.Y.Z`, then prepare the pull request with
 
 1. Update `main` and create the annotated tag on the merge commit:
    `git tag -a vX.Y.Z -m "vX.Y.Z"`. Tag creation is signed if the machine signs.
-2. Push the tag only when told. A publish workflow triggered by the tag, if the
-   repository has one, does the build; publishing that needs the human (two
-   factor approval, store console) is theirs, so stop and say exactly what is
-   left.
+2. Publishing a release is the human's (user `CLAUDE.md`): push the tag and
+   publish only when told, otherwise hand over the exact commands and stop. A
+   publish workflow triggered by the tag, if the repository has one, does the
+   build; publishing that needs the human (two factor approval, store console)
+   is theirs, so say exactly what is left.
 3. Verify the published artefact exists (registry, store, release assets) before
    any post-publish step.
-4. Create the GitHub release from the tag with the changelog entry, close the
-   milestone, and delete the `release/X.Y.Z` branch locally and on the remote.
+4. When told, create the GitHub release from the tag with the changelog entry
+   and close the release's milestone. Delete the `release/X.Y.Z` branch locally
+   and on the remote.
