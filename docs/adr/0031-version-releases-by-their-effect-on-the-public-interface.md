@@ -18,8 +18,8 @@ closed on merges` changed what a merge does when the hook cannot read the pull
 request, and `93c75ad fix(install): back up outside ~/.claude` moved the
 installer backups to another directory.
 
-A planned update on demand must tell the user whether an update is safe to take,
-and v1.0.0 must promise something. Both need a version policy and a public
+An installer that updates on demand would have to tell the user whether an
+update is safe to take, and v1.0.0 must promise something. Both need a version policy and a public
 interface it is measured against.
 
 ## Decision
@@ -31,7 +31,8 @@ interface below. The commit type is evidence for the bump, not the rule.
 
 1. What is installed and where (ADR 0001): `global/CLAUDE.md` as
    `~/.claude/CLAUDE.md`; `global/hooks/`, `global/skills/` and `global/agents/`
-   under `~/.claude/` with their file, skill and agent names; the templates under
+   under `~/.claude/` with their file, skill and agent names and how a skill is
+   invoked (`disable-model-invocation`, arguments); the templates under
    `~/.claude/skills/repo-bootstrap/templates/` (`common/`, the stack
    directories, and `scripts/check-adrs.mjs` and `scripts/migrate-adrs.mjs`
    under `common/scripts/`); `personal/preferences.md` as
@@ -44,9 +45,10 @@ interface below. The commit type is evidence for the bump, not the rule.
 2. Command lines: `node scripts/install.mjs` with `--check`, `--target <dir>`,
    `--adopt`, `--keep-backups <n>`, `--list-backups` and `--restore <stamp>`,
    their defaults (target `~/.claude`, ten bundles) and exit statuses;
-   `scripts/check-adrs.mjs <base-ref>` as the bootstrapped CI runs it; and
-   `scripts/metrics-report.mjs` with its options and report schema, as the
-   README documents them.
+   `scripts/check-adrs.mjs <base-ref>` as the bootstrapped CI runs it; and the
+   metrics scripts (`metrics-report.mjs`, `metrics-validate.mjs`,
+   `metrics-delegations.mjs`) with the options and report schema the README
+   documents.
 3. The bootstrap's arguments: `/repo-bootstrap new <name> [private|public]` and
    `/repo-bootstrap integrate`, and the files it writes into a repository.
 4. The formats other tools read: the installer manifest
@@ -55,12 +57,14 @@ interface below. The commit type is evidence for the bump, not the rule.
    `*.example.*` files, and, once they are introduced, the project profile and
    the module manifest.
 5. What the workflow reads from a project's `CLAUDE.md`, and its default when
-   absent: the `Verify:` line, in the form ``- Verify: `<command>` ``;
-   `Implement:` (`claude` or `codex`; absent means `claude`); `Review:` (`none`
-   or `codex`); `Human merge:` (comma-separated paths or globs, a trailing slash
-   for a directory, `none`; absent means none), read from the base branch; and
-   the `## Invariants` and `## Conventions` sections, which `task-package`
-   copies into a delegate's package.
+   absent: the `Verify:` line, in the form ``- Verify: `<command>` `` (absent:
+   what CI runs); `Implement:` (`claude` or `codex`; absent: `claude`);
+   `Review:` (`none` or `codex`; absent: no review); `Human merge:`
+   (comma-separated paths or globs, a trailing slash for a directory, `none`;
+   absent: none), read from the base branch; the `## Invariants` and
+   `## Conventions` sections, which `task-package` copies into a delegate's
+   package; and the procedures and directories it names for a skill to follow
+   (a release or pre-PR procedure, the ADR directory).
 6. What the hooks and skills read from a project otherwise: `oracle/<branch>`
    tags; `.atdd/test-paths` at the oracle tag, one glob per line, and the
    default test paths when it is absent; the default control-plane and
@@ -71,12 +75,13 @@ interface below. The commit type is evidence for the bump, not the rule.
    matter `status` with its words and transitions (ADR 0020, 0021); and the
    project procedures skills defer to (`docs/releasing.md`,
    `.claude/skills/ship/`).
-7. Runtime minimums: Node (`engines` in `package.json`) and Claude Code
-   (`MIN_CLAUDE` in the installer).
+7. Runtime minimums and environment: Node (`engines` in `package.json`), Claude
+   Code (`MIN_CLAUDE` in the installer), and the variables the hooks read, such
+   as `GUARD_GIT_GH_TIMEOUT_MS` and `GUARD_GIT_GH_BUDGET_MS` (ADR 0024).
 
 Anything else is internal: the code of hooks and scripts behind those
 interfaces, test files, this repository's own CI, messages and wording, the
-order of steps inside a skill, and the files under `docs/`.
+order of steps and the effort of a skill, and the files under `docs/`.
 
 ### Bumps
 
@@ -97,12 +102,15 @@ parent: a change to something added since the previous tag is not breaking.
     value changes; a line in item 5 or 6 becomes required or changes meaning; a
     runtime minimum rises. Examples: merges allowed without asking when GitHub
     shows them safe (`7dfea36`, v0.2.0); skills reading `CLAUDE.md` instead of
-    `AGENTS.md` (ADR 0012, v0.2.0); merges failing closed (`e0d020d`, v0.6.0);
+    `AGENTS.md` (ADR 0012, v0.2.0); skills the model may start unasked
+    (`a611147`, v0.2.0); a linked worktree bound to its ancestor's oracle (ADR
+    0016 amending 0003, v0.3.0); merges failing closed (`e0d020d`, v0.6.0);
     backups moving out of `~/.claude` (ADR 0027, v0.6.0); Node 22.2.0 required
     (`b8b4e8f`, v0.6.0).
 - **Minor**: something is added and nothing existing changes for a user who
   ignores it.
-  - A new skill, agent, hook, script, stack, MCP registration or module.
+  - A new skill, agent, hook, script, stack, template, MCP registration or
+    module.
     Examples: `task-package` (v0.3.0), `claude-implementer` and
     `claude-researcher` (v0.3.0), `scripts/metrics-report.mjs` (v0.5.0).
   - A new option or bootstrap argument. Example: `--keep-backups`,
@@ -113,9 +121,11 @@ parent: a change to something added since the previous tag is not breaking.
     v0.5.0); asking instead of denying before deleting or moving an oracle tag
     in the main session (ADR 0029).
 - **Patch**: a correction that makes the shipped behaviour match what an ADR,
-  the README or a skill already says, documentation, tests and CI. Example:
-  v0.3.1, where the installer compared the url and headers of a declared MCP
-  server as it already claimed to.
+  the README or a skill already says, documentation, tests and CI. A hook that
+  now denies a bypass of a rule it already enforced is a patch; a change that
+  needs a new or amending ADR to justify it is not. Examples: v0.3.1, where the
+  installer compared the url and headers of a declared MCP server as it already
+  claimed to; closing the oracle tag removal bypasses (`e5cb7d5`, v0.2.0).
 
 A release takes the highest bump among its changes. When a change fits two
 classes, the higher one wins. A hotfix release holds only patch-class changes;
@@ -131,7 +141,7 @@ above. From v1.0.0 the bumps apply as written.
 ### Changelog
 
 `CHANGELOG.md` has one section per tag, newest first. Each entry links its
-pull request, and each section lists the tools it adds under "New tools". The
+pull request, or its commit when it has none, and each section lists the tools it adds under "New tools". The
 process in `docs/releasing.md` writes it, once per release.
 
 ## Alternatives considered
@@ -150,8 +160,8 @@ process in `docs/releasing.md` writes it, once per release.
   change would be major, and nothing parses them.
 - **Classify each pull request against its parent.** Rejected: a fix to
   something no tag has shipped yet would count as breaking.
-- **Apply full SemVer before 1.0.0.** Rejected: v1.0.0 waits on the
-  reorientation planned in the audit; jumping to it, or to v2.0.0, on the next
+- **Apply full SemVer before 1.0.0.** Rejected: v1.0.0 waits on a planned
+  reorientation of the project; jumping to it, or to v2.0.0, on the next
   breaking change would spend the promise v1.0.0 is meant to make.
 - **Generate the changelog with a script at every release.** Rejected: entries
   are compiled from pull request bodies with judgement, once per release, and a
