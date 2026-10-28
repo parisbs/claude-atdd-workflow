@@ -2,7 +2,7 @@
 status: proposed
 date: 2026-10-28
 ---
-# 0032. Ask before amending a frozen test in the main session
+# 0033. Ask before amending a frozen test in the main session
 
 - Amends: [0003](0003-approved-tests-replace-behaviour-specs.md) (the guard denies Edit and Write on test paths), [0010](0010-move-human-control-to-the-specification-and-gate-merges.md) (amending a frozen test is human only)
 - Issue: #64
@@ -100,4 +100,4 @@ merge unnoticed, but both were found only at the end.
 - ADR 0003 and ADR 0010 are accepted and frozen; their sentences on the
   denial, and ADR 0003's "can be bypassed through Bash", stay as written. Once
   this record is accepted, both records' status gains the annotation
-  `amended by 0032`.
+  `amended by 0033`.
