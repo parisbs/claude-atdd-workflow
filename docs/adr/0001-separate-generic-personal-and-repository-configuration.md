@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0033](0033-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-09-29
 ---
 # 0001. Separate generic, personal and repository configuration

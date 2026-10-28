@@ -1,5 +1,5 @@
 ---
-status: accepted, amended by [0010](0010-move-human-control-to-the-specification-and-gate-merges.md)
+status: accepted, amended by [0010](0010-move-human-control-to-the-specification-and-gate-merges.md) and [0033](0033-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-09-29
 ---
 # 0008. Let the administrator bypass rulesets, only through pull requests

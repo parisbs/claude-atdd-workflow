@@ -1,5 +1,5 @@
 ---
-status: accepted, amended by [0030](0030-enforce-the-oracle-on-the-agent-at-the-merge-guard-not-in-ci.md)
+status: accepted, amended by [0030](0030-enforce-the-oracle-on-the-agent-at-the-merge-guard-not-in-ci.md) and [0033](0033-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-09-29
 ---
 # 0003. Approved executable tests replace prose behaviour specifications

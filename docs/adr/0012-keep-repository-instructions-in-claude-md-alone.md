@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0033](0033-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-10-02
 ---
 # 0012. Keep repository instructions in CLAUDE.md alone
