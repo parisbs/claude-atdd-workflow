@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-26
+status: accepted
+date: 2026-10-28
 ---
 # 0030. Enforce the oracle on the agent at the merge guard, not in CI
 
