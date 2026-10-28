@@ -4,7 +4,7 @@ date: 2026-10-28
 ---
 # 0031. Version releases by their effect on the public interface
 
-- Extends: [0005](0005-conventional-commits-and-releases-from-tags.md) (a release is an annotated `vX.Y.Z` tag on `main`)
+- Extends: [0005](0005-conventional-commits-and-releases-from-tags.md) (a release is an annotated `vX.Y.Z` tag on `main`, and a hotfix increments the patch version)
 - Issue: #60
 
 ## Context
@@ -18,9 +18,9 @@ closed on merges` changed what a merge does when the hook cannot read the pull
 request, and `93c75ad fix(install): back up outside ~/.claude` moved the
 installer backups to another directory.
 
-An update on demand (roadmap item V-1) must tell the user whether an update is
-safe to take, and v1.0.0 must promise something. Both need a version policy and
-a public interface it is measured against.
+A planned update on demand must tell the user whether an update is safe to take,
+and v1.0.0 must promise something. Both need a version policy and a public
+interface it is measured against.
 
 ## Decision
 
@@ -35,59 +35,77 @@ interface below. The commit type is evidence for the bump, not the rule.
    `~/.claude/skills/repo-bootstrap/templates/` (`common/`, the stack
    directories, and `scripts/check-adrs.mjs` and `scripts/migrate-adrs.mjs`
    under `common/scripts/`); `personal/preferences.md` as
-   `~/.claude/rules/personal.md`; the merged `settings.json`, its permission
-   rules and hook entries; the user-scope MCP registrations and their names
-   (`codex-implementer`, `codex-reviewer`, ADR 0014); and the backup directory
+   `~/.claude/rules/personal.md`; the merged `settings.json`, with its
+   permission rules, hook entries and shipped values (`bashOutputMaxChars`,
+   `includeGitInstructions`, `attribution`); the user-scope MCP registrations,
+   their names (`codex-implementer`, `codex-reviewer`, ADR 0014), pinned
+   package and environment (ADR 0028); and the backup directory
    `$XDG_STATE_HOME/claude-atdd-workflow/backups/` (ADR 0027).
-2. The installer's command line: `node scripts/install.mjs` with `--check`,
-   `--target <dir>`, `--adopt`, `--keep-backups <n>`, `--list-backups` and
-   `--restore <stamp>`, their defaults (target `~/.claude`, ten bundles) and the
-   exit status of `--check` (1 on drift).
+2. Command lines: `node scripts/install.mjs` with `--check`, `--target <dir>`,
+   `--adopt`, `--keep-backups <n>`, `--list-backups` and `--restore <stamp>`,
+   their defaults (target `~/.claude`, ten bundles) and exit statuses;
+   `scripts/check-adrs.mjs <base-ref>` as the bootstrapped CI runs it; and
+   `scripts/metrics-report.mjs` with its options and report schema, as the
+   README documents them.
 3. The bootstrap's arguments: `/repo-bootstrap new <name> [private|public]` and
    `/repo-bootstrap integrate`, and the files it writes into a repository.
 4. The formats other tools read: the installer manifest
    `.claude-atdd-workflow-manifest.json` (`files`, `personalHooks`), the backup
    bundle format, the files under `personal/` that a user fills from the
-   `*.example.*` files, and, once phases P and M introduce them, the project
-   profile and the module manifest.
-5. What the workflow reads from a project's `CLAUDE.md`: the `Verify:` line,
-   in the form ``- Verify: `<command>` ``; `Implement:` (`claude` or `codex`);
-   `Review:` (`none` or `codex`); `Human merge:` (comma-separated paths or
-   globs, a trailing slash for a directory, `none`), read from the base branch;
-   and the `## Invariants` and `## Conventions` sections, which `task-package`
+   `*.example.*` files, and, once they are introduced, the project profile and
+   the module manifest.
+5. What the workflow reads from a project's `CLAUDE.md`, and its default when
+   absent: the `Verify:` line, in the form ``- Verify: `<command>` ``;
+   `Implement:` (`claude` or `codex`; absent means `claude`); `Review:` (`none`
+   or `codex`); `Human merge:` (comma-separated paths or globs, a trailing slash
+   for a directory, `none`; absent means none), read from the base branch; and
+   the `## Invariants` and `## Conventions` sections, which `task-package`
    copies into a delegate's package.
-6. The repository conventions the hooks and skills act on: `oracle/<branch>`
-   tags, the `needs-human` label, `AC-n` identifiers in test names, and ADR
-   front matter `status` (ADR 0020, 0021).
+6. What the hooks and skills read from a project otherwise: `oracle/<branch>`
+   tags; `.atdd/test-paths` at the oracle tag, one glob per line, and the
+   default test paths when it is absent; the default control-plane and
+   test-configuration paths; the protected branches (`main`, `master`, the
+   remote default) and squash-only merges; the `needs-human` label; `AC-n`
+   identifiers in test names; ADR directories (`docs/adr/`, `docs/adrs/`,
+   `docs/decisions/`), `NNNN-slug.md` names, the README index and the front
+   matter `status` with its words and transitions (ADR 0020, 0021); and the
+   project procedures skills defer to (`docs/releasing.md`,
+   `.claude/skills/ship/`).
+7. Runtime minimums: Node (`engines` in `package.json`) and Claude Code
+   (`MIN_CLAUDE` in the installer).
 
-Anything else is internal: the code of hooks and scripts, test files, messages
-and wording, the order of steps inside a skill, and the files under `docs/`.
+Anything else is internal: the code of hooks and scripts behind those
+interfaces, test files, this repository's own CI, messages and wording, the
+order of steps inside a skill, and the files under `docs/`.
 
 ### Bumps
 
+A release is compared with the previous tag, not each pull request with its
+parent: a change to something added since the previous tag is not breaking.
+
 - **Major**: a user or a project must change something, or gets a different
   result without asking for it.
-  - The format or location of the manifest, the profile or anything in item 4
-    changes, even when the installer migrates it: an older installer, a restore
-    or the V-1 updater reads it too. Example: v0.6.0 renamed
-    `.claude-workflow-manifest.json` to `.claude-atdd-workflow-manifest.json`
-    (`93c75ad`).
-  - Something installed is removed or renamed: a skill, agent, hook, MCP
-    registration, template or, later, a module. Example: retiring the
-    `codex-subagent` registration in favour of two role-named ones (ADR 0014,
-    `global/retired-mcp-servers.json`).
+  - The format or location of anything in item 4 changes, even when the
+    installer migrates it: an older installer, a restore or an updater reads it
+    too. Example: v0.6.0 renamed `.claude-workflow-manifest.json` to
+    `.claude-atdd-workflow-manifest.json` (`93c75ad`).
+  - Something in the interface is removed or renamed: a skill, agent, hook,
+    MCP registration, template, option or, later, a module. Example: v0.2.0
+    deleted `common/AGENTS.md.template` (`ce556fb`).
   - A default changes behaviour: a hook or permission rule denies what it
-    allowed, or allows what it asked or denied; a default value of an option
-    changes; a line in item 5 becomes required or changes meaning. Examples:
-    merges failing closed (`e0d020d`, v0.6.0); `CLAUDE.md` replacing
-    `AGENTS.md` as the only instruction file (ADR 0012, v0.2.0); backups moving
-    out of `~/.claude` (ADR 0027, v0.6.0).
+    allowed, or allows what it asked or denied; a shipped setting or a default
+    value changes; a line in item 5 or 6 becomes required or changes meaning; a
+    runtime minimum rises. Examples: merges allowed without asking when GitHub
+    shows them safe (`7dfea36`, v0.2.0); skills reading `CLAUDE.md` instead of
+    `AGENTS.md` (ADR 0012, v0.2.0); merges failing closed (`e0d020d`, v0.6.0);
+    backups moving out of `~/.claude` (ADR 0027, v0.6.0); Node 22.2.0 required
+    (`b8b4e8f`, v0.6.0).
 - **Minor**: something is added and nothing existing changes for a user who
   ignores it.
   - A new skill, agent, hook, script, stack, MCP registration or module.
     Examples: `task-package` (v0.3.0), `claude-implementer` and
     `claude-researcher` (v0.3.0), `scripts/metrics-report.mjs` (v0.5.0).
-  - A new installer option or bootstrap argument. Example: `--keep-backups`,
+  - A new option or bootstrap argument. Example: `--keep-backups`,
     `--list-backups` and `--restore` (v0.6.0).
   - A new optional `CLAUDE.md` line, or a hook that asks where it allowed or
     denied before: the user decides and can still proceed. Examples: asking
@@ -100,7 +118,9 @@ and wording, the order of steps inside a skill, and the files under `docs/`.
   server as it already claimed to.
 
 A release takes the highest bump among its changes. When a change fits two
-classes, the higher one wins.
+classes, the higher one wins. A hotfix release holds only patch-class changes;
+when `main` holds anything else since the previous tag, the release takes that
+class and is not a hotfix.
 
 ### Before 1.0.0
 
@@ -121,16 +141,18 @@ process in `docs/releasing.md` writes it, once per release.
   effect, and both examples in the context would have been released as minor or
   patch without warning.
 - **Calendar versioning.** Rejected: it says when, not whether an update is
-  safe, which is what V-1 must tell the user.
+  safe, which is what an updater must tell the user.
 - **Count only the installer and the files under `~/.claude` as the interface.**
   Rejected: the `CLAUDE.md` lines and the oracle tags are what other
   repositories depend on, and a change there breaks them without touching
   `~/.claude`.
 - **Count skill wording and hook messages as interface.** Rejected: nearly every
   change would be major, and nothing parses them.
+- **Classify each pull request against its parent.** Rejected: a fix to
+  something no tag has shipped yet would count as breaking.
 - **Apply full SemVer before 1.0.0.** Rejected: v1.0.0 waits on the
-  reorientation of B-1; jumping to it, or to v2.0.0, on the next breaking change
-  would spend the promise v1.0.0 is meant to make.
+  reorientation planned in the audit; jumping to it, or to v2.0.0, on the next
+  breaking change would spend the promise v1.0.0 is meant to make.
 - **Generate the changelog with a script at every release.** Rejected: entries
   are compiled from pull request bodies with judgement, once per release, and a
   generator would need its own tests for little gain.
@@ -140,8 +162,11 @@ process in `docs/releasing.md` writes it, once per release.
 - `release-prep` reads the bump from this record and `docs/releasing.md` in this
   repository and falls back to commit types only in repositories without a
   policy.
-- Existing tags keep their numbers; v0.6.0 would have been breaking under these
-  rules, and its changelog entries say so.
+- Existing tags keep their numbers. v0.2.0, v0.3.0, v0.4.0 and v0.6.0 hold
+  changes that are breaking under these rules, and the changelog marks them.
+- The promise covers installs from a tag. An install from an untagged `main`
+  gets whatever has merged since the last tag; `docs/releasing.md` says how to
+  install a release.
 - The project profile and the module manifest are interface from the release
   that introduces them; their fields are defined there.
 - Adding an item to the public interface is a minor change; removing one is
