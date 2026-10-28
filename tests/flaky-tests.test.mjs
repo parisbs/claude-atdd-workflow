@@ -39,6 +39,7 @@ describe('AC-2 (#66) a shell that exits before reading the event is reported by 
     const result = runConfigured(event, { settings: settings(), path: noNode() });
     assert.equal(result.failures.length, 1, `one failed run expected, got ${JSON.stringify(result)}`);
     assert.match(result.failures[0], /exited with 127/);
+    assert.match(result.stderr, /not found/);
     assert.doesNotMatch(result.failures[0], /EPIPE/);
     assert.equal(result.decision, 'allow', 'a failed run without onFailure lets the call go on');
   });
@@ -47,6 +48,7 @@ describe('AC-2 (#66) a shell that exits before reading the event is reported by 
     const result = runConfigured(event, { settings: settings({ onFailure: 'block' }), path: noNode() });
     assert.equal(result.decision, 'deny', JSON.stringify(result));
     assert.match(result.reason, /exited with 127/);
+    assert.match(result.reason, /not found/);
     assert.doesNotMatch(result.reason, /EPIPE/);
   });
 });
@@ -68,10 +70,29 @@ describe('AC-3 (#66) codex-integrate does not depend on the name of the temporar
 
 // The ways a test file can write an executable. The lines of the allowed cases are named by file and by the
 // text that identifies them, each with the reason the fix leaves it alone.
+const MODE = String.raw`(0o[0-7]+\b|\d+\b|'[^']*'|"[^"]*")`;
 const WRITES = [
-  { kind: 'writeFileSync with an executable mode', pattern: /\bmode:\s*0o7[0-7]{2}/ },
-  { kind: 'chmodSync to an executable mode', pattern: /\bchmodSync\(.*0o7[0-7]{2}/ },
+  { kind: 'writeFileSync with an executable mode', pattern: new RegExp(String.raw`\bmode:\s*${MODE}`, 'g') },
+  { kind: 'chmod to an executable mode', pattern: new RegExp(String.raw`\bchmod(?:Sync)?\s*\(.*?,\s*${MODE}\s*[,)]`, 'g') },
 ];
+
+function executableWrites(name, text) {
+  const found = [];
+  for (const { kind, pattern } of WRITES) {
+    for (const match of text.matchAll(pattern)) {
+      if (kind.startsWith('writeFileSync') && /\bmkdirSync\s*\([^;]*$/.test(text.slice(0, match.index))) continue;
+      const mode = match[1];
+      const quoted = mode.startsWith("'") || mode.startsWith('"');
+      const value = quoted ? mode.slice(1, -1) : mode;
+      const executable = quoted && /\+[^,]*x/.test(value)
+        || (/^(?:0o[0-7]+|\d+)$/.test(value) && ((quoted ? parseInt(value, 8) : Number(value)) & 0o100) !== 0);
+      if (!executable) continue;
+      if (ALLOWED.some((a) => a.file === name && a.line.test(text))) continue;
+      found.push(kind);
+    }
+  }
+  return found;
+}
 const ALLOWED = [
   {
     file: 'install-codex-060-gaps.test.mjs',
@@ -100,14 +121,31 @@ describe('AC-4 (#66) a fake executable has run once before a hook runs it', { sk
     const found = [];
     for (const name of readdirSync(tests).filter((n) => n.endsWith('.mjs') && n !== 'executables.mjs').sort()) {
       readFileSync(join(tests, name), 'utf8').split('\n').forEach((text, index) => {
-        for (const { kind, pattern } of WRITES) {
-          if (!pattern.test(text)) continue;
-          if (ALLOWED.some((a) => a.file === name && a.line.test(text))) continue;
+        for (const kind of executableWrites(name, text)) {
           found.push(`tests/${name}:${index + 1}: ${kind}: ${text.trim()}`);
         }
       });
     }
     assert.deepEqual(found, [], `write these executables with writeExecutable(path, content) from ./executables.mjs:\n${found.join('\n')}`);
+  });
+
+  test('AC-4 (#66) the scan catches executable numeric and string modes on one line', () => {
+    for (const mode of ['0o755', '0o100', '493', '320', "'755'", "'0755'", "'+x'", '"755"']) {
+      const write = `writeFileSync(file, '', { mode: ${mode} });`;
+      assert.equal(executableWrites('fixture.mjs', write).length, 1, write);
+      for (const call of ['chmodSync', 'chmod', 'fs.promises.chmod']) {
+        const chmod = `${call}(file, ${mode});`;
+        assert.equal(executableWrites('fixture.mjs', chmod).length, 1, chmod);
+      }
+      const mkdir = `mkdirSync(dir, { mode: ${mode} });`;
+      assert.deepEqual(executableWrites('fixture.mjs', mkdir), [], mkdir);
+    }
+    for (const mode of ['0o644', '420', "'0644'"]) {
+      assert.deepEqual(executableWrites('fixture.mjs', `writeFileSync(file, '', { mode: ${mode} });`), []);
+      assert.deepEqual(executableWrites('fixture.mjs', `chmodSync(file, ${mode});`), []);
+    }
+    const directory = `chmodSync(wt, ${493});`;
+    assert.deepEqual(executableWrites('guard-git-local-work.test.mjs', directory), []);
   });
 
   test('AC-4 (#66) the allowlist names only files that exist and lines that are still there', () => {
