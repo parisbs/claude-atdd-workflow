@@ -5,7 +5,7 @@ follow [ADR 0031](docs/adr/0031-version-releases-by-their-effect-on-the-public-i
 [docs/releasing.md](docs/releasing.md) says how a section is written. An entry marked **Breaking** changes the
 public interface that ADR defines; before v1.0.0 such a change bumps the minor version.
 
-Each entry links its pull request. Links of the form `claude-workflow#N` point to the private `claude-workflow`
+Each entry links its pull request, or its commit when it has none. Links of the form `claude-workflow#N` point to the private `claude-workflow`
 repository this project continues (ADR 0022), which is archived and not public; `#N` links point to this
 repository.
 
@@ -80,7 +80,7 @@ None.
 ### New tools
 
 - Scripts: `scripts/check-adrs.mjs`, `scripts/migrate-adrs.mjs`, also shipped as `repo-bootstrap` templates.
-- Workflow template: `common/github/workflows/check-adrs.yml`.
+- Templates: `common/docs/adr/template.md`, `common/github/workflows/check-adrs.yml`.
 
 ## [0.3.1] - 2026-10-09
 
@@ -105,7 +105,7 @@ None.
 - feat(delegation): add task-package and slim the Claude delegates ([claude-workflow#41](https://github.com/parisbs/claude-workflow/pull/41))
 - docs(experiments): record the Codex alignment probes ([claude-workflow#44](https://github.com/parisbs/claude-workflow/pull/44))
 - feat(delegation): guard Codex delegations and integrate their worktrees with a script ([claude-workflow#47](https://github.com/parisbs/claude-workflow/pull/47))
-- fix(oracle): bind a linked worktree to the nearest ancestor oracle tag ([claude-workflow#49](https://github.com/parisbs/claude-workflow/pull/49))
+- **Breaking**: fix(oracle): bind a linked worktree to the nearest ancestor oracle tag ([claude-workflow#49](https://github.com/parisbs/claude-workflow/pull/49))
 - feat(task-package): say where a Claude worktree starts and which commit it builds on ([claude-workflow#51](https://github.com/parisbs/claude-workflow/pull/51))
 - feat(worktrees): ignore Claude Code worktrees here and in bootstrapped repositories ([claude-workflow#52](https://github.com/parisbs/claude-workflow/pull/52))
 - chore(skills): run pr-prep and drift-audit at medium effort ([claude-workflow#56](https://github.com/parisbs/claude-workflow/pull/56))
@@ -132,7 +132,7 @@ None.
 - docs(claude): add CLAUDE.md as the only instruction file ([claude-workflow#21](https://github.com/parisbs/claude-workflow/pull/21))
 - **Breaking**: docs: stop naming AGENTS.md in skills, stack rules and docs ([claude-workflow#22](https://github.com/parisbs/claude-workflow/pull/22))
 - **Breaking**: feat(bootstrap): ship a single CLAUDE.md skeleton with the workflow lines ([claude-workflow#23](https://github.com/parisbs/claude-workflow/pull/23))
-- feat(skills): let the orchestrator start the workflow skills ([claude-workflow#24](https://github.com/parisbs/claude-workflow/pull/24))
+- **Breaking**: feat(skills): let the orchestrator start the workflow skills ([claude-workflow#24](https://github.com/parisbs/claude-workflow/pull/24))
 - docs(global): write the orchestration rules into the Delegation section ([claude-workflow#25](https://github.com/parisbs/claude-workflow/pull/25))
 
 ### New tools
@@ -155,6 +155,7 @@ None.
 - Hooks: `guard-git`, `guard-tests`.
 - Scripts: `scripts/install.mjs`, `global/hooks/oracle-check.mjs`.
 - Stacks: `android`, `flutter`, `node-mcp`, `supabase`.
+- Templates: `common/AGENTS.md.template`, `common/CLAUDE.md.template`, and under `common/github/` the issue and pull request templates, `labels.json`, the `main` and `tags` rulesets and the `pr-title.yml` workflow.
 
 [Unreleased]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.6.0...HEAD
 [0.6.0]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.5.0...v0.6.0
