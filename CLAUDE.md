@@ -27,7 +27,7 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   (ADR 0001).
 - What must always hold is a hook, a permission rule or CI; prose is for judgement (ADR 0002). Hooks fail
   open with a visible message, except the merge decision, which fails closed: it asks when it cannot read the
-  pull request (ADR 0010), and its own entry in `global/settings.json` blocks the merge when the hook cannot
+  pull request (ADR 0010) and denies in `bypassPermissions` (ADR 0030), and its own entry in `global/settings.json` blocks the merge when the hook cannot
   start, fails or times out (`onFailure: "block"`, Claude Code 2.1.295 or later). Claude Code also runs that
   entry for commands its `if` cannot rule out, so the entry starts the hook only when the command can be a
   merge. A hook failure can then block a merge and, at worst, a command whose event holds `merge` (for example

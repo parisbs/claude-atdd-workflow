@@ -59,3 +59,9 @@ compares the branch, including uncommitted and untracked files, with the oracle
 tag using the same paths the guard protects. It must report the test paths as
 unchanged; any test-configuration change or added skip it lists needs an
 explanation. Then continue with `/pr-prep`.
+
+Before merging, the merge guard compares the pull request's head with the
+`oracle/<head branch>` tag on the base repository's remote and asks when test
+paths changed, the label `atdd` has no tag, or the oracle cannot be read.
+These cases deny in bypassPermissions. The comparison uses committed trees
+and the test paths recorded in the oracle commit, without fetching (ADR 0030).

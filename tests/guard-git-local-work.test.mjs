@@ -34,6 +34,25 @@ if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'stri
 process.exit(step.exit === undefined ? 0 : step.exit);
 `;
 
+// Since #57 the merge decision also asks the remote for the oracle tag with `git ls-remote`. A fake `git` first
+// on PATH answers that call with "no tag" and logs it, so these cases never reach the network; it runs the real
+// git, by absolute path, for everything else.
+const REAL_GIT = spawnSync('/bin/sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+const FAKE_GIT = String.raw`#!/bin/sh
+case " $* " in
+  *" ls-remote "*) exec node "$FAKE_LS_REMOTE" "$@" ;;
+esac
+exec "$REAL_GIT" "$@"
+`;
+const FAKE_LS_REMOTE = String.raw`require('node:fs').appendFileSync(process.env.FAKE_GIT_LOG, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + '\n');
+`;
+// Installs the fake git in `bin` and returns the environment that makes it answer with no tag.
+function installFakeGit(root, bin) {
+  writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+  writeFileSync(join(root, 'ls-remote.js'), FAKE_LS_REMOTE);
+  return { FAKE_LS_REMOTE: join(root, 'ls-remote.js'), FAKE_GIT_LOG: join(root, 'ls-remote.log'), REAL_GIT };
+}
+
 const NOT_FOUND = { exit: 1, stderr: 'gh: Not Found (HTTP 404)' };
 const PASSED = { __typename: 'CheckRun', name: 'Test', status: 'COMPLETED', conclusion: 'SUCCESS' };
 
@@ -63,11 +82,13 @@ const SQUASH = 'gh pr merge 12 --squash --delete-branch';
 describe('guard-git merge decision with local work (#53)', () => {
   let scratch;
   let bin;
+  let gitEnv;
   before(() => {
     scratch = mkdtempSync(join(tmpdir(), 'cw-local-work-'));
     bin = join(scratch, 'bin');
     mkdirSync(bin);
     writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+    gitEnv = installFakeGit(scratch, bin);
   });
   after(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -116,7 +137,7 @@ describe('guard-git merge decision with local work (#53)', () => {
     const scenario = join(scratch, `scenario-${Math.random().toString(36).slice(2)}.json`);
     writeFileSync(scenario, JSON.stringify({ view: { stdout: pr }, api: NOT_FOUND, user: { stdout: { login: 'me' } } }));
     const result = runConfigured({ cwd, tool_name: 'Bash', tool_input: { command } },
-      { env: { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario } });
+      { env: { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...gitEnv } });
     assert.deepEqual(result.failures, [], result.stderr);
     return result;
   }
