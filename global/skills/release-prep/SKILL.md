@@ -7,15 +7,21 @@ disable-model-invocation: true
 
 Prepare release $ARGUMENTS. A release is an annotated tag `vX.Y.Z` on `main`
 (claude-atdd-workflow ADR 0005). The release branch only prepares it and is deleted
-after merging. Follow the repository's own release procedure instead when its
-`CLAUDE.md` or a project skill defines one.
+after merging.
+
+The repository's own release procedure wins over the steps below: a
+`docs/releasing.md`, a release section in its `CLAUDE.md` or a project skill.
+When it has one, follow it step by step and use this skill only for what it
+leaves out. In claude-atdd-workflow that procedure is `docs/releasing.md`, with
+the version policy in ADR 0031.
 
 ## 1. Decide the version
 
-Read the Conventional Commits subjects since the last tag
-(`git describe --tags --abbrev=0`, then `git log <tag>..main --oneline`). A
-breaking change (`!` or `BREAKING CHANGE`) is a major bump, `feat` a minor one,
-anything else a patch. If the requested version disagrees, say so and ask.
+List what shipped since the last tag (`git describe --tags --abbrev=0`, then
+`git log <tag>..main --oneline`) and classify it with the repository's version
+policy when it records one. Without a policy, a breaking change (`!` or
+`BREAKING CHANGE`) is a major bump, `feat` a minor one, anything else a patch.
+If the requested version disagrees, say so and ask.
 
 ## 2. Release branch
 
