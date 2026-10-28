@@ -28,6 +28,10 @@ function sh(cwd, ...args) {
   return r.stdout.trim();
 }
 
+function gitListsWorktree(dir, canonicalWorktree) {
+  return sh(dir, 'worktree', 'list', '--porcelain', '-z').split('\0').includes(`worktree ${canonicalWorktree}`);
+}
+
 function write(dir, path, content) {
   mkdirSync(dirname(join(dir, path)), { recursive: true });
   writeFileSync(join(dir, path), content);
@@ -73,6 +77,12 @@ const BINARY = Buffer.from([0, 1, 2, 3, 255, 254, 0, 10, 13, 0, 128]);
 const snapshot = (dir) => ({ head: sh(dir, 'rev-parse', 'HEAD'), status: sh(dir, 'status', '--porcelain', '--untracked-files=all') });
 
 describe('codex-integrate', () => {
+  test('AC-5 (#66) the listing check detects a Codex worktree that git still lists', () => {
+    const dir = workBranch();
+    const worktree = codexWorktree(dir);
+    assert.equal(gitListsWorktree(dir, realpathSync(worktree)), true, 'git lists the worktree while it is present');
+  });
+
   test('AC-5 applies a modification, a deletion, a new file and a binary file, leaves ignored files out, runs oracle-check and removes the worktree', () => {
     const dir = workBranch();
     const worktree = codexWorktree(dir);
@@ -94,7 +104,7 @@ describe('codex-integrate', () => {
     assert.match(r.stdout, /oracle-check against oracle\/feature\/x/);
     assert.match(r.stdout, /test paths: unchanged/);
     assert.equal(existsSync(worktree), false, 'the worktree is removed once the changes are applied');
-    assert.ok(!sh(dir, 'worktree', 'list', '--porcelain', '-z').split('\0').includes(`worktree ${canonicalWorktree}`), 'git no longer lists the worktree');
+    assert.equal(gitListsWorktree(dir, canonicalWorktree), false, 'git no longer lists the worktree');
     assert.equal(sh(dir, 'rev-parse', 'HEAD'), head, 'the script does not commit');
   });
 
