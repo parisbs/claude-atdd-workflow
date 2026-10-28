@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 // Git answers in the language of the machine and reads its user configuration; the fixtures and the hook
 // get neither, and a developer's signing configuration cannot reach the commits.
@@ -112,8 +113,8 @@ describe('guard-git command forms: comments, gh pr flags before merge, git tag -
     scratch = mkdtempSync(join(tmpdir(), 'cw-command-forms-'));
     bin = join(scratch, 'bin');
     mkdirSync(bin);
-    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
-    writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+    writeExecutable(join(bin, 'gh'), FAKE_GH);
+    writeExecutable(join(bin, 'git'), FAKE_GIT);
     // A clone of o/r on github.com, on feature/x with a clean working tree and one commit after main. The
     // tags oracle/x and v1.0.0 exist at the first commit.
     const dir = mkdtempSync(join(scratch, 'clone-'));

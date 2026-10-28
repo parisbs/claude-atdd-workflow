@@ -12,6 +12,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 const hooks = join(dirname(fileURLToPath(import.meta.url)), '..', 'global', 'hooks');
 
@@ -57,7 +58,7 @@ let offlineBin;
 function bashOffline(cwd, command) {
   if (!offlineBin) {
     offlineBin = mkdtempSync(join(tmpdir(), 'cw-hooks-offline-gh-'));
-    writeFileSync(join(offlineBin, 'gh'), '#!/bin/sh\necho "gh: offline" >&2\nexit 1\n', { mode: 0o755 });
+    writeExecutable(join(offlineBin, 'gh'), '#!/bin/sh\necho "gh: offline" >&2\nexit 1\n');
     process.on('exit', () => rmSync(offlineBin, { recursive: true, force: true }));
   }
   return bash(cwd, command, { PATH: `${offlineBin}${delimiter}${process.env.PATH}` });
@@ -282,7 +283,7 @@ const FAKE_LS_REMOTE = String.raw`require('node:fs').appendFileSync(process.env.
 `;
 // Installs the fake git in `bin` and returns the environment that makes it answer with no tag.
 function installFakeGit(root, bin) {
-  writeFileSync(join(bin, 'git'), FAKE_GIT, { mode: 0o755 });
+  writeExecutable(join(bin, 'git'), FAKE_GIT);
   writeFileSync(join(root, 'ls-remote.js'), FAKE_LS_REMOTE);
   return { FAKE_LS_REMOTE: join(root, 'ls-remote.js'), FAKE_GIT_LOG: join(root, 'ls-remote.log'), REAL_GIT };
 }
@@ -320,7 +321,7 @@ describe('guard-git merge decision', () => {
     root = mkdtempSync(join(tmpdir(), 'cw-gh-'));
     bin = join(root, 'bin');
     mkdirSync(bin);
-    writeFileSync(join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
+    writeExecutable(join(bin, 'gh'), FAKE_GH);
     gitEnv = installFakeGit(root, bin);
   });
   after(() => {

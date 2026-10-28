@@ -10,8 +10,9 @@
 // network. It logs its argv and whether its standard input reached end of file within three seconds to
 // FAKE_NPX_LOG. FAKE_NPX_FAIL=exit makes it exit 1; FAKE_NPX_FAIL=signal makes it die by SIGKILL, as a
 // process the installer stopped on a timeout would.
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
+import { writeExecutable } from './executables.mjs';
 
 const SCRIPT = `#!${process.execPath}
 const { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
@@ -72,10 +73,8 @@ export function fakeClaude(dir) {
   const log = join(dir, 'calls.log');
   const npxLog = join(dir, 'npx.log');
   mkdirSync(bin, { recursive: true });
-  writeFileSync(join(bin, 'claude'), SCRIPT);
-  chmodSync(join(bin, 'claude'), 0o755);
-  writeFileSync(join(bin, 'npx'), NPX);
-  chmodSync(join(bin, 'npx'), 0o755);
+  writeExecutable(join(bin, 'claude'), SCRIPT);
+  writeExecutable(join(bin, 'npx'), NPX);
   return {
     bin,
     log,
