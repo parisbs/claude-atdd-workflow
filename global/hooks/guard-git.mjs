@@ -62,7 +62,13 @@ function protectedBranches(dir) {
 }
 
 function words(segment) {
-  return (segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ''));
+  const result = [];
+  for (const word of segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
+    // An unquoted # at the start of a word comments out everything after it.
+    if (word.startsWith('#')) break;
+    result.push(word.replace(/^["']|["']$/g, ''));
+  }
+  return result;
 }
 
 // Splits on &&, ||, ;, | and newlines. Quoted operators are rare in the
@@ -140,7 +146,7 @@ function classifyTag(args) {
       '--no-contains', '--points-at', '--merged', '--no-merged', '--column', '--no-column',
       '--create-reflog', '--ignore-case', '--omit-empty', '--trailer', '--edit'],
     longWithValue: ['--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains',
-      '--no-contains', '--points-at', '--merged', '--no-merged', '--column'],
+      '--no-contains', '--points-at', '--merged', '--no-merged'],
     shortWithValue: ['m', 'F', 'u'],
     shortOptionalValue: ['n'],
   });
@@ -285,13 +291,14 @@ async function checkGit(args, cwd, verdict, branches, session) {
   return REF_CHANGING.has(sub);
 }
 
-const PLAIN_MERGE = /^gh pr merge(?: [A-Za-z0-9@%+=:,./_#-]+)*$/;
+const PLAIN_MERGE = /^gh pr merge(?: (?!#)[A-Za-z0-9@%+=:,./_#-]+)*$/;
 const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
-// All gh calls and ls-remote share this budget, counted from the start of the
-// process. A merge decision makes up to four serial calls, and global/settings.json
-// blocks the merge when the hook runs past 30 s; 10 s leaves the rest for Node to
+// All gh calls, ls-remote and the bounded git config --get core.sshCommand read
+// share this budget, counted from the start of the process. A merge decision makes
+// up to three gh calls and one ls-remote, and global/settings.json blocks the merge
+// when the hook runs past 30 s; 10 s leaves the rest for Node to
 // start, for git, for a timed-out gh to exit after its signal, and for the hook to
 // print its ask, so a slow GitHub ends in a question rather than in a block.
 const ghBudget = () => Number(process.env.GUARD_GIT_GH_BUDGET_MS) || 10000;
@@ -876,7 +883,11 @@ function checkWrappers(command, verdict) {
   }
 }
 
-const isMerge = (w) => program(w[0]) === 'gh' && w[1] === 'pr' && w[2] === 'merge';
+function isMerge(w) {
+  if (program(w[0]) !== 'gh' || w[1] !== 'pr') return false;
+  const { positional } = parseOptions(w.slice(2), { longWithValue: ['--repo'], shortWithValue: ['R'] });
+  return positional[0] === 'merge';
+}
 
 let permissionMode;
 try {
@@ -901,6 +912,11 @@ try {
     const w = words(segment);
     // Skip leading environment assignments such as FOO=1 git push.
     while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
+    // The merge entry's if does not match flags before merge, so the entry for
+    // every Bash command must deny these forms without reading the pull request.
+    if (isMerge(w) && w[2] !== 'merge') {
+      verdict.add('deny', 'Write gh pr flags after merge so the merge guard can verify the pull request.');
+    }
     if (subagent && (!mergeOnly || isMerge(w))) checkSubagent(w, verdict);
     if (w[0] === 'cd' && w[1]) {
       cwd = isAbsolute(w[1]) ? w[1] : resolve(cwd, w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
