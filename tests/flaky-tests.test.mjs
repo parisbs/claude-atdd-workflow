@@ -141,6 +141,20 @@ describe('AC-4 (#66) a fake executable has run once before a hook runs it', { sk
     assert.equal(readFileSync(log, 'utf8'), 'ran\n');
   });
 
+  test('AC-4 (#66) writeExecutable runs the file exactly once', async () => {
+    const writeExecutable = await load();
+    const dir = tmp('cw-flaky-exe-');
+    const log = join(dir, 'ran.log');
+    const marker = join(dir, 'marker');
+    const file = join(dir, 'fake-once-tool');
+    // The redirection is a shell builtin and needs no PATH, so it records the warm-up run; touch is looked up
+    // on PATH, so it cannot run there.
+    writeExecutable(file, `#!/bin/sh\necho ran >> ${JSON.stringify(log)}\ntouch ${JSON.stringify(marker)}\n`);
+    assert.equal(existsSync(log), true, 'writeExecutable did not run the file');
+    assert.equal(readFileSync(log, 'utf8'), 'ran\n', 'the file ran more than once');
+    assert.equal(existsSync(marker), false, 'the warm-up run executed content that needs a PATH');
+  });
+
   test('AC-4 (#66) writeExecutable runs a shell script once without running its content', async () => {
     const writeExecutable = await load();
     const dir = tmp('cw-flaky-exe-');
