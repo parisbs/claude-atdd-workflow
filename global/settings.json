@@ -84,6 +84,17 @@
         ]
       },
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/guard-tests.mjs\"",
+            "timeout": 15,
+            "statusMessage": "Checking Bash writes against the ATDD test oracle"
+          }
+        ]
+      },
+      {
         "hooks": [
           {
             "type": "command",
