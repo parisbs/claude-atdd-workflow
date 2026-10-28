@@ -63,13 +63,21 @@ command that string matching misses.
 - A changed test path, the label `atdd` without a tag, or an oracle that
   cannot be read is a reason in the merge decision: the main session asks and
   shows the tag, its commit and the changed files; `bypassPermissions`
-  denies. Subagents are already denied `gh pr merge` (ADR 0013). With neither
+  denies. `bypassPermissions` shows no prompt, so it also denies any other
+  merge state the decision cannot read: the pull request, its provenance, the
+  local work or `CLAUDE.md`. Subagents are already denied `gh pr merge` (ADR 0013). With neither
   a tag nor the label the oracle adds no reason, and the explicit allow says
   that nothing was checked; with a clean oracle it names the tag and commit.
 - The four forms above are read: abbreviated long options and push refspecs
   without `refs/` count as deleting or moving an oracle tag, the merge entry
   starts for `gh` by any path (`if: Bash(*gh pr merge *)`), and a merge-method
   flag with a value, `--merge` or `--rebase` never earns the explicit allow.
+- Three more forms found in review are read: a word that starts with `#` is
+  a shell comment that ends the command and never earns the explicit allow;
+  flags between `gh pr` and `merge`, which the merge entry's `if` does not
+  match, are denied with the advice to write them after `merge`; and
+  `git tag --column`, which takes a value only after `=`, does not hide a
+  following `-d`.
 - The CI oracle check is not rejected. It stays an optional tool that a human
   or team may apply to themselves, unbuilt until someone asks for it. Its
   first design (`pull_request` with the script from the base commit, tag read
@@ -103,13 +111,16 @@ command that string matching misses.
   evidence of the oracle, and the guard is a net: forms it does not read
   (such as `gh api` merges, `git -c alias...` aliases, `--git-dir` or
   `GIT_DIR`, `gh` run through `env`, `command`, `time` or as `\gh`) pass.
-  They are named as known gaps.
+  An assignment prefix such as `GH_REPO=` or `GH_HOST=`, or an exported
+  `GH_REPO`, makes gh merge a pull request of another repository than the one
+  the hook reads. They are named as known gaps.
 - The decision reads the pull request once, before the merge runs: a head
   pushed between that read and the merge is not compared, and
   `gh pr merge --auto` lets GitHub merge later pushes without the hook. Both
   are known gaps.
 - The merge decision makes one more network call inside its 10 s budget;
-  exhausting the budget asks. Both commits must be in the local clone, which
+  exhausting the budget asks in the main session and denies in
+  `bypassPermissions`. Both commits must be in the local clone, which
   the merge decision does not fetch.
 - A fork's oracle tag must be on the base repository.
 - A branch updated from `main` after freezing, where `main` touched tests,
