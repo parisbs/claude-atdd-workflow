@@ -37,21 +37,44 @@ merge unnoticed, but both were found only at the end.
 - In the main session, an Edit, Write or NotebookEdit of a frozen test path
   asks instead of being denied. The reason names the repository-relative path,
   the oracle tag, the commit it points to, and whether the file exists in that
-  commit (amended) or not (added). The tool's own prompt shows the change. The
-  amendment stays human-only: the human decides in the prompt.
+  commit (amended) or not (added); a Bash deletion says deleted. The tool's own
+  prompt shows the change. The amendment stays human-only: the human decides
+  in the prompt.
 - A subagent (an event with `agent_id`) is denied. The main session in
   `bypassPermissions` is denied, and the reason says to switch to a mode that
   shows permission prompts.
 - `guard-tests` gains a Bash entry that reads the forms an agent uses to write
   a file and gives them the same verdict as an Edit: output redirection and
   heredocs, `tee`, in-place editing (`sed -i`, `perl -i`, `ruby -i`), `cp`,
-  `mv`, `install`, `ln -f`, `rm` and `truncate` on the path,
-  `git checkout -- <path>`, `git restore` and `git rm`, inline interpreters
-  whose script names the path, `bash -c` and `sh -c` read as nested commands,
-  compound commands, a leading `cd <dir> &&`, globs that expand on disk, and
-  `find` with `-delete`, `-exec`, `-execdir` or `xargs`. A command that only
-  reads or runs the tests gets no verdict. A test-configuration path written
-  this way asks, as for an Edit.
+  `mv`, `install`, `ln` (including `-s` without `-f`), `rm`, `touch` and
+  `truncate` on the path, `git checkout -- <path>`, `git checkout <path>`
+  when the operand names a frozen file, `git restore`, `git rm` and `git mv`.
+  File-descriptor redirects (`2>`, `2>&1`, `1>`, `&>` and `>& file`) are read.
+  Inline interpreters ask only when their script text names a frozen file,
+  relative to the repository or command's working directory. This includes
+  `node -pe`, `perl -we`/`-pie`, versioned `python3.x -c`, and interpreter
+  scripts supplied through a heredoc (`python3 -`, `node`). `bash -c`,
+  `bash -lc`, `sh -ec`, `zsh -c` and shell heredocs are read as nested commands.
+  The reader handles compound commands, a leading `cd <dir> &&`, keyword
+  prefixes (`then`, `do`, `else`, `{`, `!`, `time`), wrappers (`sudo`, `nohup`,
+  `timeout <n>`, `exec`, `command`, `env` with or without assignments),
+  combined in-place flags (`sed -Ei`/`-ri`/`-ni`/`-i.bak`), brace alternatives
+  in targets, globs matched against the oracle inventory, and `find` with
+  `-delete`, `-exec`, `-execdir` or `xargs`. `find` reads `-name`, `-type f`,
+  `-depth`, `-print` and `-print0`; `xargs` options and `-I` replacements are
+  read even after intervening pipeline stages such as `sort`. A command that
+  only reads or runs the tests gets no verdict. A test-configuration path
+  written this way asks, as for an Edit.
+- Directory targets and `find` candidates use the frozen test and configuration
+  paths recorded in the oracle commit, read once per repository. They never
+  walk the working tree: untracked dependency and build trees contribute no
+  candidates. Explicit file targets still protect new test paths as additions.
+  Repository discovery is cached per directory and git reads have a time budget
+  below the hook's timeout. Errors are reported on stderr and fail open for
+  unread work; an ask or deny already collected is still emitted. Here-strings
+  (`<<<`), process substitutions (`<(...)`, `>(...)`), read-write redirects
+  (`<>`), arithmetic shifts (`$((1<<2))`) and unterminated heredocs do not
+  discard later commands.
 - `codex-integrate` applies nothing when the Codex worktree changes, adds or
   deletes a frozen test path; it exits 2, keeps the worktree and names the
   paths.
@@ -86,10 +109,22 @@ merge unnoticed, but both were found only at the end.
   Known gaps, still caught by `oracle-check` and the merge guard (ADR 0030):
   git operations that bring content from elsewhere (`git apply`, `git am`,
   `git stash pop` or `apply`, `git reset --hard`, `git merge`, `git rebase`,
-  `git cherry-pick`, `git revert`); scripts in files, `npm run` and `make`;
-  paths built from variables, command substitution or `eval`; links created
-  earlier that point at a test; and MCP tools that write files or run
-  commands, which pass neither Bash nor Edit.
+  `git cherry-pick`, `git revert`, `git switch <branch>` and
+  `git checkout <branch>`); patch and transfer tools (`patch`, `rsync`,
+  `tar -x`, `unzip`, `curl -o`, `wget -O`, `dd of=`); formatters and fixers
+  (`prettier --write`, `eslint --fix`, `dart format`); scripts in files,
+  `npm run` and `make`; paths built from variables, command substitution or
+  `eval`; links created earlier that point at a test; and MCP tools that
+  write files or run commands, which pass neither Bash nor Edit.
+  Other unread forms are `find` predicates beyond the list above (including
+  `-type d`, `-empty`, `-path`, boolean expressions and pruning), `find`
+  traversal through symlinks or nested repositories, directory contents absent
+  from the oracle commit, recursive `**` shell globs and brace ranges
+  (`{1..3}`), dynamically generated stdin scripts, here-string scripts,
+  command/process substitutions and shell functions. Pipeline transformations
+  other than sorting are not evaluated, and `xargs` input from sources other
+  than `find` is not inferred. Unlisted wrapper options and interpreter flag
+  combinations may also pass unread.
 - Naming a frozen path in an inline interpreter's script asks even when the
   script only reads it. If that proves noisy, moving the form to the known
   gaps is a new decision.

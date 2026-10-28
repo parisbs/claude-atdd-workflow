@@ -144,7 +144,7 @@ cannot separate the effects of the workflow, developer, project and model.
     ADR 0033), `shell-writes.mjs` (reads those shell forms without executing
     them). The freeze binds while an `oracle/<branch>` tag exists, and in a
     linked worktree while an oracle tag's commit is an ancestor of HEAD.
-    `oracle-check.mjs` (the
+    The remaining hooks are `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle), `guard-codex.mjs` (Codex
     delegations pass `working_dir`, a worktree delegation starts from a clean
     directory, and a writing call of any declared Codex registration runs in a Codex

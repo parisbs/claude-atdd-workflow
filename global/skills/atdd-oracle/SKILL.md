@@ -66,7 +66,8 @@ explicit approval:
 3. Create the lightweight tag `oracle/<branch>` on that commit. The user-level
    guard asks before the tag is created: that prompt is the human's confirmation
    that the oracle is approved, so never skip it or work around it. From then on
-   the guard denies edits to those paths on this branch.
+   the guard asks before amending frozen tests in the main session; subagents
+   and bypassPermissions are denied (ADR 0033).
 4. Comment on the issue with the criterion-to-test map, the oracle commit and
    the red evidence.
 

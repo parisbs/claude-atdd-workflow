@@ -133,7 +133,7 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   - Human only: accepting or rejecting an ADR, amending a frozen test (the
     guard asks in the main session; the human approves in the prompt),
     creating, moving or deleting an oracle tag (it asks, and the agent runs it
-    once approved), a release, force pushes and `--admin`. Amending, deleting
+    once approved), publishing a release, force pushes and `--admin`. Amending, deleting
     and moving are denied to subagents and in bypassPermissions (ADR 0029, 0033).
 - The orchestrator merges without asking only when every required check is
   green, `oracle-check` is clean, the review the repository declares with

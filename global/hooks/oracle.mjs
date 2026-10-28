@@ -54,27 +54,27 @@ export function globToRegExp(glob) {
 // commit is an ancestor of HEAD and nearest to it, so the oracle of the branch
 // the worktree was made from still binds it. The main checkout keeps the
 // branch's own tag only, so a branch stacked on another is not bound by it.
-export function oracleTag(root) {
-  const branch = git(root, ['branch', '--show-current']);
+export function oracleTag(root, read = git) {
+  const branch = read(root, ['branch', '--show-current']);
   if (branch) {
     const tag = `oracle/${branch}`;
-    if (git(root, ['rev-parse', '--verify', '-q', `refs/tags/${tag}`]) !== undefined) return tag;
+    if (read(root, ['rev-parse', '--verify', '-q', `refs/tags/${tag}`]) !== undefined) return tag;
   }
-  return isLinkedWorktree(root) ? nearestAncestorTag(root) : undefined;
+  return isLinkedWorktree(root, read) ? nearestAncestorTag(root, read) : undefined;
 }
 
-function isLinkedWorktree(root) {
-  const dirs = git(root, ['rev-parse', '--git-dir', '--git-common-dir'])?.split('\n');
+function isLinkedWorktree(root, read) {
+  const dirs = read(root, ['rev-parse', '--git-dir', '--git-common-dir'])?.split('\n');
   if (dirs?.length !== 2) return false;
   return resolve(root, dirs[0]) !== resolve(root, dirs[1]);
 }
 
 // Ties at equal distance go to the first tag name in sort order.
-function nearestAncestorTag(root) {
-  const refs = git(root, ['for-each-ref', '--merged', 'HEAD', '--format=%(refname)', 'refs/tags/oracle/']);
+function nearestAncestorTag(root, read) {
+  const refs = read(root, ['for-each-ref', '--merged', 'HEAD', '--format=%(refname)', 'refs/tags/oracle/']);
   let nearest;
   for (const ref of (refs ?? '').split('\n').filter(Boolean).sort()) {
-    const distance = Number(git(root, ['rev-list', '--count', `${ref}..HEAD`]));
+    const distance = Number(read(root, ['rev-list', '--count', `${ref}..HEAD`]));
     if (!Number.isInteger(distance)) continue;
     if (nearest === undefined || distance < nearest.distance) nearest = { tag: ref.slice('refs/tags/'.length), distance };
   }
