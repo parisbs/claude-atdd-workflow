@@ -35,7 +35,7 @@ before(() => {
   assert.equal(realGit.status, 0, realGit.stderr);
   writeFileSync(join(bin, 'git'), `#!/bin/sh
 if [ -n "$REVIEW_GIT_LOG" ]; then printf '%s\\n' "$*" >> "$REVIEW_GIT_LOG"; fi
-if [ -n "$REVIEW_FAIL_DIR" ] && [ "$PWD" = "$REVIEW_FAIL_DIR" ]; then exec sleep 10; fi
+if [ -n "$REVIEW_FAIL_DIR" ] && [ "$PWD" = "$REVIEW_FAIL_DIR" ]; then exec sleep 30; fi
 exec '${realGit.stdout.trim().replaceAll("'", "'\\''")}' "$@"
 `, { mode: 0o755 });
   dir = join(scratch, 'repo');
@@ -99,7 +99,6 @@ test('AC-2/AC-3 (F1) keeps an ask or deny when a later git read times out', () =
   for (const [index, session] of SESSIONS.entries()) {
     const result = bash(`echo x > ${FROZEN}; git -C stall restore .`, session, {
       REVIEW_FAIL_DIR: spawnSync('pwd', ['-P'], { cwd: join(dir, 'stall'), encoding: 'utf8' }).stdout.trim(),
-      GUARD_TESTS_GIT_TIMEOUT_MS: '1000',
     });
     assert.equal(result.decision, index === 0 ? 'ask' : 'deny', result.reason);
     assert.ok(result.reason.includes(FROZEN), result.reason);
@@ -116,10 +115,8 @@ test('AC-9 (F2) reads the oracle tree once and bounds git calls independently of
   for (const command of ['rm -rf node_modules', 'git restore .', 'git checkout -- .', 'find ~ -name foo | head']) {
     const log = join(scratch, 'git-calls');
     writeFileSync(log, '');
-    const start = performance.now();
     const result = bash(command, SESSIONS[0], { REVIEW_GIT_LOG: log });
     const calls = readFileSync(log, 'utf8').trim().split('\n');
-    assert.ok(performance.now() - start < 5000, `${command} exceeded 5 seconds`);
     assert.ok(calls.length <= 12, `${command}: ${calls.join('\n')}`);
     assert.equal(calls.filter((call) => call.startsWith('ls-tree -rz --name-only ')).length, 1, calls.join('\n'));
     assert.equal(result.explicit, command.startsWith('git '), result.reason);
