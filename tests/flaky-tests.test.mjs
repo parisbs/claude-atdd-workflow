@@ -73,21 +73,37 @@ describe('AC-3 (#66) codex-integrate does not depend on the name of the temporar
 const MODE = String.raw`(0o[0-7]+\b|\d+\b|'[^']*'|"[^"]*")`;
 const WRITES = [
   { kind: 'writeFileSync with an executable mode', pattern: new RegExp(String.raw`\bmode:\s*${MODE}`, 'g') },
-  { kind: 'chmod to an executable mode', pattern: new RegExp(String.raw`\bchmod(?:Sync)?\s*\(.*?,\s*${MODE}\s*[,)]`, 'g') },
+  { kind: 'chmod to an executable mode', pattern: /\b(?:f|l)?chmod(?:Sync)?\s*\(/g },
 ];
 
-function executableWrites(name, text) {
+function lastCallArgument(text) {
+  let depth = 0;
+  let start = 0;
+  // Skip quoted strings and count nesting so commas in a path expression are not argument separators.
+  for (const match of text.matchAll(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[()[\]{},]/g)) {
+    const token = match[0];
+    if (token === ')' && depth === 0) {
+      return text.slice(start, match.index).trim().match(new RegExp(`^${MODE}$`))?.[1];
+    }
+    if ('([{'.includes(token)) depth += 1;
+    else if (')]}'.includes(token)) depth -= 1;
+    else if (token === ',' && depth === 0) start = match.index + 1;
+  }
+}
+
+function executableWrites(name, text, allowed = ALLOWED) {
   const found = [];
   for (const { kind, pattern } of WRITES) {
     for (const match of text.matchAll(pattern)) {
       if (kind.startsWith('writeFileSync') && /\bmkdirSync\s*\([^;]*$/.test(text.slice(0, match.index))) continue;
-      const mode = match[1];
+      const mode = kind.startsWith('chmod') ? lastCallArgument(text.slice(match.index + match[0].length)) : match[1];
+      if (!mode) continue;
       const quoted = mode.startsWith("'") || mode.startsWith('"');
       const value = quoted ? mode.slice(1, -1) : mode;
       const executable = quoted && /\+[^,]*x/.test(value)
         || (/^(?:0o[0-7]+|\d+)$/.test(value) && ((quoted ? parseInt(value, 8) : Number(value)) & 0o100) !== 0);
       if (!executable) continue;
-      if (ALLOWED.some((a) => a.file === name && a.line.test(text))) continue;
+      if (allowed.some((a) => a.file === name && a.line.test(text))) continue;
       found.push(kind);
     }
   }
@@ -133,9 +149,11 @@ describe('AC-4 (#66) a fake executable has run once before a hook runs it', { sk
     for (const mode of ['0o755', '0o100', '493', '320', "'755'", "'0755'", "'+x'", '"755"']) {
       const write = `writeFileSync(file, '', { mode: ${mode} });`;
       assert.equal(executableWrites('fixture.mjs', write).length, 1, write);
-      for (const call of ['chmodSync', 'chmod', 'fs.promises.chmod']) {
-        const chmod = `${call}(file, ${mode});`;
-        assert.equal(executableWrites('fixture.mjs', chmod).length, 1, chmod);
+      for (const call of ['chmodSync', 'chmod', 'fs.promises.chmod', 'fchmod', 'fchmodSync', 'lchmod', 'lchmodSync']) {
+        for (const argument of ['file', "join(dir, 'name')", "join(a, 'b')", "join(dir, resolve('a', 'b'), 'name,with)paren')"]) {
+          const chmod = `${call}(${argument}, ${mode});`;
+          assert.equal(executableWrites('fixture.mjs', chmod).length, 1, chmod);
+        }
       }
       const mkdir = `mkdirSync(dir, { mode: ${mode} });`;
       assert.deepEqual(executableWrites('fixture.mjs', mkdir), [], mkdir);
@@ -143,15 +161,18 @@ describe('AC-4 (#66) a fake executable has run once before a hook runs it', { sk
     for (const mode of ['0o644', '420', "'0644'"]) {
       assert.deepEqual(executableWrites('fixture.mjs', `writeFileSync(file, '', { mode: ${mode} });`), []);
       assert.deepEqual(executableWrites('fixture.mjs', `chmodSync(file, ${mode});`), []);
+      assert.deepEqual(executableWrites('fixture.mjs', `chmodSync(join(dir, 'name'), ${mode});`), []);
     }
     const directory = `chmodSync(wt, ${493});`;
     assert.deepEqual(executableWrites('guard-git-local-work.test.mjs', directory), []);
   });
 
-  test('AC-4 (#66) the allowlist names only files that exist and lines that are still there', () => {
+  test('AC-4 (#66) the allowlist names only files that exist and lines that the scan flags', () => {
     for (const { file, line } of ALLOWED) {
       const text = readFileSync(join(tests, file), 'utf8');
-      assert.ok(text.split('\n').some((l) => line.test(l)), `${file} no longer has a line matching ${line}; drop its allowlist entry`);
+      const lines = text.split('\n').filter((l) => line.test(l));
+      assert.ok(lines.length > 0, `${file} no longer has a line matching ${line}; drop its allowlist entry`);
+      assert.ok(lines.some((l) => executableWrites(file, l, []).length > 0), `${file} has no executable write matching ${line}; drop its allowlist entry`);
     }
   });
 
