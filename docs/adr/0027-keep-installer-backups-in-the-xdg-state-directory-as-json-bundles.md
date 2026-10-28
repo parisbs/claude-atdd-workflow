@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-10-22
 ---
 # 0027. Keep installer backups in the XDG state directory as JSON bundles

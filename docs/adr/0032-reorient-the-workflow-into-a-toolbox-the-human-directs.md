@@ -7,13 +7,15 @@ date: 2026-10-28
 - Amends:
   - [0001](0001-separate-generic-personal-and-repository-configuration.md) (decision 1, "**Generic** (`global/`, versioned, installed into `~/.claude`)", under which the installer copies `global/CLAUDE.md` over the whole `~/.claude/CLAUDE.md`)
   - [0002](0002-enforce-with-hooks-permissions-and-ci.md) (CI and rulesets as the authoritative enforcement)
-  - [0003](0003-approved-tests-replace-behaviour-specs.md) (ATDD as a user-level workflow that every feature goes through, with the levels listed in the global `CLAUDE.md`)
+  - [0003](0003-approved-tests-replace-behaviour-specs.md) (its two-phase protocol enforced from the user level, and its consequence that the global `CLAUDE.md` lists the levels that use it)
   - [0008](0008-administrator-bypasses-rulesets-through-pull-requests.md) (the required checks of the ruleset as what binds the agent, with the hook as part of that protection)
   - [0011](0011-delegate-through-subagents-interchangeable-with-codex.md) (`claude-implementer` as the default implementer)
-  - [0012](0012-keep-repository-instructions-in-claude-md-alone.md) (the reasons that assume every task is delegated)
-  - [0015](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md) (a finding's `verified` flag)
-  - [0025](0025-route-model-and-effort-per-delegation-through-a-matrix.md) (decisions 2, 4 and 7)
+  - [0012](0012-keep-repository-instructions-in-claude-md-alone.md) (its decision that the orchestrator is the only source of instructions for a delegate, and the reasons that assume every task is delegated)
+  - [0015](0015-pass-delegates-goals-structured-findings-and-the-rules-they-lack.md) (its first decision, that the package is the only source of instructions for every delegate; its rule that Delegation loads `task-package` before delegating; and a finding's `verified` flag)
+  - [0025](0025-route-model-and-effort-per-delegation-through-a-matrix.md) (decisions 2, 4, 7 and 9)
   - [0026](0026-return-a-compact-envelope-and-keep-the-full-delegation-report-in-the-scratchpad.md) (decision 1)
+  - [0027](0027-keep-installer-backups-in-the-xdg-state-directory-as-json-bundles.md) (decision 4, the refusal and `--adopt`, for `~/.claude/CLAUDE.md`)
+  - [0029](0029-ask-before-deleting-or-moving-an-oracle-tag-in-the-main-session.md) (its consequence that CI and the rulesets remain the guarantee)
 - Builds on: [0031](0031-version-releases-by-their-effect-on-the-public-interface.md)
   (SemVer for the workflow as a whole; v1.0.0 waits on a planned reorientation)
 - Evidence: [rules loading probes, 2026-10-28](../experiments/2026-10-28-rules-loading-probes.md)
@@ -22,7 +24,8 @@ date: 2026-10-28
 
 The workflow grew as one model applied everywhere. One `~/.claude/CLAUDE.md` of
 157 lines loads into every session in every repository and tells it to pick a
-level for each task, with ATDD for every feature. Without an `Implement:` line,
+level for each task, with `/atdd-oracle` for a feature. Without an `Implement:`
+line,
 code is written by `claude-implementer`, so delegation is the default (ADR
 0011). The routing matrix of ADR 0025 is applied to every delegation and checks
 explicit choices. CI and rulesets are named the guarantee against the agent (ADR
@@ -48,8 +51,8 @@ What Claude Code does, verified in `code.claude.com/docs` and against CLI
 - Only a skill's description loads until the skill runs, up to 1,536 characters,
   so every user skill costs context in every session.
 - Claude Code reads `AGENTS.md` natively since 2.1.277, but by default only when
-  no
-  `CLAUDE.md` exists in the working directory or above it (memory page, read on
+  no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working
+  directory or above it (memory page, read on
   2026-10-28). ADR 0012's premise still holds.
 - A plugin cannot carry always-loaded memory: a `CLAUDE.md` at the plugin root
   is not loaded, and `claude plugin validate` warns about it. Its settings apply
@@ -78,12 +81,12 @@ What Claude Code does, verified in `code.claude.com/docs` and against CLI
   flat files only and says nothing about subdirectories (memory page, read on
   2026-10-28).
 
-The spike answered the three loading questions on the CLI and the desktop app,
-once per variant, and did not test Cowork:
+The spike, on Claude Code 2.1.310, answered the three loading questions on the
+CLI and the desktop app, once per variant, and did not test Cowork:
 
 - User rules without `paths` load at session start.
 - Rules with `paths`, user or project, load only after a matching read, in the
-  main session and in every subagent.
+  main session and in the subagents probed.
 - `omitClaudeMd` drops the `CLAUDE.md` files and every rule without `paths` from
   a subagent, user rules included, but not the rules with `paths`.
 
@@ -231,24 +234,28 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
    - A new line for the test role is added. Its name is left to M-1.
    - Agent files are defined only for roles that need a guarantee or a contract,
      such as a read-only boundary or a report shape.
-10. **ATDD is a project workflow tool, and delegation is an architecture filled
-    by user-level engines.**
-    - The ATDD procedure (the oracle and implementation skills, and the levels
-      that send every feature to it) moves from the user level to the projects
-      that install the tool; P-3 carries the move. This replaces the parts of
-      ADR 0003 that presume ATDD is the user-level workflow of every feature,
-      including its consequence that the global `CLAUDE.md` lists the levels.
+10. **ATDD is a project workflow tool, and delegation is a choice in either
+    session architecture, filled by user-level engines.**
+    - The ATDD procedure (the oracle and implementation skills) moves from the
+      user level to the projects that install the tool; P-5 carries the move.
+      The levels in the global `CLAUDE.md` that send features to it are C-01,
+      which M-2 resolves. This replaces the parts of ADR 0003 that enforce the
+      protocol from the user level for the tasks its levels name, including its
+      consequence that the global `CLAUDE.md` lists the levels.
     - The guards an oracle tag switches on stay in the base (principle 4).
-    - ADR 0012's decision stands: instructions live in `CLAUDE.md` alone, and a
-      delegate gets its instructions from the task package. Its reasons that
-      assume every task is delegated now hold wherever a task is delegated. The
-      decision is kept because any repository may be delegated to in any
-      session.
-    - A nuance to ADR 0012: rules with `paths`, user or project, reach a
-      subagent on a matching read without passing through the orchestrator,
-      `omitClaudeMd` or not (spike, sections 2 and 3). The task package is the
-      only source of a delegate's instructions except for those rules, so a
-      path-scoped rule must suit a delegate as well as the session.
+    - ADR 0012's decision that instructions live in `CLAUDE.md` alone stands;
+      any repository may be delegated to in any session. A delegate gets its
+      instructions from the task package when the delegation is built with
+      `task-package`; a one-off query does not need one (M-4). Delegation
+      happens in the direct architecture too, so this does not depend on the
+      architecture.
+    - The task package is not the only source of a delegate's instructions,
+      contrary to ADR 0012 and the first decision of ADR 0015. A subagent without
+      `omitClaudeMd` gets the `CLAUDE.md` files and the rules without `paths`,
+      `personal.md` included. Every subagent probed gets the rules with `paths`
+      on a matching read, without passing through the orchestrator (spike,
+      sections 2 to 4). A path-scoped rule must therefore suit a delegate as
+      well as the session.
 
 ### Scope of ADRs 0025 and 0026
 
@@ -262,11 +269,13 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
     - ADR 0025, decision 7: the values in `global/` are neutral to the
       subscription plan. A plan's windows are a constraint each user applies in
       `personal/`: the preference for Sonnet 5.5 at high effort over Opus 5.5
-      for standard work under the Pro plan moves there. The values are
+      for standard work under the Pro plan moves there, and so do the Pro-plan
+      routes of the provisional matrix of ADR 0025 decision 9. The values are
       calibrated by this project's own experiments, not fixed by a record.
-    - Decision 3 stands: defaults in `global/`, overrides in `personal/`. The
-      matrix applies to delegations built with `task-package`, the orchestration
-      module, whatever the session architecture.
+    - ADR 0025 decision 3 stands: defaults in `global/`, overrides in
+      `personal/`. The matrix applies to delegations built with `task-package`,
+      a user skill that the orchestration module uses, whatever the session
+      architecture.
 12. **The delegation report** (M-7): ADR 0026, decision 1 keeps the compact
     inline envelope and the full report in the scratchpad for delegations built
     with `task-package`, whatever the session architecture. A one-off query
@@ -280,19 +289,24 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
 
 13. **The installer owns one delimited block of `~/.claude/CLAUDE.md`, not the
     file.** The block holds a copy of the user core, never an import.
-    - The core is not also installed as a rule, so it loads once on every
-      surface that loads `~/.claude/CLAUDE.md`, Cowork included.
+    - The core is not also installed as a rule, so it loads once. The block
+      works on the CLI and the desktop app, which is the current behaviour, and
+      it is one form; Cowork waits on the probe, for this form as for a rule.
     - Everything outside the block belongs to the user and is never changed.
     - When the file is missing, the installer creates it holding only the block.
     - First migration: when the file has no block and is an unmodified copy of a
       previously installed version, the installer migrates it to the block, with
       a backup under ADR 0027.
-    - In any other case, including an edited copy without a block or anything
-      but exactly one intact block, the installer reports why and writes nothing
-      to the file.
+    - When the file has no block and is not a previously installed copy, the
+      installer appends the block at the end, with a backup under ADR 0027,
+      leaves the rest untouched and reports it. For this file that replaces the
+      refusal and `--adopt` of ADR 0027 decision 4.
+    - When the file holds anything but exactly one intact block, such as two
+      blocks or a broken marker, the installer reports why and writes nothing to
+      the file.
     - M-2 fixes the details, such as how an unmodified copy is recognised.
-    - The markers and the block format are left to M-2 and are public interface
-      from the release that introduces them (ADR 0031, item 4).
+    - The block is a new item of the public interface (ADR 0031), minor-class.
+      Its markers and format are left to M-2.
     - This replaces the audit plan's earlier decision that the installer stops
       owning the file altogether. It amends ADR 0001, whose generic layer is
       "installed into `~/.claude`" and today copies `global/CLAUDE.md` over the
@@ -306,10 +320,10 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
     - Module rules stay rules.
 15. **The fallback for a surface that does not load user rules** is the block of
     decision 13. Wherever `~/.claude/CLAUDE.md` loads, the core applies; module
-    rules and `personal.md` may not. By principle 3 that is a valid environment.
-    That the safety guards (the hooks and permission rules of `settings.json`)
-    also apply on every surface that loads `~/.claude/CLAUDE.md` is not
-    verified; it waits on the Cowork probe.
+    rules and `personal.md` may not. By principle 3 that is a valid environment
+    only if the safety guards (the hooks and permission rules of
+    `settings.json`) apply there too. That is not verified, and it waits on the
+    Cowork probe.
 16. **Modules have a plugin-compatible structure and are not plugins**
     (principle 5). A module could later be packaged as a plugin for the parts
     plugins support without moving files, but this project does not distribute
@@ -339,11 +353,13 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
     The documentation states no deduplication for that case; it states one only
     for `AGENTS.md`.
 - **The core as a user rule, with no fallback until Cowork is probed.**
-  Rejected: Cowork is a surface the human uses, and it has not been probed. A
-  regular `~/.claude/CLAUDE.md` is the form that works today on every surface,
-  the premise of ADR 0001. The documentation does not exclude regular rule files
-  in Cowork, so a rule may well load there, but nothing shows it yet; the block
-  keeps the core from depending on it.
+  Rejected: neither form has been probed in Cowork, and the documentation
+  excludes neither. The block works on the CLI and the desktop app, which is the
+  current behaviour, and it is one form. Cowork waits on the probe for both.
+- **Report and write nothing when `~/.claude/CLAUDE.md` has no block and is not
+  a previously installed copy.** Rejected: the fallback would not arrive until
+  the user acts, and the block is appended with a backup and leaves the rest
+  untouched.
 - **The installer stops owning `~/.claude/CLAUDE.md` altogether**, the audit
   plan's earlier wording. Rejected: the fallback then has no writer, and a user
   would have to copy and update the core by hand on every release.
@@ -360,7 +376,7 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
     puts the core outside the instruction files that `InstructionsLoaded` audits
     and the spike measured.
 - **Delegation by the session's own judgement of complexity, with "use
-  proactively" agent descriptions (R-04).** Taken in part, as decision 1's
+  proactively" agent descriptions (R-04).** Taken in part, as principle 1's
   middle point:
   - the session looks for and suggests delegation in the listed kinds of task;
   - it starts on its own only read-only Claude delegations that protect its
@@ -410,10 +426,12 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
 
 ## Consequences
 
-- ADRs 0001, 0002, 0003, 0008, 0011, 0012, 0015, 0025 and 0026 are accepted and
-  frozen. Each gains `amended by 0032` in its front matter status, and their
-  sentences stay as written. ADR 0029's consequence that names CI and rulesets
-  as the guarantee also stays as written; this record restates it.
+- ADRs 0001, 0002, 0003, 0008, 0011, 0012, 0015, 0025, 0026, 0027 and 0029 are
+  accepted and frozen. Each gains `amended by 0032` in its front matter status,
+  and their sentences stay as written.
+- ADRs 0010, 0013, 0019, 0021 and 0024 also call CI or the rulesets the
+  guarantee. They are stale references, left as written because they are
+  immutable, and this record restates them.
 - Once this record is accepted, the invariant in the root `CLAUDE.md` that calls
   CI and rulesets "the guarantee" is restated as above in the same pull request.
 - Nothing under `global/` changes here. M-1, M-2, M-4, M-6 and M-7 apply these
@@ -425,7 +443,7 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
   - M-6: routing.
   - M-7: the report.
 
-  P-3 moves the ATDD skills to the projects that install the tool. The remaining
+  P-5 moves the ATDD skills to the projects that install the tool. The remaining
   conflicts of the audit plan (C-01, C-03 to C-10, C-12 and C-14) are assigned
   to M-1 (C-08), M-2, P-1, M-4, M-5 and Q-3.
 - Under ADR 0031 these changes are major-class:
@@ -436,13 +454,16 @@ fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
   - the ATDD skills leave the user level (a removal from item 1).
 
   These are minor-class additions: the values `Implement: session` and `Review:
-  claude`, the test-role line, and the new rule files under `~/.claude/rules/`.
+  claude`, the test-role line, the block in `~/.claude/CLAUDE.md` as a new item
+  of the interface, and the new rule files under `~/.claude/rules/`.
   ADR 0031 says v1.0.0 waits on a planned reorientation of the project; these
   changes are that reorientation.
 - The first install that writes the block migrates an unmodified copy of a
-  previous version, with a backup (decision 13). A user who edited the installed
-  `~/.claude/CLAUDE.md` gets a report and no write, and moves those edits
-  outside the block by hand. From then on, edits outside the block are kept.
+  previous version, with a backup (decision 13). A `~/.claude/CLAUDE.md` that is
+  not such a copy, an edited copy included, gets the block appended at the end,
+  with a backup and a report, and the rest stays as it was. A user whose edited
+  copy still holds the old installed text then has it next to the block and
+  removes it by hand. From then on, edits outside the block are kept.
 - On a surface that loads `~/.claude/CLAUDE.md` but not user rules, the user's
   personal rule does not load, so preferences such as language and accessibility
   are lost there. Known gap, untested: Cowork was not probed, and a probe there
