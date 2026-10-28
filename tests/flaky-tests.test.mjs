@@ -54,8 +54,8 @@ describe('AC-2 (#66) a shell that exits before reading the event is reported by 
 });
 
 describe('AC-3 (#66) codex-integrate does not depend on the name of the temporary directory', { skip: posix }, () => {
-  test('AC-3 (#66) every codex-integrate case passes when TMPDIR holds the ids w1 to w5', { timeout: 280000 }, () => {
-    const tmpdirWithIds = tmp('cw-flaky-w1-w2-w3-w4-w5-');
+  test('AC-3 (#66) every codex-integrate case passes when TMPDIR holds the ids w1 to w9', { timeout: 280000 }, () => {
+    const tmpdirWithIds = tmp('cw-flaky-w1-w2-w3-w4-w5-w6-w7-w8-w9-');
     const env = { ...process.env, TMPDIR: tmpdirWithIds };
     // A child of a test run would otherwise report to its parent instead of through the reporter.
     delete env.NODE_TEST_CONTEXT;
@@ -76,18 +76,24 @@ const WRITES = [
   { kind: 'chmod to an executable mode', pattern: /\b(?:f|l)?chmod(?:Sync)?\s*\(/g },
 ];
 
-function lastCallArgument(text) {
+function chmodMode(text) {
+  const args = [];
   let depth = 0;
   let start = 0;
   // Skip quoted strings and count nesting so commas in a path expression are not argument separators.
   for (const match of text.matchAll(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[()[\]{},]/g)) {
     const token = match[0];
     if (token === ')' && depth === 0) {
-      return text.slice(start, match.index).trim().match(new RegExp(`^${MODE}$`))?.[1];
+      const last = text.slice(start, match.index).trim();
+      if (last) args.push(last);
+      return (args.length > 1 ? args[1] : args[0])?.match(new RegExp(`^${MODE}$`))?.[1];
     }
     if ('([{'.includes(token)) depth += 1;
     else if (')]}'.includes(token)) depth -= 1;
-    else if (token === ',' && depth === 0) start = match.index + 1;
+    else if (token === ',' && depth === 0) {
+      args.push(text.slice(start, match.index).trim());
+      start = match.index + 1;
+    }
   }
 }
 
@@ -96,7 +102,7 @@ function executableWrites(name, text, allowed = ALLOWED) {
   for (const { kind, pattern } of WRITES) {
     for (const match of text.matchAll(pattern)) {
       if (kind.startsWith('writeFileSync') && /\bmkdirSync\s*\([^;]*$/.test(text.slice(0, match.index))) continue;
-      const mode = kind.startsWith('chmod') ? lastCallArgument(text.slice(match.index + match[0].length)) : match[1];
+      const mode = kind.startsWith('chmod') ? chmodMode(text.slice(match.index + match[0].length)) : match[1];
       if (!mode) continue;
       const quoted = mode.startsWith("'") || mode.startsWith('"');
       const value = quoted ? mode.slice(1, -1) : mode;
@@ -155,6 +161,15 @@ describe('AC-4 (#66) a fake executable has run once before a hook runs it', { sk
           assert.equal(executableWrites('fixture.mjs', chmod).length, 1, chmod);
         }
       }
+      for (const chmod of [
+        `chmod(file, ${mode}, cb);`,
+        `fchmod(fd, ${mode}, cb);`,
+        `lchmod(p, ${mode}, cb);`,
+        `chmodSync(file, ${mode},);`,
+        `handle.chmod(${mode});`,
+      ]) {
+        assert.equal(executableWrites('fixture.mjs', chmod).length, 1, chmod);
+      }
       const mkdir = `mkdirSync(dir, { mode: ${mode} });`;
       assert.deepEqual(executableWrites('fixture.mjs', mkdir), [], mkdir);
     }
@@ -162,6 +177,10 @@ describe('AC-4 (#66) a fake executable has run once before a hook runs it', { sk
       assert.deepEqual(executableWrites('fixture.mjs', `writeFileSync(file, '', { mode: ${mode} });`), []);
       assert.deepEqual(executableWrites('fixture.mjs', `chmodSync(file, ${mode});`), []);
       assert.deepEqual(executableWrites('fixture.mjs', `chmodSync(join(dir, 'name'), ${mode});`), []);
+      for (const call of ['chmod', 'fchmod', 'lchmod']) {
+        const chmod = `${call}(file, ${mode}, cb);`;
+        assert.deepEqual(executableWrites('fixture.mjs', chmod), [], chmod);
+      }
     }
     const directory = `chmodSync(wt, ${493});`;
     assert.deepEqual(executableWrites('guard-git-local-work.test.mjs', directory), []);
