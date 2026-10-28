@@ -1,5 +1,5 @@
 ---
-status: accepted, amended by [0033](0033-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
+status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 date: 2026-10-21
 ---
 # 0026. Return a compact envelope and keep the full delegation report in the scratchpad

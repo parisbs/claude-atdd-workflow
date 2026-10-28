@@ -2,7 +2,7 @@
 status: proposed
 date: 2026-10-28
 ---
-# 0033. Reorient the workflow into a toolbox the human directs
+# 0032. Reorient the workflow into a toolbox the human directs
 
 - Amends:
   - [0001](0001-separate-generic-personal-and-repository-configuration.md) (`global/CLAUDE.md` installed as the whole `~/.claude/CLAUDE.md`)
@@ -56,9 +56,10 @@ What Claude Code does, verified in `code.claude.com/docs` and against CLI
   `hooks`, `mcpServers` and `permissionMode` (read on 2026-10-23, not read
   again). `guard-readonly` and the deny rules for secrets depend on exactly
   those.
-- `claude plugin validate` reports a plugin name that starts with `claude-` as
-  an error, because it passes as one of Anthropic's own (plugin manifest
-  reference, read on 2026-10-28).
+- `claude plugin validate` reports as an error a plugin name that starts with
+  `claude-`, `anthropic-`, `anthropics-` or `cc-plugin-`, because it passes as
+  one of Anthropic's own; `claude plugin init` and `claude plugin tag` refuse
+  it (plugin manifest reference, read on 2026-10-28).
 - Imports organise a long file but do not reduce its context cost, because
   imported files load with the file that imports them (memory page).
 - In Cowork sessions Claude Code skips any import in a user-scope file that
@@ -283,6 +284,12 @@ fail-open and fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
     (principle 5). A module could later be packaged as a plugin for the parts
     plugins support without moving files, but this project does not distribute
     plugins.
+    - A module's name is its name as a plugin would be, so it must pass
+      `claude plugin validate`: it never starts with `claude-`, `anthropic-`,
+      `anthropics-` or `cc-plugin-`. The installer's module list and M-2 keep
+      to it.
+    - The rule files keep the prefix of decision 14, which names files, not
+      modules: `claude-atdd-workflow-<module>.md`.
 
 ## Alternatives considered
 
@@ -347,7 +354,7 @@ fail-open and fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
 ## Consequences
 
 - ADRs 0001, 0002, 0003, 0008, 0011, 0012, 0025 and 0026 are accepted and
-  frozen. Each gains `amended by 0033` in its front matter status, and their
+  frozen. Each gains `amended by 0032` in its front matter status, and their
   sentences stay as written. ADR 0029's consequence that names CI and rulesets
   as the guarantee also stays as written; this record restates it.
 - Once this record is accepted, the invariant in the root `CLAUDE.md` that calls
@@ -385,10 +392,6 @@ fail-open and fail-closed rules of ADRs 0002, 0010 and 0030 are unchanged.
   package (spike, section 2).
 - A module meant for every project carries no `paths`. A user rule with `paths`
   acts per project, through subagents too.
-- If a module is ever packaged as a plugin, its name cannot start with
-  `claude-`, which `claude plugin validate` reports as an error. The
-  `claude-atdd-workflow-` prefix of decision 14 applies to rule files only, not
-  to plugin names.
 - The human answers for the combination of architecture, tool and engines. The
   workflow no longer stops a combination it would not have chosen. It only
   guards what the agent does on its own.
