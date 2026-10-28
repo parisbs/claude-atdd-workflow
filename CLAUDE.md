@@ -36,9 +36,12 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   `guard-readonly` is the second exception: it fails closed,
   denying unread events and commands, and its entry in the researcher's frontmatter declares
   `onFailure: "block"` so a call is blocked when the hook cannot start, fails or times out.
-- The hooks are a safety net for one machine, not a boundary: they read a command as words and allow a form
-  they cannot read, except `guard-readonly`, which denies a form it cannot read. The repository's CI and
-  rulesets are the guarantee (ADR 0002, 0008).
+- The hooks are a safety net for one machine that limits what the agent does on its own, not a boundary: they
+  read a command as words and allow a form they cannot read, except `guard-readonly`, which denies a form it
+  cannot read. That net, with human review at the gates that are already human (the control-plane merge,
+  ADRs and oracle tags), is the workflow's protection against the agent. GitHub cannot tell the agent from the
+  human, who share a token, so CI and rulesets are tools a human or team applies to themselves, not a
+  guarantee against the agent (ADR 0032, restating ADR 0002 and 0008).
 - A hook that prints `allow` lifts the permission prompt for the whole command, and `Verdict` prints nothing
   for an allow, which means no opinion. Print one only for a command verified end to end, and only when it
   is nothing but that command (ADR 0010).

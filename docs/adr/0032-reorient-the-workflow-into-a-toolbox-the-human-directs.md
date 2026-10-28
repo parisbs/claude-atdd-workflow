@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-28
 ---
 # 0032. Reorient the workflow into a toolbox the human directs
