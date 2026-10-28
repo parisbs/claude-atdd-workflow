@@ -69,7 +69,8 @@ interface below. The commit type is evidence for the bump, not the rule.
    tags; `.atdd/test-paths` at the oracle tag, one glob per line, and the
    default test paths when it is absent; the default control-plane and
    test-configuration paths; the protected branches (`main`, `master`, the
-   remote default) and squash-only merges; the `needs-human` label; `AC-n`
+   remote default) and squash-only merges; the `needs-human` label and the
+   `atdd` label (ADR 0030); `AC-n`
    identifiers in test names; ADR directories (`docs/adr/`, `docs/adrs/`,
    `docs/decisions/`), `NNNN-slug.md` names, the README index and the front
    matter `status` with its words and transitions (ADR 0020, 0021); and the

@@ -19,6 +19,7 @@ links point to this repository.
 - feat(guard-git): ask before deleting or moving an oracle tag in the main session ([#56](https://github.com/parisbs/claude-atdd-workflow/pull/56))
 - test(install): cover the codex prewarm timeout, stdin, distinct packages and label wording ([#58](https://github.com/parisbs/claude-atdd-workflow/pull/58))
 - docs(experiments): record rules loading probes on CLI and desktop ([#59](https://github.com/parisbs/claude-atdd-workflow/pull/59))
+- **Breaking**: feat(guard-git): check the ATDD oracle in the merge decision ([#61](https://github.com/parisbs/claude-atdd-workflow/pull/61))
 
 ### New tools
 
