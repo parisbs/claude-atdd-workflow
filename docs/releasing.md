@@ -6,9 +6,9 @@ an annotated `vX.Y.Z` tag on `main` ([ADR 0005](adr/0005-conventional-commits-an
 `/release-prep X.Y.Z` follows this document.
 
 The flow: decide the version from what changed since the last tag, prepare it on a `release/X.Y.Z` branch,
-merge that branch through a pull request, then tag the merge commit and publish. The agent prepares every step;
-the human merges the pull request, pushes the tag and publishes the release, which global `CLAUDE.md` reserves
-to the human.
+merge that branch through a pull request, then tag the merge commit and publish. The agent prepares every step.
+The human merges the release pull request, because it carries `needs-human`, and pushes the tag and publishes
+the release, which global `CLAUDE.md` reserves to the human.
 
 ```mermaid
 flowchart LR
@@ -49,7 +49,8 @@ From an updated `main`, create `release/X.Y.Z` and:
 4. Run `npm test`.
 
 Commit as `chore(release): prepare X.Y.Z`, prepare the pull request with `/pr-prep` and label it `needs-human`:
-a release pull request touches no control-plane path, so nothing else stops an orchestrator from merging it.
+a release pull request that changes only the changelog, `README.md` and the roadmap touches no control-plane
+path, so nothing else stops an orchestrator from merging it.
 Its body lists the classification from step 1. The changelog changes only here.
 
 ## 3. Tag and publish
