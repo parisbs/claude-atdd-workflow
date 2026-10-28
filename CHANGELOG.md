@@ -5,9 +5,9 @@ follow [ADR 0031](docs/adr/0031-version-releases-by-their-effect-on-the-public-i
 [docs/releasing.md](docs/releasing.md) says how a section is written. An entry marked **Breaking** changes the
 public interface that ADR defines; before v1.0.0 such a change bumps the minor version.
 
-Each entry links its pull request, or its commit when it has none. Links of the form `claude-workflow#N` point to the private `claude-workflow`
-repository this project continues (ADR 0022), which is archived and not public; `#N` links point to this
-repository.
+Each entry links its pull request, or its commit when it has none. Links of the form `claude-workflow#N` point to
+the private `claude-workflow` repository this project continues (ADR 0022), which is archived and not public; `#N`
+links point to this repository.
 
 ## [Unreleased]
 
