@@ -1,5 +1,5 @@
 ---
-status: accepted; the version range and the job-status permission superseded by [0017](0017-bound-output-and-block-on-codex-instead-of-polling.md)
+status: accepted; the version range and the job-status permission superseded by [0017](0017-bound-output-and-block-on-codex-instead-of-polling.md), and the implementer's effort ceiling by [0028](0028-pin-codex-subagent-offline-first-and-set-role-ceilings.md)
 date: 2026-10-06
 ---
 # 0014. Run Codex through two registrations named by role and install them from this repository

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-23
 ---
 # 0028. Pin Codex subagent offline-first and set role ceilings
