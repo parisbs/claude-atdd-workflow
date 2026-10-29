@@ -41,6 +41,14 @@ If the branch has an `oracle/<branch>` tag, run
 request unless the human approved that change in its own commit. Explain every
 configuration change and added skip it lists.
 
+The guard asks before amending frozen tests in the main session, and the human
+approves the amendment in the tool's prompt; subagents and bypassPermissions
+are denied (ADR 0033). An approved amendment goes in its own commit. Then move
+the oracle tag to that commit; moving it asks in the main session (ADR 0029).
+
+Until the oracle tag moves, the merge guard (ADR 0030) finds test paths changed
+against the tag, so the agent's merge cannot go through without the human.
+
 Before merging, the merge guard compares the pull request's head with the
 `oracle/<head branch>` tag on the base repository's remote. It asks when test
 paths changed, the label `atdd` has no tag, or the oracle cannot be read;

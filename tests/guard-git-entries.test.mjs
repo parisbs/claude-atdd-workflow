@@ -191,8 +191,10 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     for (const options of [{ hooksDir: broken }, { path: NO_NODE() }]) {
       const result = runConfigured(event('git status'), options);
       assert.deepEqual(outcome(result), ['allow', false], JSON.stringify(options));
-      assert.equal(result.failures.length, 1, 'the general entry shows a non-blocking error');
-      assert.match(result.failures[0], /--skip-merge/);
+      // The Bash entry of guard-tests (#64) fails open beside the general entry.
+      assert.equal(result.failures.length, 2, 'the general entry and the test guard show non-blocking errors');
+      assert.ok(result.failures.some((f) => /--skip-merge/.test(f)), 'the general entry shows a non-blocking error');
+      assert.ok(result.failures.some((f) => /guard-tests\.mjs/.test(f)), 'the test guard shows a non-blocking error');
     }
   });
 

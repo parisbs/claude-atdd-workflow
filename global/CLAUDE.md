@@ -130,11 +130,11 @@ could weaken its own controls: `.github/workflows/ci.yml`,
     `git push` and every `gh` command off a read-only list (ADR 0013).
   - Orchestrator only: pushing the work branch, opening pull requests, issues,
     labels, milestones and comments, and merging under the conditions below.
-  - Human only: accepting or rejecting an ADR, amending a frozen test,
-    publishing a release, creating, moving or deleting an oracle tag (the
-    guard asks in the main session, and the agent may run it after the human
-    approves; deleting and moving stay denied for subagents and in
-    bypassPermissions), force pushes and `--admin`.
+  - Human only: accepting or rejecting an ADR, amending a frozen test (the
+    guard asks in the main session; the human approves in the prompt),
+    creating, moving or deleting an oracle tag (it asks, and the agent runs it
+    once approved), publishing a release, force pushes and `--admin`. Amending, deleting
+    and moving are denied to subagents and in bypassPermissions (ADR 0029, 0033).
 - The orchestrator merges without asking only when every required check is
   green, `oracle-check` is clean, the review the repository declares with
   `Review:` ran with no open finding, no changed file is on the control plane

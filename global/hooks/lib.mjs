@@ -17,9 +17,14 @@ export function readEvent() {
 }
 
 // Runs git without a shell. Returns trimmed stdout, or undefined on failure.
-export function git(cwd, args) {
-  const run = spawnSync('git', args, { cwd, encoding: 'utf8' });
-  if (run.error || run.status !== 0) return undefined;
+export function git(cwd, args, options = {}) {
+  const { onError, ...spawnOptions } = options;
+  const run = spawnSync('git', args, { cwd, encoding: 'utf8', ...spawnOptions });
+  if (run.error) {
+    onError?.(run.error);
+    return undefined;
+  }
+  if (run.status !== 0) return undefined;
   return run.stdout.trim();
 }
 
@@ -27,10 +32,12 @@ const severity = { allow: 0, ask: 1, deny: 2 };
 
 // Collects findings and prints the most severe one as the hook decision.
 export class Verdict {
-  constructor() {
+  constructor(maxReasons = Infinity) {
     this.decision = 'allow';
     this.reasons = [];
     this.explicitAllow = undefined;
+    this.maxReasons = maxReasons;
+    this.moreReasons = 0;
   }
 
   // An allow that is printed, as opposed to staying silent, lifts the permission
@@ -41,7 +48,10 @@ export class Verdict {
 
   add(decision, reason) {
     if (severity[decision] > severity[this.decision]) this.decision = decision;
-    if (decision !== 'allow') this.reasons.push(reason);
+    if (decision !== 'allow') {
+      if (this.reasons.length < this.maxReasons) this.reasons.push(reason);
+      else this.moreReasons += 1;
+    }
   }
 
   emit() {
@@ -63,7 +73,7 @@ export class Verdict {
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: this.decision,
-          permissionDecisionReason: this.reasons.join(' '),
+          permissionDecisionReason: this.reasons.join(' ') + (this.moreReasons ? ` ${this.moreReasons} more paths require the same approval.` : ''),
         },
       }),
     );

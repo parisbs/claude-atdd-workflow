@@ -230,8 +230,9 @@ describe('install (#27)', () => {
     ]);
   });
 
+  // Since #64 the test guard also reads Bash commands that write a frozen test, through an entry of its own.
   test('AC-6 (#27) an install leaves the test guard matching Edit, Write and NotebookEdit', () => {
-    assert.deepEqual(handlers('guard-tests.mjs').map((h) => h.matcher), ['Edit|Write|NotebookEdit']);
+    assert.deepEqual(handlers('guard-tests.mjs').map((h) => h.matcher).sort(), ['Bash', 'Edit|Write|NotebookEdit']);
   });
 
   const check = (version) => spawnSync(

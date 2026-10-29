@@ -210,6 +210,12 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   in the main session `guard-git` asks, saying whether the pull request is still
   open or which commits a move goes from and to; subagents and
   `bypassPermissions` stay denied (ADR 0029).
+- #64: an approved amendment of a frozen test still needed a terminal, and Bash
+  and Codex worktrees passed no guard. Implemented: in the main session
+  `guard-tests` asks, naming the path, the tag, its commit and whether the file
+  is amended, added or deleted; subagents and `bypassPermissions` stay denied;
+  a Bash entry reads the common writing forms, and `codex-integrate` applies
+  nothing that changes a frozen test (ADR 0033, which names the known gaps).
 
 ## Efficiency (milestone `efficiency`)
 

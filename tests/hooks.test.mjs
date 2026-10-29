@@ -65,7 +65,10 @@ function bashOffline(cwd, command) {
 }
 // guard-git run directly, with a mode or without one.
 const guardGit = (event, env, ...args) => run('guard-git.mjs', { tool_name: 'Bash', ...event }, env, args);
-const edit = (cwd, file_path) => run('guard-tests.mjs', { cwd, tool_name: 'Edit', tool_input: { file_path } });
+// guard-tests run directly. `session` adds the fields that tell a subagent from the main session (#64): a
+// subagent's event carries agent_id.
+const edit = (cwd, file_path, session = {}) => run('guard-tests.mjs', { cwd, tool_name: 'Edit', tool_input: { file_path }, ...session });
+const SUBAGENT = { agent_id: 'agent-1', agent_type: 'claude-implementer' };
 
 describe('guard-git', () => {
   let dir;
@@ -786,10 +789,11 @@ describe('guard-tests', () => {
     sh(dir, 'add', '.');
     sh(dir, 'commit', '-q', '-m', 'test: add login acceptance tests');
     sh(dir, 'tag', 'oracle/feature/login');
-    assert.equal(edit(dir, join(dir, 'app/src/test/kotlin/LoginTest.kt')).decision, 'deny');
-    assert.equal(edit(dir, 'app/src/androidTest/kotlin/New.kt').decision, 'deny');
-    assert.equal(edit(dir, join(dir, 'test/widget_test.dart')).decision, 'deny');
-    assert.equal(edit(dir, join(dir, 'supabase/tests/rls.sql')).decision, 'deny');
+    // Since #64 the main session is asked, so the human can approve an amendment, and a subagent is denied.
+    for (const path of [join(dir, 'app/src/test/kotlin/LoginTest.kt'), 'app/src/androidTest/kotlin/New.kt', join(dir, 'test/widget_test.dart'), join(dir, 'supabase/tests/rls.sql')]) {
+      assert.equal(edit(dir, path).decision, 'ask', path);
+      assert.equal(edit(dir, path, SUBAGENT).decision, 'deny', path);
+    }
   });
 
   test('allows production code and asks for test configuration', () => {
@@ -804,9 +808,10 @@ describe('guard-tests', () => {
     sh(dir, 'add', '.');
     sh(dir, 'commit', '-q', '-m', 'test: declare test paths');
     sh(dir, 'tag', 'oracle/feature/custom');
-    assert.equal(edit(dir, join(dir, 'specs/a/b.kt')).decision, 'deny');
-    assert.equal(edit(dir, join(dir, 'app/src/test/kotlin/LoginTest.kt')).decision, 'allow');
-    assert.equal(edit(dir, join(dir, '.atdd/test-paths')).decision, 'deny');
+    assert.equal(edit(dir, join(dir, 'specs/a/b.kt')).decision, 'ask');
+    assert.equal(edit(dir, join(dir, 'specs/a/b.kt'), SUBAGENT).decision, 'deny');
+    assert.equal(edit(dir, join(dir, 'app/src/test/kotlin/LoginTest.kt'), SUBAGENT).decision, 'allow');
+    assert.equal(edit(dir, join(dir, '.atdd/test-paths'), SUBAGENT).decision, 'deny');
   });
 
   test('ignores files outside a git repository', () => {
@@ -878,7 +883,8 @@ describe('guard-tests and oracle-check in a linked worktree (#45)', () => {
     sh(cwd, 'add', '.');
     sh(cwd, 'commit', '-q', '-m', message);
   };
-  const write = (cwd, file_path) => run('guard-tests.mjs', { cwd, tool_name: 'Write', tool_input: { file_path, content: 'x\n' } });
+  // A delegate in a linked worktree is a subagent, so the deny cases carry agent_id (#64).
+  const write = (cwd, file_path, session = {}) => run('guard-tests.mjs', { cwd, tool_name: 'Write', tool_input: { file_path, content: 'x\n' }, ...session });
   const check = (cwd) => spawnSync(process.execPath, [join(hooks, 'oracle-check.mjs')], { cwd, encoding: 'utf8' });
   // An allow must come from evaluating the rule, not from failing open.
   const evaluatedAllow = (r) => {
@@ -907,36 +913,44 @@ describe('guard-tests and oracle-check in a linked worktree (#45)', () => {
 
   test('AC-1 denies Edit and Write on a test path in a worktree whose HEAD is the oracle commit of another branch', () => {
     const wt = tree('at-oracle', 'oracle/feature/x');
-    const r = edit(wt, join(wt, 'test/x.test.ts'));
+    const r = edit(wt, join(wt, 'test/x.test.ts'), SUBAGENT);
     assert.equal(r.decision, 'deny');
     assert.match(r.reason, /oracle\/feature\/x/);
-    assert.equal(write(wt, join(wt, 'test/new.test.ts')).decision, 'deny');
+    assert.equal(write(wt, join(wt, 'test/new.test.ts'), SUBAGENT).decision, 'deny');
+  });
+
+  test('AC-1 (#64) asks the main session, naming the oracle tag, for Edit and Write on a test path in a worktree bound by the oracle', () => {
+    const wt = tree('main-session', 'oracle/feature/x');
+    const r = edit(wt, join(wt, 'test/x.test.ts'), { permission_mode: 'default' });
+    assert.equal(r.decision, 'ask', r.reason);
+    assert.match(r.reason, /oracle\/feature\/x/);
+    assert.equal(write(wt, join(wt, 'test/new.test.ts'), { permission_mode: 'default' }).decision, 'ask');
   });
 
   test('AC-1 resolves the oracle from the worktree of the edited file, not from the session cwd', () => {
     const wt = tree('cwd-elsewhere', 'oracle/feature/x');
-    assert.equal(edit(dir, join(wt, 'test/x.test.ts')).decision, 'deny');
+    assert.equal(edit(dir, join(wt, 'test/x.test.ts'), SUBAGENT).decision, 'deny');
   });
 
   test('AC-1 denies test paths in a worktree with commits after the oracle commit', () => {
     const wt = tree('after-oracle', 'oracle/feature/x');
     commit(wt, { 'src/x.ts': 'export const x = 1;\n' }, 'feat: implement x');
-    assert.equal(edit(wt, join(wt, 'test/x.test.ts')).decision, 'deny');
-    assert.equal(edit(wt, join(wt, 'test/new.test.ts')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'test/x.test.ts'), SUBAGENT).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'test/new.test.ts'), SUBAGENT).decision, 'deny');
     assert.equal(edit(wt, join(wt, 'src/x.ts')).decision, 'allow');
   });
 
   test('AC-1 denies test paths in a detached linked worktree that descends from the oracle', () => {
     const wt = tree('detached', 'oracle/feature/x');
     sh(wt, 'checkout', '-q', '--detach');
-    assert.equal(edit(wt, join(wt, 'test/x.test.ts')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'test/x.test.ts'), SUBAGENT).decision, 'deny');
   });
 
   test('AC-1 denies test paths when the oracle commit is reached through a merge', () => {
     const wt = tree('merged', 'main');
     commit(wt, { 'src/m.ts': 'export const m = 1;\n' }, 'feat: independent work');
     sh(wt, 'merge', '-q', '--no-ff', '--no-edit', 'oracle/feature/x');
-    assert.equal(edit(wt, join(wt, 'test/x.test.ts')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'test/x.test.ts'), SUBAGENT).decision, 'deny');
   });
 
   test('AC-1 honours an annotated oracle tag', () => {
@@ -944,14 +958,14 @@ describe('guard-tests and oracle-check in a linked worktree (#45)', () => {
     commit(wt, { 'test/a.test.ts': "test('AC-1 a', () => {});\n" }, 'test: add acceptance tests');
     sh(wt, 'tag', '-a', 'oracle/feature/annotated', '-m', 'approved');
     commit(wt, { 'src/a.ts': 'export const a = 1;\n' }, 'feat: implement a');
-    assert.equal(edit(wt, join(wt, 'test/a.test.ts')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'test/a.test.ts'), SUBAGENT).decision, 'deny');
   });
 
   test('AC-1 applies the test paths and configuration rules recorded in that oracle commit', () => {
     const wt = tree('custom', 'oracle/feature/custom');
     commit(wt, { '.atdd/test-paths': 'other/**\n' }, 'test: attempt to redefine paths');
-    assert.equal(edit(wt, join(wt, 'specs/b.kt')).decision, 'deny');
-    assert.equal(edit(wt, join(wt, '.atdd/test-paths')).decision, 'deny');
+    assert.equal(edit(wt, join(wt, 'specs/b.kt'), SUBAGENT).decision, 'deny');
+    assert.equal(edit(wt, join(wt, '.atdd/test-paths'), SUBAGENT).decision, 'deny');
     assert.equal(edit(wt, join(wt, 'other/a.kt')).decision, 'allow');
     assert.equal(edit(wt, join(wt, 'test/other.test.ts')).decision, 'allow');
     assert.equal(edit(wt, join(wt, 'package.json')).decision, 'ask');
@@ -962,7 +976,7 @@ describe('guard-tests and oracle-check in a linked worktree (#45)', () => {
     commit(wt, { 'src/near.ts': 'export const near = 1;\n' }, 'feat: advance');
     sh(wt, 'tag', 'oracle/feature/x2');
     commit(wt, { 'src/later.ts': 'export const later = 1;\n' }, 'feat: advance again');
-    const r = edit(wt, join(wt, 'test/x.test.ts'));
+    const r = edit(wt, join(wt, 'test/x.test.ts'), SUBAGENT);
     assert.equal(r.decision, 'deny');
     assert.match(r.reason, /oracle\/feature\/x2/);
     assert.doesNotMatch(r.reason, /oracle\/feature\/(x|y)\b/);
@@ -976,7 +990,7 @@ describe('guard-tests and oracle-check in a linked worktree (#45)', () => {
   test("AC-2 keeps a linked worktree branch's own oracle tag, even when it is not an ancestor", () => {
     const wt = tree('own', 'main');
     sh(wt, 'tag', 'oracle/worktree-agent-own', 'oracle/feature/x');
-    const r = edit(wt, join(wt, 'test/x.test.ts'));
+    const r = edit(wt, join(wt, 'test/x.test.ts'), SUBAGENT);
     assert.equal(r.decision, 'deny');
     assert.match(r.reason, /oracle\/worktree-agent-own/);
   });

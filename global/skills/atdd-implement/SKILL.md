@@ -29,9 +29,11 @@ Do not read the transcript of the session that wrote the tests.
   changing test configuration, adding static-analysis baselines, and
   introducing mocks or test-only branches into production code. Hard-coding
   results for the values the tests use is the same thing.
-- The user-level guard denies edits to the frozen test paths and asks before
-  edits to build and test configuration. Treat a denial as a stop sign, not as
-  an obstacle to route around through the shell.
+- The user-level guard asks before amending frozen test paths in the main
+  session, where the human approves the amendment in the tool's prompt;
+  subagents and bypassPermissions are denied (ADR 0033). It reads Edit,
+  Write, NotebookEdit and common Bash writes, and asks before edits to build
+  and test configuration. Treat a denial as a stop sign.
 
 ## Escape valve
 
@@ -40,10 +42,14 @@ When a test seems wrong, contradictory or impossible:
 1. Stop implementing.
 2. Explain which test, which criterion, and why, with evidence (the failing
    assertion and the behaviour the criterion actually asks for).
-3. Wait. If the human approves a change, it goes into its own commit,
+3. Wait for approval. The main session asks before amending a frozen test,
+   and the human approves in the tool's prompt. The amendment goes into its own commit,
    `test(<scope>): amend AC-n for #<issue>`, and the reason is recorded on the
-   issue. Moving the oracle tag asks in the main session; the agent may run it
-   after the human approves. Subagents and bypassPermissions stay denied.
+   issue. Then move the oracle tag to that commit; moving it asks in the main
+   session (ADR 0029). Subagents and bypassPermissions stay denied.
+
+Until the oracle tag moves, the merge guard (ADR 0030) finds test paths changed
+against the tag, so the agent's merge cannot go through without the human.
 
 ## Loop
 

@@ -138,14 +138,19 @@ cannot separate the effects of the workflow, developer, project and model.
     read-only `gh` commands, ADR 0013), `guard-readonly.mjs` (the researcher's
     closed list of shell reads; denies writes, execution and unread forms, and
     fails closed), `commands.mjs` (command knowledge shared by both guards),
-    `controlplane.mjs` (those paths), `guard-tests.mjs` (frozen acceptance
-    tests while an `oracle/<branch>` tag exists, and in a linked worktree while
-    an oracle tag's commit is an ancestor of HEAD), `oracle-check.mjs` (the
+    `controlplane.mjs` (those paths), `guard-tests.mjs` (asks before amending
+    frozen acceptance tests in the main session; denies subagents and
+    bypassPermissions, for Edit, Write, NotebookEdit and common Bash writes,
+    ADR 0033), `shell-writes.mjs` (reads those shell forms without executing
+    them). The freeze binds while an `oracle/<branch>` tag exists, and in a
+    linked worktree while an oracle tag's commit is an ancestor of HEAD.
+    The remaining hooks are `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle), `guard-codex.mjs` (Codex
     delegations pass `working_dir`, a worktree delegation starts from a clean
     directory, and a writing call of any declared Codex registration runs in a Codex
     worktree), `codex-integrate.mjs` (applies a Codex worktree's changes to the
-    work branch, runs `oracle-check` and removes the worktree) and `codex.mjs`
+    work branch, refusing all changes when frozen test paths are touched;
+    otherwise runs `oracle-check` and removes the worktree) and `codex.mjs`
     (where Codex makes its worktrees); `task-package.mjs` prints repository
     invariants, conventions, the verify command, HEAD, the oracle with its own
     commit and frozen tests, and the report schema.

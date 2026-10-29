@@ -122,17 +122,65 @@ describe('codex-integrate', () => {
     assert.equal(existsSync(worktree), false);
   });
 
-  test('AC-5 exits 1 and names the test when oracle-check finds a frozen test changed, with the changes applied and the worktree removed', () => {
+  // Issue #64: a frozen test changed in the worktree stops the integration before anything is applied, so a
+  // delegate's change to the oracle never reaches the work branch without the human (it replaces the case
+  // where the changes were applied and the script exited 1).
+  test('AC-11 (#64) applies nothing, keeps the worktree, exits 2 and names the test when the worktree changes a frozen test', () => {
     const dir = workBranch();
     const worktree = codexWorktree(dir);
     write(worktree, 'test/a.test.js', "test.skip('AC-1 works', () => {});\n");
     write(worktree, 'README.md', 'changed by codex\n');
+    const before = snapshot(dir);
 
     const r = integrate(dir, worktree);
-    assert.equal(r.status, 1, r.stdout + r.stderr);
-    assert.match(r.stdout, /test paths changed[\s\S]*test\/a\.test\.js/);
-    assert.equal(readFileSync(join(dir, 'README.md'), 'utf8'), 'changed by codex\n');
-    assert.equal(existsSync(worktree), false, 'the changes are on the work branch, so nothing is lost');
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stdout + r.stderr, /test\/a\.test\.js/, 'it names the frozen test');
+    assert.deepEqual(snapshot(dir), before, 'the work branch is untouched');
+    assert.equal(readFileSync(join(dir, 'README.md'), 'utf8'), 'base\n', 'not even the other change is applied');
+    assert.equal(existsSync(worktree), true, 'the worktree is kept');
+    assert.equal(readFileSync(join(worktree, 'test/a.test.js'), 'utf8'), "test.skip('AC-1 works', () => {});\n");
+  });
+
+  test('AC-11 (#64) applies nothing, keeps the worktree, exits 2 and names the test when the worktree adds a file under a test path', () => {
+    const dir = workBranch();
+    const worktree = codexWorktree(dir);
+    write(worktree, 'test/new.test.js', "test('AC-9 new', () => {});\n");
+    write(worktree, 'README.md', 'changed by codex\n');
+    const before = snapshot(dir);
+
+    const r = integrate(dir, worktree);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stdout + r.stderr, /test\/new\.test\.js/, 'it names the added test');
+    assert.deepEqual(snapshot(dir), before, 'the work branch is untouched');
+    assert.equal(existsSync(join(dir, 'test/new.test.js')), false);
+    assert.equal(existsSync(worktree), true, 'the worktree is kept');
+  });
+
+  test('AC-11 (#64) applies nothing, keeps the worktree, exits 2 and names the test when the worktree deletes a frozen test', () => {
+    const dir = workBranch();
+    const worktree = codexWorktree(dir);
+    rmSync(join(worktree, 'test/a.test.js'));
+    write(worktree, 'README.md', 'changed by codex\n');
+    const before = snapshot(dir);
+
+    const r = integrate(dir, worktree);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stdout + r.stderr, /test\/a\.test\.js/, 'it names the deleted test');
+    assert.deepEqual(snapshot(dir), before, 'the work branch is untouched');
+    assert.equal(existsSync(join(dir, 'test/a.test.js')), true, 'the frozen test is still on the work branch');
+    assert.equal(existsSync(worktree), true, 'the worktree is kept');
+  });
+
+  test('AC-11 (#64) still applies a change to test configuration alone, exits 0 and reports it', () => {
+    const dir = workBranch();
+    const worktree = codexWorktree(dir);
+    write(worktree, 'package.json', '{"scripts":{"test":"node --test"}}\n');
+
+    const r = integrate(dir, worktree);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(readFileSync(join(dir, 'package.json'), 'utf8'), '{"scripts":{"test":"node --test"}}\n');
+    assert.match(r.stdout, /test configuration changed[\s\S]*package\.json/);
+    assert.equal(existsSync(worktree), false, 'the worktree is removed once the changes are applied');
   });
 
   test('AC-6 exits 2 when the changes conflict with the work branch, leaving it untouched and keeping the worktree', () => {
