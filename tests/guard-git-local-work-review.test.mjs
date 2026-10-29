@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, delimiter, join } from 'node:path';
+import { basename, delimiter, isAbsolute, join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { handlersFor, runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
@@ -292,5 +292,47 @@ describe('guard-git local-work review (#72)', { skip: posix }, () => {
     asks(r, 'Uncommitted changes', wt, 'app.txt');
     assert.ok(r.git.some(({ cwd, args }) => cwd === wt && args.includes('status')), 'read status at the real worktree path');
     assert.doesNotMatch(r.reason, /Could not read a quoted path|Could not read the local/);
+  });
+
+  test('R6 F-A names a detached rebasing worktree whose gitdir uses a relative path', (t) => {
+    const version = sh(scratch, '--version');
+    const match = /^git version (\d+)\.(\d+)/.exec(version);
+    assert.ok(match, version);
+    if (Number(match[1]) < 2 || (Number(match[1]) === 2 && Number(match[2]) < 48)) {
+      t.skip('relative worktree paths require Git 2.48 or newer');
+      return;
+    }
+    const { dir, head } = clone();
+    writeFileSync(join(dir, 'app.txt'), 'main change\n');
+    sh(dir, 'commit', '-q', '-am', 'feat: conflicting main');
+    const wt = mkdtempSync(join(scratch, 'wt-'));
+    sh(dir, '-c', 'worktree.useRelativePaths=true', 'worktree', 'add', '-q', wt, 'feature/x');
+    const gitdir = sh(wt, 'rev-parse', '--absolute-git-dir');
+    const target = readFileSync(join(gitdir, 'gitdir'), 'utf8').trim();
+    assert.ok(!isAbsolute(target), 'the linked worktree gitdir must hold a relative path');
+    assert.equal(resolve(gitdir, target), join(wt, '.git'));
+    const rebase = fixtureGit(wt, 'rebase', '--merge', 'main');
+    assert.equal(rebase.status, 1, rebase.stderr);
+    assert.match(rebase.stdout + rebase.stderr, /CONFLICT/);
+    assert.equal(readFileSync(join(gitdir, 'rebase-merge', 'head-name'), 'utf8').trim(), 'refs/heads/feature/x');
+    assert.equal(fixtureGit(wt, 'symbolic-ref', '-q', 'HEAD').status, 1, 'the rebase worktree must be detached');
+    assert.equal(sh(dir, 'rev-parse', 'feature/x'), head, 'the branch itself has no missing commits');
+    asks(decide(dir, head), 'Rebase in progress', wt);
+  });
+
+  test('R7 F-F names the main worktree detached while rebasing the pull request branch', () => {
+    const { dir, head } = clone();
+    writeFileSync(join(dir, 'app.txt'), 'main change\n');
+    sh(dir, 'commit', '-q', '-am', 'feat: conflicting main');
+    sh(dir, 'checkout', '-q', 'feature/x');
+    const rebase = fixtureGit(dir, 'rebase', '--merge', 'main');
+    assert.equal(rebase.status, 1, rebase.stderr);
+    assert.match(rebase.stdout + rebase.stderr, /CONFLICT/);
+    const gitdir = sh(dir, 'rev-parse', '--absolute-git-dir');
+    assert.equal(gitdir, join(dir, '.git'), 'the rebase must be in the main worktree');
+    assert.equal(readFileSync(join(gitdir, 'rebase-merge', 'head-name'), 'utf8').trim(), 'refs/heads/feature/x');
+    assert.equal(fixtureGit(dir, 'symbolic-ref', '-q', 'HEAD').status, 1, 'the main worktree must be detached');
+    assert.equal(sh(dir, 'rev-parse', 'feature/x'), head, 'the branch itself has no missing commits');
+    asks(decide(dir, head), 'Rebase in progress', dir);
   });
 });

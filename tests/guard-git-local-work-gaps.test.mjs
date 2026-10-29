@@ -201,16 +201,47 @@ describe('guard-git local-work gaps (#72)', () => {
   }
 
   for (const mode of ['other', 'fail', 'hang']) {
-    test(`AC-2 adds no local-work verdict when SSH alias resolution is ${mode}`, () => {
+    test(`AC-2 ${mode === 'other' ? 'adds no local-work verdict when the SSH alias resolves to another host' : `asks when SSH alias resolution is ${mode}`}`, () => {
       const { dir, head } = clone('git@gh-work:o/r.git');
       extraCommit(dir);
       const start = performance.now();
       const r = decide(dir, head, { env: { SSH_MODE: mode } });
-      allowed(r);
-      assert.doesNotMatch(r.reason, /local commits missing|could not read the local|uncommitted changes|stash@/i);
       assert.ok(r.ssh.some((args) => args.includes('-G') && args.includes('gh-work')), 'the alias must be resolved with ssh -G');
       assert.ok(performance.now() - start < 13000, 'alias resolution must remain bounded');
+      if (mode === 'other') {
+        allowed(r);
+        assert.doesNotMatch(r.reason, /local commits missing|could not read the local|uncommitted changes|stash@/i);
+      } else {
+        asks(r, 'gh-work');
+        assert.match(r.reason, /could not resolve|ssh -G/i);
+      }
     });
+
+    if (mode === 'fail') {
+      test('AC-2 denies in bypassPermissions when SSH alias resolution fails', () => {
+        const { dir, head } = clone('git@gh-work:o/r.git');
+        extraCommit(dir);
+        const file = join(scratch, `scenario-${++scenarios}.json`);
+        writeFileSync(file, JSON.stringify({ view: { stdout: green(head) }, user: { stdout: { login: 'me' } }, api: NOT_FOUND }));
+        const start = performance.now();
+        const r = runConfigured({ cwd: dir, permission_mode: 'bypassPermissions', tool_name: 'Bash', tool_input: { command: SQUASH } }, {
+          env: {
+            ...GIT_ENV, PATH: `${bin}${delimiter}${process.env.PATH}`, REAL_GIT,
+            FAKE_GH: file, FAKE_GIT_LOG: `${file}.git`, FAKE_GIT_READ: join(scratch, 'git-read.cjs'),
+            FAKE_SSH_LOG: `${file}.ssh`, SSH_MODE: mode, OLD_GIT: '', SLOW_READ: '', REAL_REMOTE: '',
+            GIT_SSH_COMMAND: 'ssh', GIT_SSH_VARIANT: 'ssh',
+            GUARD_GIT_GH_TIMEOUT_MS: '6000', GUARD_GIT_GH_BUDGET_MS: '10000',
+          },
+        });
+        assert.deepEqual(r.failures, [], r.stderr);
+        assert.ok(lines(`${file}.ssh`).map(JSON.parse).some((args) => args.includes('-G') && args.includes('gh-work')),
+          'the alias must be resolved with ssh -G');
+        assert.ok(performance.now() - start < 13000, 'alias resolution must remain bounded');
+        assert.equal(r.decision, 'deny', r.reason);
+        assert.ok(r.reason.includes('gh-work'), r.reason);
+        assert.match(r.reason, /could not resolve|ssh -G/i);
+      });
+    }
   }
 
   test('AC-3 handles clean and dirty branches when git rejects worktree list -z', () => {
