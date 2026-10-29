@@ -332,10 +332,10 @@ and 0033 records "amended by 0034"; their bodies stay as written.
   to 9 are defects in read forms and stay as they are.
 - A-12 carries the `guard-tests` part, since it already holds the pending work
   on that reader.
-- If this record is accepted before A-6 and A-12 land, the invariants state a
-  rule the hooks do not implement yet. The alternative order is to merge this
-  record as proposed and accept it, with the invariant text, in A-6's pull
-  request; the human chooses.
+- This record is merged as proposed, on its own, and accepted with the
+  invariant text in A-6's pull request, so that the invariants never state a
+  rule the hooks do not implement. Until A-12 lands, the frozen-test gate
+  stays a named gap in that text.
 - Named gaps that remain, by design or because no hook sees them:
   - an alias defined in a git configuration file (`git p` for `git push`), a
     script, a Makefile or a package script that runs a gate command, and
