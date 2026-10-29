@@ -65,3 +65,4 @@ added, the legacy status and date lines removed, every other line identical.
 - [0031. Version releases by their effect on the public interface](0031-version-releases-by-their-effect-on-the-public-interface.md)
 - [0032. Reorient the workflow into a toolbox the human directs](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
 - [0033. Ask before amending a frozen test in the main session](0033-ask-before-amending-a-frozen-test-in-the-main-session.md)
+- [0034. Guard high-consequence gates by consequence, not by form](0034-guard-high-consequence-gates-by-consequence-not-by-form.md)
