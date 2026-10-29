@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-28
 ---
 # 0033. Ask before amending a frozen test in the main session
