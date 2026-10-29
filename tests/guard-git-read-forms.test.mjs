@@ -1,5 +1,6 @@
 // Issue #73: pin the E3a escapes, the fixes of 0b6568c and the remaining A-8 command-reading defects.
 import assert from 'node:assert/strict';
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fixture, POSIX, SESSIONS, silent, unread } from './guard-git-fixture.mjs';
@@ -167,7 +168,8 @@ describe('guard-git read forms (#73)', { skip: POSIX }, () => {
     assert.equal(r.stderr, '');
     assert.equal(r.decision, 'deny', r.reason);
     assert.match(r.reason, /main/);
-    assert.ok(r.gitCalls.some((call) => call.cwd === tilde.dir), JSON.stringify(r.gitCalls));
+    // macOS reaches the temporary directory through the /var -> /private/var link.
+    assert.ok(r.gitCalls.some((call) => realpathSync(call.cwd) === realpathSync(tilde.dir)), JSON.stringify(r.gitCalls));
   });
   outcome('AC-17', 'git tag -f oracle/another-missing', 'ask', /creat|freez|approv/i);
   test('AC-17 gh pr merge 5 -sd has no erroneous denial and is verified end to end', () => {
