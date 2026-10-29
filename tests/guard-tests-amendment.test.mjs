@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { SETTINGS, runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 const ORACLE = 'oracle/feature/x';
 const FROZEN = 'test/a.test.js';
@@ -45,7 +46,7 @@ before(() => {
   scratch = mkdtempSync(join(tmpdir(), 'cw-amend-'));
   offlineBin = join(scratch, 'bin');
   mkdirSync(offlineBin);
-  writeFileSync(join(offlineBin, 'gh'), '#!/bin/sh\necho "gh: offline" >&2\nexit 1\n', { mode: 0o755 });
+  writeExecutable(join(offlineBin, 'gh'), '#!/bin/sh\n[ "$#" -gt 0 ] || exit 0\necho "gh: offline" >&2\nexit 1\n');
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
 

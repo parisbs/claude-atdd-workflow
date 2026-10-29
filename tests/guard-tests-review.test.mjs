@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { HOOKS, SETTINGS, runConfigured } from './claude-hooks.mjs';
+import { writeExecutable } from './executables.mjs';
 
 const FROZEN = 'test/a.test.js';
 const ORACLE = 'oracle/feature/review';
@@ -30,14 +31,15 @@ before(() => {
   scratch = mkdtempSync(join(tmpdir(), 'cw-review-'));
   bin = join(scratch, 'bin');
   mkdirSync(bin);
-  writeFileSync(join(bin, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  writeExecutable(join(bin, 'gh'), '#!/bin/sh\n[ "$#" -gt 0 ] || exit 0\nexit 1\n');
   const realGit = spawnSync('which', ['git'], { encoding: 'utf8' });
   assert.equal(realGit.status, 0, realGit.stderr);
-  writeFileSync(join(bin, 'git'), `#!/bin/sh
+  writeExecutable(join(bin, 'git'), `#!/bin/sh
+[ "$#" -gt 0 ] || exit 0
 if [ -n "$REVIEW_GIT_LOG" ]; then printf '%s\\n' "$*" >> "$REVIEW_GIT_LOG"; fi
 if [ -n "$REVIEW_FAIL_DIR" ] && [ "$PWD" = "$REVIEW_FAIL_DIR" ]; then exec sleep 30; fi
 exec '${realGit.stdout.trim().replaceAll("'", "'\\''")}' "$@"
-`, { mode: 0o755 });
+`);
   dir = join(scratch, 'repo');
   mkdirSync(dir);
   git(dir, 'init', '-q', '-b', 'feature/review');
