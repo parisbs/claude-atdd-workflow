@@ -75,7 +75,8 @@ nor a lower bound:
   attached to a merge, a push, an oracle tag change or a skipped hook, the
   figure is 80 main-session commands (0.9%) and 3 subagent commands (0.1%).
   The frozen-test, subagent GitHub, release tag and Supabase gates were not
-  scanned. Most hits were a variable in a merge or push value (`$SHA`,
+  scanned, nor were forms that are unread only because the guard has no rule
+  for them (point 5 below), such as a bare tag name in a push. Most hits were a variable in a merge or push value (`$SHA`,
   `-C $R`) and backticks inside a double-quoted `gh` body, which the shell
   runs.
 
@@ -126,12 +127,12 @@ Adding or removing a gate needs a new record.
 | --- | --- | --- | --- |
 | Merge | `guard-git` | `gh pr merge` with its flags, `--admin` and the merge method | a `gh api` call that is not a read and names a pull request merge (`/merge`, `mergePullRequest`) |
 | Push to a protected branch | `guard-git` | a push whose refspec or current branch is `main`, `master` or the remote's default branch | `HEAD` or `@` as the refspec, `--all`, `--branches`, `--mirror`, `--prune` |
-| Oracle tags | `guard-git` | `git tag`, `git update-ref` and `git push` refspecs that create, delete or move an `oracle/*` tag | `git update-ref --stdin`, `git push --mirror` or `--prune`, `git fetch --prune-tags` and forced tag refspecs in `git fetch` |
-| Release tags | `guard-git` | a push refspec under `refs/tags/` (ADR 0005: a release is a tag) | `git push --tags`, `--follow-tags`, a refspec `tags/...` without `refs/` |
-| Skipped hooks | `guard-git` | `git commit` with `-n` or `--no-verify`, `git push --no-verify` | `-n` in a cluster or an abbreviated `--no-verify` on commit, `--no-verify` on `merge`, `rebase`, `am` or `cherry-pick`, `-c core.hooksPath`, `git config core.hooksPath`, `GIT_CONFIG_*` or `HUSKY=0` before a git command |
+| Oracle tags | `guard-git` | `git tag`, `git update-ref` and `git push` refspecs that create, delete or move an `oracle/*` tag | `git update-ref --stdin`, `git push --mirror` or `--prune`, and `git fetch` with `--prune-tags` (`-P`, also in a cluster or abbreviated) or a forced tag refspec |
+| Release tags | `guard-git` | a push refspec under `refs/tags/` (ADR 0005: a release is a tag) | a bare tag name as the refspec (`git push origin vX.Y.Z`, the step of `docs/releasing.md`), `tag <name>`, `tags/...` without `refs/`, `--tags`, `--follow-tags` |
+| Skipped hooks | `guard-git` | `git commit` with `-n` or `--no-verify`, `git push --no-verify` | `-n` in a cluster or an abbreviated `--no-verify` on commit, `--no-verify` on `merge`, `rebase` or `am`, `-c core.hooksPath`, `git config core.hooksPath`, `GIT_CONFIG_*`, `HUSKY=0` or `HUSKY_SKIP_HOOKS` before a git command |
 | Frozen tests | `guard-tests` | the write forms of ADR 0033 on a frozen test path or a test-configuration path | the constructs the reader skips |
-| GitHub actions of a subagent | `guard-git` | for a subagent: any `gh` command off the read-only list and any `git push` (ADR 0013), opening a pull request included | none beyond the unread constructs |
-| Remote Supabase actions | `guard-git` | `supabase db push`, `functions deploy`, `secrets set` or `unset`, `db reset --linked`, `migration repair`, and `--linked` or `--db-url` | none beyond the unread constructs |
+| GitHub actions of a subagent | `guard-git` | for an event with `agent_id` only: any `gh` command off the read-only list and any `git push` (ADR 0013), opening a pull request included | none beyond the unread constructs |
+| Remote Supabase actions | `guard-git` | `supabase`, or `npx supabase`, with `db push`, `functions deploy`, `secrets set` or `unset`, `db reset --linked`, `migration repair`, and `--linked` or `--db-url` | none beyond the unread constructs |
 
 `gh pr create` from the main session is not a gate: the orchestrator opens
 pull requests (ADR 0010).
@@ -140,19 +141,29 @@ pull requests (ADR 0010).
 
 The model is an allowlist scoped to the gates. A command that reaches a gate
 is read only when every part of it that can run the gate's program is a
-simple command in the guard's grammar and the guard has a rule for that form.
-Anything else is not read.
+simple command in the guard's grammar, every word the decision depends on is
+a literal in a context the guard resolves, and, for the gate's own
+subcommands, the guard has a rule for that form. Points 1 to 5 below list
+what fails these conditions today. A git or gh subcommand that belongs to no
+gate (`git show`, `git diff`, `git log`, `git ls-remote`, `git fetch` without
+a tag option, `gh pr view`) is read and gets no verdict, so
+`git show --stat oracle/<branch>`, which `atdd-implement` prescribes, stays
+allowed.
 
 A command reaches a gate through its trigger. Triggers are matched on shell
-words with their quotes removed: a trigger matches a whole word, or a path
-component of one for `oracle/` and `refs/tags/`, or the start of one for
-`alias.`, `--no-v` and `GIT_CONFIG_`. Matching is case-sensitive except for
-`hooksPath`, which git reads in any case. `merge` therefore does not match
+words with their quotes removed: a trigger matches a whole word; a path
+component of one for `oracle/`, `refs/tags/` and, in a `gh` command,
+`merge`; the start of one for `alias.`, `--no-v`, `--prune-t`, `GIT_CONFIG_`
+and `HUSKY`; and anywhere in one for `mergePullRequest` and `hooksPath`.
+Matching is case-sensitive except for `hooksPath`, which git reads in any
+case, so `core.hooksPath=/dev/null` matches. `merge` does not match
 `mergedAt` or `merge-base`, and `tag` does not match `stage`.
 
 - The gate program (`git`, `gh` or `supabase`) is in command position: the
-  first word of a segment after unquoted assignments, or a word that follows
-  an unknown program (`xargs gh`, `ionice git`). A gate program that is only
+  first word of a segment after unquoted assignments, the word after `npx` or
+  `bunx` for `supabase`, or the first word after an unknown program and its
+  options (`xargs -0 gh`, `ionice git`; not `npm install supabase`). A gate
+  program that is only
   an argument of a program that does not run its arguments (`echo`, `printf`,
   `grep`, `rg`, `which`, `type`, `command -v`, `man`) triggers nothing, so
   `rg -n "git push" global/hooks` stays allowed.
@@ -161,12 +172,15 @@ component of one for `oracle/` and `refs/tags/`, or the start of one for
 - And the gate's trigger words appear in that command or construct:
   - merge: `gh` and `merge` or `mergePullRequest`;
   - push to a protected branch: `git` and `push`;
-  - oracle tags: `git` and `oracle/`, `refs/tags/`, `tag`, `update-ref`,
-    `--prune-tags`, `--mirror`, `--prune` or `alias.`;
-  - release tags: `git`, `push` and `--tags`, `--follow-tags` or a tag ref;
+  - oracle tags: `git` and `oracle/`, `refs/tags/`, `tag`, `update-ref` or
+    `alias.`; `git`, `push` and `--mirror` or `--prune`; `git`, `fetch` and
+    `--prune-t`, a short-option cluster that holds `P`, or a refspec into
+    `refs/tags/`;
+  - release tags: `git` and `push`;
   - skipped hooks: `git` and `--no-v`, `hooksPath`, `GIT_CONFIG_` or
-    `HUSKY=0`, or `commit` and a short-option cluster that holds `n`;
-  - subagent GitHub actions: `gh`, or `git` and `push`;
+    `HUSKY`, or `commit` and a short-option cluster that holds `n`;
+  - subagent GitHub actions, for an event with `agent_id` only: `gh`, or
+    `git` and `push`;
   - Supabase: `supabase`.
 
 Text the reader proves to be data is removed before matching: the body of a
@@ -185,24 +199,33 @@ holds:
    function body; a background `&`; a shell or interpreter string
    (`bash -c`, `sh -c`, `zsh -c`, `eval`, `python -c`, `node -e`, a heredoc
    fed to an interpreter); an unknown program before it; a backslash-newline
-   continuation; a shell operator inside quotes; or an assignment whose value
+   continuation; or an assignment whose value
    is quoted (`FOO="a b" gh ...`). `env`, `command`, `exec`, `sudo`,
    `nohup`, `time`, `nice` and `timeout` count as unknown programs until the
    guard strips them with a test.
 3. A word of the gate command that its decision depends on is not a literal:
    it holds `$`, a backtick, a glob character the guard does not expand, or a
-   quote inside the word, or the program word itself is escaped or quoted
-   (`\gh`, `"git"`). Examples are a refspec `$B`, `git -C $R push`, or a pull
+   quote or a shell operator inside the word, or the program word itself is
+   escaped or quoted (`\gh`, `"git"`). Examples are a refspec `$B`, `git -C $R push`, or a pull
    request selector `$N`. A word the decision does not read, such as a
-   `--subject` or a `--match-head-commit` value, does not count, and neither
-   do the words of other commands in the same line.
+   `--subject`, `--match-head-commit` or `--jq` value, does not count, and
+   neither do the words of other commands in the same line. Today
+   `guard-git` splits segments inside quotes; A-6 makes the split
+   quote-aware so that a quoted operator in such a value does not create a
+   segment.
 4. The command names a context the guard does not resolve: `--git-dir`,
-   `--work-tree`, an assignment to a `GIT_*` or `GH_*` variable (such as
-   `GIT_DIR`, `GH_REPO` or `GH_HOST`), `git -c alias.*`, a git subcommand that
+   `--work-tree`, an assignment to `GIT_DIR`, `GIT_WORK_TREE`,
+   `GIT_COMMON_DIR`, `GIT_NAMESPACE`, `GIT_CONFIG_*`, `GH_REPO`, `GH_HOST` or
+   `GH_TOKEN` (other assignments, such as `GH_PAGER=cat`, are read),
+   `git -c alias.*`, a git subcommand that
    is not built into git (an alias), or a `cd` to a non-literal directory
    before the gate command.
-5. The guard has no rule for the form: the "Forms with no rule today" column,
-   and any option of the gate command that the guard does not know. A-6 gives
+5. The guard has no rule for the form of a gate's own subcommand (`push`,
+   `tag`, `update-ref`, `fetch` with a tag option, `config` of `hooksPath`,
+   `commit`, `merge`, `rebase` or `am` with a skipped hook, `gh pr merge`,
+   `gh api` naming a merge): the "Forms with no rule today" column, and any
+   option of that subcommand the guard does not know. The short form of a
+   known option counts as known (`-u`, `-q`). A-6 gives
    each of these a canonical rule with a test, such as `HEAD` on `main` read
    as a push to `main`, or leaves it under this rule.
 
@@ -242,18 +265,20 @@ this record. The safety-net bullet reads:
 > on its own, not a boundary: they read a command as words. At the
 > high-consequence gates of ADR 0034 (merge, push to a protected branch,
 > oracle tags, release tags, skipped hooks, frozen tests, GitHub actions of a
-> subagent and remote Supabase actions) a command they cannot read asks in the
-> main session and is denied to subagents and in `bypassPermissions`;
-> elsewhere they allow it. Two named exceptions remain: a hook that cannot
-> start or times out fails open, except the merge entry, and `guard-tests`
-> allows a program it does not know. `guard-readonly` denies a form it cannot
+> subagent and remote Supabase actions) a command that reaches a gate's
+> trigger and that they cannot read asks in the main session and is denied to
+> subagents and in `bypassPermissions`; elsewhere they allow it. Two named
+> exceptions remain: a hook that cannot start or times out fails open, except
+> the merge entry, and `guard-tests` allows a program it does not know. `guard-readonly` denies a form it cannot
 > read.
 
 The rest of that bullet, on human review at the gates that are already human
-and on CI and rulesets, is unchanged. In the fail-open bullet, "Hooks fail
-open with a visible message, except the merge decision" becomes "Hooks fail
-open with a visible message, except at the high-consequence gates of ADR 0034
-and in the merge decision"; the rest of that bullet is unchanged.
+and on CI and rulesets, is unchanged. The fail-open bullet, which is about a
+hook that cannot decide, start or finish, gains one sentence after its first:
+"A guard that throws while deciding a command that reaches a high-consequence
+gate of ADR 0034 asks or denies instead; a hook that cannot start or times out
+still fails open." The rest of that bullet, its two exceptions included, is
+unchanged.
 
 On acceptance, the front matter of ADRs 0002, 0010, 0013, 0029, 0030, 0032
 and 0033 records "amended by 0034"; their bodies stay as written.
@@ -317,10 +342,16 @@ and 0033 records "amended by 0034"; their bodies stay as written.
     `curl` or any other client that holds the token;
   - an unknown program that runs a quoted string (`watch "gh pr merge 5"`,
     `parallel`), since a quoted argument of an unknown program does not
-    trigger;
-  - push targets set by configuration (`push.default`, `remote.<name>.push`,
-    `remote.<name>.mirror`), read neither from the command nor from the
-    repository;
+    trigger, and an unknown program whose options take values the guard does
+    not know (`xargs -n 1 gh ...`);
+  - `GH_REPO` or `GH_HOST` exported earlier or inherited from the
+    environment, which the hook does not see;
+  - `gh release create`, which publishes a release and can create its tag
+    with no guard deciding it today; it needs its own record to become a
+    gate;
+  - behaviour set by configuration (`push.default`, `remote.<name>.push`,
+    `remote.<name>.mirror`, `fetch.pruneTags`), read neither from the command
+    nor from the repository;
   - removing files under `.git/refs/tags`;
   - tools other than Bash, such as a GitHub MCP server that merges or pushes;
   - Codex commands, which no Claude Code hook sees; its sandbox ceilings
