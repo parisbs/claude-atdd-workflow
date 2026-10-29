@@ -117,10 +117,15 @@ function operands(args, values = []) {
   return out;
 }
 
-function scriptOf(args, flags, shell = false) {
+function scriptOf(args, flags, values = [], shell = false) {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (!arg.startsWith('-') || arg === '-' || arg === '-m') return undefined;
+    if (values.includes(arg) || (shell && /^-[^-]*[oO]$/.test(arg))) {
+      i += 1;
+      continue;
+    }
+    if (values.some((flag) => arg.startsWith(flag.startsWith('--') ? `${flag}=` : flag))) continue;
     if (flags.includes(arg)) return args[i + 1];
     const long = flags.find((flag) => flag.startsWith('--') && arg.startsWith(`${flag}=`));
     if (long) return arg.slice(long.length + 1);
@@ -302,7 +307,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         }
       }
     } else if (['bash', 'sh', 'zsh'].includes(cmd)) {
-      const script = scriptOf(args, ['-c'], true);
+      const script = scriptOf(args, ['-c'], ['-o', '-O'], true);
       if (script !== undefined) nested(script);
       stdin.forEach((body) => nested(body));
     } else if (cmd === 'find') {
@@ -372,7 +377,12 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         // branch checkout remains a known gap.
         paths.filter((path) => separator >= 0 || inventory(realPath(absolute(dir, path))).byPath?.has(realPath(absolute(dir, path))) || (existsSync(absolute(dir, path)) && statSync(absolute(dir, path)).isDirectory())).forEach((path) => add(path, 'changed', dir));
       } else if (['restore', 'rm'].includes(subcommand)) {
-        operands(rest, ['--source', '-s', '--pathspec-from-file']).forEach((path) => add(path, subcommand === 'rm' ? 'deleted' : 'changed', dir));
+        const flags = separator >= 0 ? rest.slice(0, separator) : rest;
+        const staged = flags.some((arg) => arg === '--staged' || /^-[^-]*S/.test(arg));
+        const worktree = flags.some((arg) => arg === '--worktree' || /^-[^-]*W/.test(arg));
+        if (subcommand !== 'restore' || !staged || worktree) {
+          operands(rest, ['--source', '-s', '--pathspec-from-file']).forEach((path) => add(path, subcommand === 'rm' ? 'deleted' : 'changed', dir));
+        }
       } else if (subcommand === 'mv') nested(['mv', ...rest].map(quoteWord).join(' '), dir);
     } else if (['tee', 'cp', 'mv', 'install', 'ln', 'rm', 'truncate', 'touch'].includes(cmd) || inPlace(cmd, args)) {
       const paths = writeOperands(cmd, args);
@@ -394,7 +404,8 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
       } else paths.forEach((path) => add(path, cmd === 'rm' ? 'deleted' : 'changed'));
     }
     if (['node', 'python', 'perl', 'ruby'].includes(cmd) || /^python\d+(?:\.\d+)*$/.test(cmd)) {
-      const script = scriptOf(args, cmd === 'node' ? ['-e', '--eval', '-p', '--print'] : cmd.startsWith('python') ? ['-c'] : ['-e']);
+      const values = cmd === 'node' ? ['-r', '--require', '--import'] : cmd.startsWith('python') ? ['-W', '-X'] : ['-I'];
+      const script = scriptOf(args, cmd === 'node' ? ['-e', '--eval', '-p', '--print'] : cmd.startsWith('python') ? ['-c'] : ['-e'], values);
       if (script !== undefined) inline(script);
       stdin.forEach(inline);
     }

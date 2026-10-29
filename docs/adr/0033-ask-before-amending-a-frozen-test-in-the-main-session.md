@@ -56,6 +56,11 @@ merge unnoticed, but both were found only at the end.
   `node -pe`, `perl -we`/`-pie`, versioned `python3.x -c`, and interpreter
   scripts supplied through a heredoc (`python3 -`, `node`). `bash -c`,
   `bash -lc`/`-ce`, `sh -ec`/`-cx`, `zsh -c` and shell heredocs are read as nested commands.
+  Before the script flag, the reader skips values for shell `-o`/`-O`
+  (including `bash -euo pipefail`), Python `-W`/`-X`, Node
+  `-r`/`--require`/`--import`, and Perl or Ruby `-I`.
+  `git restore --staged` or `-S` without `--worktree` or `-W` changes only
+  the index and gets no verdict.
   The reader handles compound commands, a leading `cd <dir> &&`, keyword
   prefixes (`if`, `elif`, `while`, `until`, `then`, `do`, `else`, `{`, `!`,
   `time`), wrappers (`sudo`, `doas`, `nice`, `stdbuf`, `nohup`,
@@ -73,16 +78,18 @@ merge unnoticed, but both were found only at the end.
   paths recorded in the oracle commit, read once per repository. They never
   walk the working tree: untracked dependency and build trees contribute no
   candidates. Explicit file targets still protect new test paths as additions.
-  Targets resolve symlinks before repository discovery, including external
-  repositories and linked worktrees. Directory and exact-path indexes are built
+  Targets without a wildcard resolve symlinks and discover their own repository,
+  including external repositories and linked worktrees. Globs use only the
+  repository discovered at their fixed prefix. Directory and exact-path indexes are built
   once per repository; inline names use exact lookups. A preceding `mkdir`
   supplies directories for later `cd`, including `cd -P` and `cd --`;
   `pushd` and `popd` track the working directory too. Repository discovery is
   cached per directory. Git reads use a 64 MiB buffer, disable lazy fetching
   and kill stalled git processes with SIGKILL. Git and CPU work share a 10 s
   deadline, with at most 8 s of CPU for reading and matching, below the 15 s entry
-  timeout. If the inventory cannot be read, explicit test targets still get
-  the session's verdict and say the change label could not be read. Reasons
+  timeout. If the inventory cannot be read, explicit test file targets still get
+  the session's verdict and say the change label could not be read, provided
+  the CPU and time budgets have not expired. Reasons
   list at most 20 paths, then count the remaining paths. Errors are reported on stderr and fail open for
   unread work; an ask or deny already collected is still emitted. Here-strings
   (`<<<`), process substitutions (`<(...)`, `>(...)`), read-write redirects
@@ -139,6 +146,21 @@ merge unnoticed, but both were found only at the end.
   are not evaluated, and `xargs` input from sources other
   than `find` is not inferred. Unlisted wrapper options and interpreter flag
   combinations may also pass unread.
+  Git pathspec globs passed to `git rm`, `git checkout` or `git restore`
+  are read with shell semantics: the hook's `*` does not cross `/`, whereas
+  Git's does, so a root-level `'*.test.js'` can miss nested frozen tests.
+  Globs cannot collect candidates in another repository or a nested linked
+  worktree, as in `rm -rf .claude/worktrees/*/test`, `rm -rf ~/git/*/test`
+  or `rm -rf ../proj*/test`; only paths without a wildcard discover their own
+  repository. Once the CPU or time budget expires, later explicit Bash
+  targets get no verdict. An unreadable inventory also leaves directory
+  targets such as `rm -rf test` without a verdict; these failures are reported
+  on stderr.
+  Unread wrappers and interpreters include `ionice`, `taskset`, `flock`,
+  `caffeinate`, `uv run`, `poetry run`, `time -p`, `bun -e`, `deno eval`
+  and `php -r`. Other gaps include output redirection inside an `awk` script,
+  bracket globs such as `rm -rf t[e]st`, `rm -rf ..` from the repository
+  root, and case variants on case-insensitive file systems.
 - Naming a frozen path in an inline interpreter's script asks even when the
   script only reads it. Interpreter flags are read only before a script-file
   operand or `-m`; arguments to a module or script that runs tests give no
