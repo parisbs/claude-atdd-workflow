@@ -64,8 +64,11 @@ answers half of it: in `bypassPermissions` the hook's `ask` was not
 auto-approved; the command did not run and was reported as a permission
 denial, as in default mode. The controls behaved as expected: the hook's
 `deny` was honoured in `bypassPermissions`, and a command with no verdict ran.
-Whether an interactive `bypassPermissions` session shows the prompt, rather
-than denying, is still not verified.
+The human then ran the interactive check the same day (Claude Code 2.1.312,
+Haiku, project settings only, the same probe hook, after trusting the project
+folder): in an interactive `bypassPermissions` session the hook's `ask`
+showed the permission prompt with the hook's reason; the human declined it
+and the command did not run.
 
 A scan of the Bash commands in the local Claude Code transcripts of this
 machine, 2026-09-11 to 2026-10-29 (9,168 from main sessions and 3,352 from
@@ -102,10 +105,10 @@ nor a lower bound:
 2. Everywhere else a command the guard cannot read is still allowed, with no
    verdict, as today.
 3. A command the guard reads keeps the decision its own ADR gives it.
-4. The deny in `bypassPermissions` follows ADR 0029. The experiment above
-   shows that an `ask` is not skipped in that mode, but not that it prompts
-   interactively; the deny changes only with a record that rests on that
-   interactive check.
+4. The deny in `bypassPermissions` follows ADR 0029. The experiments above
+   show that an `ask` is neither skipped nor auto-approved in that mode, and
+   that it prompts in an interactive session. Turning that deny into an `ask`
+   is a separate decision and needs its own record.
 5. The rule applies to the Bash commands that `guard-git` and `guard-tests`
    read. Hooks on structured tool input, such as `guard-codex`, read no
    command forms and are not affected.
@@ -330,8 +333,8 @@ and 0033 records "amended by 0034"; their bodies stay as written.
   `GH_REPO`, `GH_HOST`, `\gh`, `gh api` merges) all fall under the rule.
 - The agent gets more questions, or denials as a subagent, when it writes an
   unusual form near a gate. The reason shows the canonical form, so the usual
-  fix is to rewrite the command. In `bypassPermissions` those forms are denied
-  until an interactive check shows that an `ask` prompts there.
+  fix is to rewrite the command. In `bypassPermissions` those forms are denied,
+  although an `ask` was shown to prompt there, until a record changes it.
 - A-6 carries the `guard-git` implementation: tests first, then the fix, in
   its own pull request with a human merge. Its criteria 10 to 13 become
   instances of this rule. It adds tests for each case of points 1 to 5 at each
