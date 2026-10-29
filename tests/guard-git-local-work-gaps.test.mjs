@@ -4,11 +4,12 @@
 // reaches a fake ssh so its descendants exercise the hook's process-group timeout.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
+import { pathToFileURL } from 'node:url';
 import { runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 import { fixtureGit, GIT_ENV } from './git-fixture.mjs';
@@ -140,9 +141,9 @@ describe('guard-git local-work gaps (#72)', () => {
   });
   after(() => rmSync(scratch, { recursive: true, force: true }));
 
-  function clone(remote = 'https://github.com/o/r.git') {
+  function clone(remote = 'https://github.com/o/r.git', objectFormat) {
     const dir = mkdtempSync(join(scratch, 'clone-'));
-    sh(dir, 'init', '-q', '-b', 'main');
+    sh(dir, 'init', '-q', '-b', 'main', ...(objectFormat ? [`--object-format=${objectFormat}`] : []));
     sh(dir, 'config', 'user.name', 'Test');
     sh(dir, 'config', 'user.email', 'test@example.com');
     sh(dir, 'remote', 'add', 'origin', remote);
@@ -157,9 +158,9 @@ describe('guard-git local-work gaps (#72)', () => {
     return { dir, head };
   }
 
-  function worktree(dir) {
-    const wt = mkdtempSync(join(scratch, 'wt-'));
-    sh(dir, 'worktree', 'add', '-q', wt, 'feature/x');
+  function worktree(dir, ...options) {
+    const wt = realpathSync(mkdtempSync(join(scratch, 'wt-')));
+    sh(dir, 'worktree', 'add', '-q', ...options, wt, 'feature/x');
     return wt;
   }
 
@@ -351,5 +352,156 @@ describe('guard-git local-work gaps (#72)', () => {
         if (alive(pid)) process.kill(pid, 'SIGKILL');
       }
     }
+  });
+
+  test('AC-8 asks for a pushed head missing from a partial clone without trying to fetch it', () => {
+    const source = clone();
+    sh(source.dir, 'config', 'uploadpack.allowFilter', 'true');
+    const dir = mkdtempSync(join(scratch, 'partial-'));
+    sh(scratch, 'clone', '-q', '--filter=blob:none', '--no-checkout', '--single-branch', '--branch', 'main',
+      pathToFileURL(source.dir).href, dir);
+    sh(dir, 'branch', 'feature/x', 'main');
+    sh(dir, 'remote', 'set-url', 'origin', 'https://github.com/o/r.git');
+    assert.equal(sh(dir, 'config', 'remote.origin.promisor'), 'true');
+    assert.equal(sh(dir, 'config', 'remote.origin.partialclonefilter'), 'blob:none');
+    const object = `${source.head}^{commit}`;
+    const unavailable = () => {
+      const r = spawnSync(REAL_GIT, ['cat-file', '-e', object], {
+        cwd: dir, encoding: 'utf8', timeout: 10000,
+        env: { ...GIT_ENV, GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '' },
+      });
+      assert.equal(r.error, undefined);
+      assert.notEqual(r.status, 0, 'the pushed head must be absent from the partial clone');
+    };
+    unavailable();
+    const trace = join(dir, '.git', 'local-read-trace.jsonl');
+    const r = decide(dir, source.head, {
+      env: { GIT_TRACE2_EVENT: trace, GIT_TRACE2_ENV_VARS: 'GIT_NO_LAZY_FETCH', GIT_ALLOW_PROTOCOL: '' },
+    });
+    asks(r, `The pushed head ${source.head.slice(0, 7)} is unavailable in the local repository`);
+    const events = lines(trace).map(JSON.parse);
+    const cat = events.find(({ event, argv = [] }) => event === 'start' && argv.includes('cat-file') && argv.includes(object));
+    assert.ok(cat, 'real git must check the pushed commit');
+    assert.ok(events.some(({ event, sid, param, value }) => event === 'def_param' && sid === cat.sid
+      && param === 'GIT_NO_LAZY_FETCH' && value === '1'), 'the object read must disable lazy fetching');
+    assert.ok(!events.some(({ argv = [] }) => argv.some((arg) => /^(?:fetch|ls-remote|ssh|git-remote-https?)$/.test(arg))),
+      'real git must not start a fetch, remote lookup or network transport');
+    assert.ok(!r.git.some((line) => /\bfetch\b/.test(line) || (line.includes('ls-remote') && line.includes(source.head))),
+      'the hook must not fetch or look up the missing object');
+    assert.deepEqual(r.ssh, []);
+    unavailable();
+  });
+
+  for (const remote of ['ssh://git@github.com:22/o/r.git', 'https://github.com:443/o/r.git']) {
+    test(`AC-8 matches the pull request repository through the explicit port in ${remote}`, () => {
+      const { dir, head } = clone(remote);
+      const extra = extraCommit(dir);
+      asks(decide(dir, head), `${extra.slice(0, 7)} fix: local amendment`);
+    });
+  }
+
+  test('AC-8 skips a prunable branch worktree whose path is gone', () => {
+    const { dir, head } = clone();
+    const wt = worktree(dir);
+    rmSync(wt, { recursive: true });
+    const record = sh(dir, 'worktree', 'list', '--porcelain', '-z').split('\0\0')
+      .find((entry) => entry.includes(`worktree ${wt}\0`));
+    assert.ok(record?.includes('\0branch refs/heads/feature/x\0'), 'the removed worktree must still name the branch');
+    assert.match(record, /\0prunable(?: |\0)/);
+    const r = decide(dir, head);
+    allowed(r);
+    assert.ok(!r.git.some((line) => line.includes('status --porcelain')), 'git must not read the removed worktree');
+    assert.ok(!r.reason.includes(wt), r.reason);
+  });
+
+  test('AC-8 asks when a prunable branch worktree exists but cannot be read', (t) => {
+    if (process.getuid() === 0) return t.skip('root can read chmod-denied directories, so permission denial cannot be exercised');
+    const { dir, head } = clone();
+    const wt = worktree(dir);
+    rmSync(join(wt, '.git'));
+    const record = sh(dir, 'worktree', 'list', '--porcelain', '-z').split('\0\0')
+      .find((entry) => entry.includes(`worktree ${wt}\0`));
+    assert.ok(record?.includes('\0branch refs/heads/feature/x\0'), 'the unreadable worktree must still name the branch');
+    assert.match(record, /\0prunable(?: |\0)/);
+    chmodSync(wt, 0o000);
+    try {
+      assert.throws(() => readdirSync(wt), { code: 'EACCES' });
+      asks(decide(dir, head), `Could not read the local copy in ${wt}`);
+    } finally {
+      chmodSync(wt, 0o755);
+    }
+  });
+
+  test('AC-9 lists both rename paths and preserves spaces in changed paths', () => {
+    const { dir, head } = clone();
+    const wt = worktree(dir);
+    sh(wt, 'mv', 'app.txt', 'renamed app.txt');
+    writeFileSync(join(wt, 'notes with spaces.txt'), 'unfinished\n');
+    assert.ok(sh(wt, 'status', '--porcelain=v1', '-z').startsWith('R  renamed app.txt\0app.txt\0'));
+    asks(decide(dir, head), `Uncommitted changes in worktree ${wt}: renamed app.txt, app.txt, notes with spaces.txt.`);
+  });
+
+  test('AC-9 lists changed paths in each worktree of the branch', () => {
+    const { dir, head } = clone();
+    const first = worktree(dir);
+    const second = worktree(dir, '--force');
+    writeFileSync(join(first, 'first patch.txt'), 'unfinished first\n');
+    writeFileSync(join(second, 'second patch.txt'), 'unfinished second\n');
+    asks(decide(dir, head), `Uncommitted changes in worktree ${first}: first patch.txt.`,
+      `Uncommitted changes in worktree ${second}: second patch.txt.`);
+  });
+
+  test('AC-9 counts only branches tracking the matching repository among several remotes', () => {
+    const { dir, head } = clone('https://github.com/other/r.git');
+    const unrelated = extraCommit(dir);
+    sh(dir, 'branch', '-m', 'feature/x', 'other-local');
+    sh(dir, 'update-ref', 'refs/remotes/origin/feature/x', head);
+    sh(dir, 'branch', '--set-upstream-to=origin/feature/x', 'other-local');
+    sh(dir, 'remote', 'add', 'matching', 'https://github.com/o/r.git');
+    sh(dir, 'update-ref', 'refs/remotes/matching/feature/x', head);
+    sh(dir, 'branch', '--track', 'local-copy', 'matching/feature/x');
+    allowed(decide(dir, head));
+    sh(dir, 'checkout', '-q', 'local-copy');
+    sh(dir, 'commit', '-q', '--allow-empty', '-m', 'fix: matching remote amendment');
+    const matching = sh(dir, 'log', '-1', '--format=%h %s');
+    sh(dir, 'checkout', '-q', 'main');
+    const r = decide(dir, head);
+    asks(r, matching);
+    assert.ok(!r.reason.includes(unrelated.slice(0, 7)), r.reason);
+    assert.ok(!r.reason.includes('fix: local amendment'), r.reason);
+  });
+
+  test('AC-9 accepts a 64-hex pushed head and lists local commits in a SHA-256 repository', () => {
+    const { dir, head } = clone(undefined, 'sha256');
+    assert.equal(sh(dir, 'rev-parse', '--show-object-format'), 'sha256');
+    assert.match(head, /^[a-f0-9]{64}$/);
+    allowed(decide(dir, head));
+    extraCommit(dir);
+    const extra = sh(dir, 'log', '-1', '--format=%h %s', 'feature/x');
+    asks(decide(dir, head), `Local commits missing from the pushed head ${head}: ${extra}.`);
+  });
+
+  test('AC-9 lists the first ten missing commits and the remaining count', () => {
+    const { dir, head } = clone();
+    sh(dir, 'checkout', '-q', 'feature/x');
+    const commits = [];
+    for (let i = 1; i <= 12; i += 1) {
+      sh(dir, 'commit', '-q', '--allow-empty', '-m', `fix: local patch ${i}`);
+      commits.unshift(sh(dir, 'log', '-1', '--format=%h %s'));
+    }
+    sh(dir, 'checkout', '-q', 'main');
+    const r = decide(dir, head);
+    asks(r, `Local commits missing from the pushed head ${head}: ${commits.slice(0, 10).join('; ')}; 2 more.`);
+    for (const omitted of commits.slice(10)) assert.ok(!r.reason.includes(omitted), r.reason);
+  });
+
+  test('AC-9 lists the first ten changed paths and the remaining count', () => {
+    const { dir, head } = clone();
+    const wt = worktree(dir);
+    const paths = Array.from({ length: 12 }, (_, i) => `patch ${String(i + 1).padStart(2, '0')}.txt`);
+    for (const path of paths) writeFileSync(join(wt, path), 'unfinished\n');
+    const r = decide(dir, head);
+    asks(r, `Uncommitted changes in worktree ${wt}: ${paths.slice(0, 10).join(', ')}, 2 more.`);
+    for (const omitted of paths.slice(10)) assert.ok(!r.reason.includes(omitted), r.reason);
   });
 });
