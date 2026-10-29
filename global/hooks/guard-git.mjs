@@ -570,28 +570,29 @@ function provenanceReasons(pr, host, cwd) {
 // cannot affect this pull request, even when its branch has the same name.
 const remoteAliases = new Map();
 function remoteRepository(remote, host, cwd, deadline) {
+  let url;
   try {
-    const url = new URL(remote.replace(/^((?:[^/@:]+@)?[^/:]+):(?!\/\/)/, 'ssh://$1/'));
-    const path = url.pathname.replace(/\/$/, '').replace(/\.git$/, '');
-    if (!['https:', 'http:', 'ssh:'].includes(url.protocol) || !/^\/[^/]+\/[^/]+$/.test(path)) return undefined;
-    if (url.protocol === 'ssh:' && host && url.hostname.toLowerCase() !== host.toLowerCase()) {
-      const key = `${cwd}\0${url.hostname}`;
-      if (!remoteAliases.has(key)) {
-        const left = remaining(deadline);
-        const run = left < 1 ? undefined : spawnSync('ssh', ['-G', '--', url.hostname], {
-          cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
-        });
-        const hostname = !run?.error && run?.status === 0 ? /^hostname\s+(\S+)\s*$/im.exec(run.stdout)?.[1] : undefined;
-        remoteAliases.set(key, hostname);
-      }
-      const hostname = remoteAliases.get(key);
-      if (!hostname) return undefined;
-      url.hostname = hostname;
-    }
-    return `${url.hostname}${path}`.toLowerCase();
+    url = new URL(remote.replace(/^((?:[^/@:]+@)?[^/:]+):(?!\/\/)\/?/, 'ssh://$1/'));
   } catch {
     return undefined;
   }
+  const path = url.pathname.replace(/\/$/, '').replace(/\.git$/, '');
+  if (!['https:', 'http:', 'ssh:'].includes(url.protocol) || !/^\/[^/]+\/[^/]+$/.test(path)) return undefined;
+  if (url.protocol === 'ssh:' && host && url.hostname.toLowerCase() !== host.toLowerCase()) {
+    const key = `${cwd}\0${url.hostname}`;
+    if (!remoteAliases.has(key)) {
+      const left = remaining(deadline);
+      const run = left < 1 ? undefined : spawnSync('ssh', ['-G', '--', url.hostname], {
+        cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
+      });
+      const hostname = !run?.error && run?.status === 0 ? /^hostname\s+(\S+)\s*$/im.exec(run.stdout)?.[1] : undefined;
+      remoteAliases.set(key, hostname);
+    }
+    const hostname = remoteAliases.get(key);
+    if (!hostname) throw new Error(`Could not read the remote: ssh -G could not resolve alias ${url.hostname}.`);
+    url.hostname = hostname;
+  }
+  return `${url.hostname}${path}`.toLowerCase();
 }
 
 // Reads local git without trimming paths, taking optional locks or lazily fetching.
@@ -644,8 +645,8 @@ function rebasingWorktrees(cwd, branches, worktrees, deadline) {
       if (!branches.includes(branch)) continue;
       const path = gitdir === common
         ? worktrees[0]?.find((field) => field.startsWith('worktree '))?.slice(9)
-        : dirname(readFileSync(resolve(gitdir, 'gitdir'), 'utf8').trim());
-      paths.add(path);
+        : dirname(resolve(gitdir, readFileSync(resolve(gitdir, 'gitdir'), 'utf8').trim()));
+      paths.add(realpathSync(path));
     }
   }
   return paths;
