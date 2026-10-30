@@ -4,18 +4,24 @@
 // and cheap on purpose: it runs only for an unread span or a reader failure.
 
 // Fragments that can name a path: quotes, operators, braces, '=' and expansions split words.
-// A tail is the text that followed an expansion, as in "$ROOT/tests/a.test.mjs".
+// A tail is the text that followed an expansion, as in "$ROOT/tests/a.test.mjs". Fragments are
+// deduplicated, not capped, so a word late in a long command still counts.
 export function fragments(text) {
   const marked = text
     .replace(/\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|\$[0-9@*#?$!-]/g, ' \u0001')
     .replace(/\$\(/g, ' ');
+  const seen = new Set();
   return marked.split(/[\s'"`;&|()<>{}=,\\]+/).flatMap((word) => {
     if (!word) return [];
     const tail = word.startsWith('\u0001');
     const value = word.replaceAll('\u0001', '');
-    if (!value || value === '.' || value === '/' || /[*?[\]]/.test(value) || value.startsWith('-')) return [];
-    return [{ text: value, tail }];
-  }).slice(0, 4000);
+    if (!value || value === '.' || value === '/' || value.startsWith('-')) return [];
+    // A glob word is kept: the trigger matches it against the oracle.
+    const key = `${tail ? 1 : 0}${value}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ text: value, tail, glob: /[*?[]/.test(value) }];
+  });
 }
 
 // The command split on unquoted ; & | and newlines, as [text, separator] pairs.
@@ -48,6 +54,17 @@ const MESSAGES = {
   git: new RegExp(String.raw`(^|\s)(?:--message(?:=|\s+)|-m\s*)${VALUE}`, 'g'),
   gh: new RegExp(String.raw`(^|\s)(?:--title(?:=|\s+)|--body(?:=|\s+)|-t\s*|-b\s*)${VALUE}`, 'g'),
 };
+// Only these git subcommands take a message with -m; elsewhere -m is another option
+// (git checkout -m merges, git restore -m is not a message), so its words are kept.
+const MESSAGE_COMMANDS = new Set(['commit', 'tag', 'notes', 'stash', 'merge']);
+const GIT_VALUES = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
+const gitSubcommand = (segment) => {
+  const words = segment.trim().split(/\s+/);
+  let i = words.findIndex((word) => word.split('/').pop() === 'git') + 1;
+  if (i === 0) return undefined;
+  while (words[i]?.startsWith('-')) i += GIT_VALUES.has(words[i]) ? 2 : 1;
+  return words[i];
+};
 
 // The body of a heredoc with a quoted delimiter that cat or tee writes to a file is data.
 function withoutHeredocData(text) {
@@ -74,10 +91,11 @@ function withoutHeredocData(text) {
 }
 
 // The command without the text the reader proves to be data: heredoc bodies that cat or tee
-// write to a file, and the message of git commit or the title and body of gh.
+// write to a file, and the message of git commit and its kin or the title and body of gh.
 export function withoutData(command) {
   return segments(withoutHeredocData(command)).map(([body, separator]) => {
-    const pattern = MESSAGES[firstWord(body)];
+    const program = firstWord(body);
+    const pattern = program === 'git' && !MESSAGE_COMMANDS.has(gitSubcommand(body)) ? undefined : MESSAGES[program];
     return (pattern ? body.replace(pattern, '$1') : body) + separator;
   }).join('');
 }

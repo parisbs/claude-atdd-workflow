@@ -16,7 +16,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { realPath } from './codex.mjs';
 import { SUFFIX, fragments, sessionOf, unreadReason, withoutData } from './frozen-trigger.mjs';
 import { Verdict, git, readEvent } from './lib.mjs';
-import { isTest, isTestConfig, oracleTag, testMatchers } from './oracle.mjs';
+import { globToRegExp, isTest, isTestConfig, oracleTag, testMatchers } from './oracle.mjs';
 import { shellWrites } from './shell-writes.mjs';
 
 const report = (error) => process.stderr.write(`guard-tests: could not evaluate, allowing unread remainder (${error?.message ?? error})\n`);
@@ -145,63 +145,90 @@ try {
     const relativeTo = (oracle, target) => relative(oracle.root, target).split(sep).join('/');
     // The trigger: which oracles, and which of their paths, the words of a text name.
     // It reads the oracle within the grace allowance, since it runs when the budget may be gone.
-    const triggered = (text) => {
+    // `dir` is the directory the reader had reached where the text sits, when it knew it.
+    const triggered = (text, dir) => {
       const found = new Map();
       const tried = new Set();
       let project;
       const projectRoot = () => {
         if (project === undefined) {
-          let dir = cwd;
-          while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
-          project = repository(dir, readGrace)?.root ?? null;
+          let start = cwd;
+          while (!existsSync(start) && dirname(start) !== start) start = dirname(start);
+          project = repository(start, readGrace)?.root ?? null;
         }
         return project ?? undefined;
       };
-      const name = (path) => {
+      // Where a relative word may point, nearest first: the reader's directory, the event cwd and
+      // the project root.
+      const bases = () => [...new Set([dir, cwd, projectRoot()].filter((base) => base !== undefined))];
+      const add = (oracle, names) => {
+        if (!found.has(oracle)) found.set(oracle, []);
+        for (const entry of names) if (!found.get(oracle).includes(entry)) found.get(oracle).push(entry);
+      };
+      // A glob names the frozen files and the files of the frozen directories it matches. A bracket
+      // class counts as one character of any kind: over-matching is the safe side here.
+      const match = (oracle, target) => {
+        const re = globToRegExp(target.replace(/\[[^\]/]*\]/g, '?'));
+        const names = [];
+        let count = 0;
+        for (const [key, file] of oracle.files.byPath) {
+          if (++count % 256 === 0) wall();
+          if (re.test(key)) names.push(relativeTo(oracle, file.path));
+        }
+        for (const [key, files] of oracle.files.byDirectory) {
+          if (++count % 256 === 0) wall();
+          if (key !== oracle.root && re.test(key)) names.push(...files.map((file) => relativeTo(oracle, file.path)));
+        }
+        return names;
+      };
+      const name = (path, glob) => {
         let target;
-        let dir;
+        let nearest;
         try {
           target = realPath(path);
-          dir = target;
-          while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
-          if (!statSync(dir).isDirectory()) dir = dirname(dir);
+          nearest = target;
+          while (!existsSync(nearest) && dirname(nearest) !== nearest) nearest = dirname(nearest);
+          if (!statSync(nearest).isDirectory()) nearest = dirname(nearest);
         } catch {
           return;
         }
-        const oracle = repository(dir, readGrace);
+        const oracle = repository(nearest, readGrace);
         if (!oracle) return;
         const rel = relativeTo(oracle, target);
         if (!rel || rel === '..' || rel.startsWith('../')) return;
         inventoryOf(oracle, readGrace, wall);
         const names = [];
-        if (oracle.files) {
-          if (oracle.files.byPath.has(target) || isTestConfig(rel)) names.push(rel);
+        if (oracle.files && glob) names.push(...match(oracle, target));
+        else if (oracle.files) {
+          // An addition, a path under the test paths that is not frozen yet, counts as well.
+          if (oracle.files.byPath.has(target) || isTestConfig(rel) || isTest(oracle.matchers, rel)) names.push(rel);
           else if (oracle.files.byDirectory.has(target)) names.push(...oracle.files.byDirectory.get(target).map((file) => relativeTo(oracle, file.path)));
         } else if (isTest(oracle.matchers, rel) || isTest(oracle.matchers, `${rel}/`) || isTestConfig(rel)) names.push(rel);
-        if (!names.length) return;
-        if (!found.has(oracle)) found.set(oracle, []);
-        for (const entry of names) if (!found.get(oracle).includes(entry)) found.get(oracle).push(entry);
+        if (names.length) add(oracle, names);
       };
-      for (const { text: word, tail } of fragments(text)) {
-        wall();
-        let paths;
-        if (tail) {
-          const stripped = word.replace(/^\/+/, '');
-          paths = [...(projectRoot() ? [resolve(projectRoot(), stripped)] : []), resolve(cwd, stripped)];
-        } else if (word === '~' || word.startsWith('~/')) paths = [resolve(homedir(), word.slice(2))];
-        else if (isAbsolute(word)) paths = [word];
-        else paths = [resolve(cwd, word), ...(projectRoot() ? [resolve(projectRoot(), word)] : [])];
-        for (const path of paths) {
-          if (tried.has(path)) continue;
-          tried.add(path);
-          name(path);
+      try {
+        for (const { text: word, tail, glob } of fragments(text)) {
+          wall();
+          let paths;
+          if (tail) paths = bases().map((base) => resolve(base, word.replace(/^\/+/, '')));
+          else if (word === '~' || word.startsWith('~/')) paths = [resolve(homedir(), word.slice(2))];
+          else if (isAbsolute(word)) paths = [word];
+          else paths = bases().map((base) => resolve(base, word));
+          for (const path of paths) {
+            if (tried.has(path)) continue;
+            tried.add(path);
+            name(path, glob);
+          }
         }
+      } catch (error) {
+        // What was found stays; the run-out is visible.
+        report(error);
       }
       return found;
     };
     // Adds the rule's verdict for what `text` names; false when it names nothing.
-    const unreadAt = (text, part, span) => {
-      const found = triggered(text);
+    const unreadAt = (text, part, span, dir) => {
+      const found = triggered(text, dir);
       for (const [oracle, names] of found) {
         const reason = unreadReason({ part, span, names, tag: oracle.tag, commit: oracle.commit, session });
         if (rules.has(reason)) continue;
@@ -224,9 +251,10 @@ try {
       report(error);
     };
     // `cause` is why the reader stopped reading, when a failure it recovered from was the reason.
-    const unread = (span, part, cause) => {
+    // `dir` is the directory the reader had reached at the span, or undefined when it did not know.
+    const unread = (span, part, cause, dir) => {
       try {
-        if (unreadAt(span, part, span) && cause) report(cause);
+        if (unreadAt(span, part, span, dir) && cause) report(cause);
       } catch (error) {
         failed(error);
       }
