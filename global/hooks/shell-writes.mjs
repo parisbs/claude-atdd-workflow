@@ -5,7 +5,7 @@
 // or configuration path (ADR 0034). A program it does not know is not a span,
 // and a failed segment does not discard other findings. This is a safety net,
 // not a shell interpreter.
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { gitCommand, program } from './commands.mjs';
@@ -13,7 +13,8 @@ import { globToRegExp } from './oracle.mjs';
 import { realPath } from './codex.mjs';
 
 // The index of the character that closes the substitution opened at `start`
-// (`$(` or a backtick), or -1. Parentheses nest; quotes and escapes are skipped.
+// (`$(` or a backtick), or -1. Parentheses nest; quotes, escapes and heredoc
+// bodies are skipped.
 function substitutionEnd(command, start) {
   if (command[start] === '`') {
     for (let i = start + 1; i < command.length; i += 1) {
@@ -23,10 +24,34 @@ function substitutionEnd(command, start) {
     return -1;
   }
   let depth = 1;
+  const heredocs = [];
+  const operator = /<<(-?)[ \t]*(?:'([^']*)'|"([^"]*)"|\\?([^\s;&|()<>'"]+))/y;
   for (let i = start + 2; i < command.length; i += 1) {
     const ch = command[i];
     if (ch === '\\') i += 1;
-    else if (ch === "'") {
+    else if (ch === '<' && command[i + 1] === '<' && command[i + 2] !== '<') {
+      operator.lastIndex = i;
+      const match = operator.exec(command);
+      if (match) {
+        heredocs.push({ tabs: match[1] === '-', delimiter: match[2] ?? match[3] ?? match[4] });
+        i += match[0].length - 1;
+      } else i += 1;
+    } else if (ch === '\n' && heredocs.length) {
+      for (const { tabs, delimiter } of heredocs.splice(0)) {
+        let cursor = i + 1;
+        for (;;) {
+          if (cursor > command.length) return -1;
+          const end = command.indexOf('\n', cursor);
+          const line = command.slice(cursor, end < 0 ? command.length : end);
+          if ((tabs ? line.replace(/^\t+/, '') : line) === delimiter) {
+            i = end < 0 ? command.length : end;
+            break;
+          }
+          if (end < 0) return -1;
+          cursor = end + 1;
+        }
+      }
+    } else if (ch === "'") {
       i = command.indexOf("'", i + 1);
       if (i < 0) return -1;
     } else if (ch === '"') {
@@ -272,7 +297,7 @@ const xargsKnown = (arg) => /^-[0rtpxo]+$/.test(arg) || /^-[nLPsEda]./.test(arg)
 // inventory and records each write immediately, before later work can fail.
 // Text it does not read goes to options.unread(span, part), silently.
 export function shellWrites(command, cwd, options = {}, depth = 0, unknown = false) {
-  const unread = (span, part) => options.unread?.(span, part);
+  const unread = (span, part, cause) => options.unread?.(span, part, cause);
   if (depth > 8) {
     unread(command, 'nesting beyond depth 8');
     return [];
@@ -331,7 +356,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       return [];
     }
     if (!reading && unknownCwd && dir === cwd && !isAbsolute(path) && path !== '~' && !path.startsWith('~/')) {
-      unread(path, 'a write after a cd to a directory the guard cannot resolve');
+      unread(path, 'a write after a cd to a directory the guard cannot resolve', unknownCwd instanceof Error ? unknownCwd : undefined);
       return [];
     }
     return braces(path, check).flatMap((part) => {
@@ -426,9 +451,15 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
         } else {
           const dir = nonliteral(operand) ? undefined : realPath(absolute(cwd, operand));
           const resolvable = dir !== undefined && (existsSync(dir) ? statSync(dir).isDirectory() : directories.has(dir));
-          // A relative operand cannot be resolved against a directory that is unknown.
-          if (!resolvable || (unknownCwd && !isAbsolute(operand) && operand !== '~' && !operand.startsWith('~/'))) unknownCwd = true;
-          else {
+          // A relative operand cannot be resolved against a directory that is unknown. The
+          // error of a missing directory travels with the span, so the caller can say why.
+          if (!resolvable || (unknownCwd && !isAbsolute(operand) && operand !== '~' && !operand.startsWith('~/'))) {
+            let cause = unknownCwd || true;
+            if (dir !== undefined && !existsSync(dir) && !directories.has(dir)) {
+              try { realpathSync(absolute(cwd, operand)); } catch (failure) { cause = failure; }
+            }
+            unknownCwd = cause;
+          } else {
             cwd = dir;
             unknownCwd = false;
           }
@@ -478,6 +509,8 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       const namePattern = name && globToRegExp(name);
       const candidates = new Map();
       if (supported && (pipe || writes)) {
+        // The candidates of a find come from the oracle of the directory it runs in as well.
+        inventory(cwd);
         for (const root of roots.length ? roots : ['.']) {
           for (const target of expand(root)) {
             for (const file of under(target)) {

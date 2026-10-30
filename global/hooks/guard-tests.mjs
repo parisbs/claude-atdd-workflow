@@ -212,7 +212,8 @@ try {
     };
     let subject = () => '';
     let named;
-    // A reader failure: the whole command is the span. If it names nothing, today's visible message.
+    // A reader failure: the whole command is the span, and the failure stays visible. If the
+    // command names nothing, that message is all there is: the failure fails open.
     const failed = (error) => {
       try {
         if (named === undefined) named = unreadAt(subject(), `the reader failed (${error?.message ?? error})`);
@@ -220,11 +221,12 @@ try {
         named = false;
         report(inner);
       }
-      if (!named) report(error);
+      report(error);
     };
-    const unread = (span, part) => {
+    // `cause` is why the reader stopped reading, when a failure it recovered from was the reason.
+    const unread = (span, part, cause) => {
       try {
-        unreadAt(span, part, span);
+        if (unreadAt(span, part, span) && cause) report(cause);
       } catch (error) {
         failed(error);
       }
