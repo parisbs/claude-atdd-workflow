@@ -1,5 +1,5 @@
 ---
-status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
+status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md) and [0034](0034-guard-high-consequence-gates-by-consequence-not-by-form.md)
 date: 2026-09-29
 ---
 # 0002. Enforce with hooks, permissions and CI, and guide with prose

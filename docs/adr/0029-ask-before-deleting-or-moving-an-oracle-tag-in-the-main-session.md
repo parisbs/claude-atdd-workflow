@@ -1,5 +1,5 @@
 ---
-status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md)
+status: accepted, amended by [0032](0032-reorient-the-workflow-into-a-toolbox-the-human-directs.md) and [0034](0034-guard-high-consequence-gates-by-consequence-not-by-form.md)
 date: 2026-10-23
 ---
 # 0029. Ask before deleting or moving an oracle tag in the main session

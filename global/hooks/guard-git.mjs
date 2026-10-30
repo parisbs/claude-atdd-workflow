@@ -3,7 +3,7 @@
 // global CLAUDE.md that must never break (ADR 0002, ADR 0004):
 //
 // - no commit on main, master or the branch origin/HEAD names, and no push to them;
-// - no --no-verify on commit or push;
+// - no skipped hooks on commit, push, merge, rebase or am;
 // - a force push asks, and is denied when it targets one of those branches;
 // - `gh pr merge` must squash and must never use --admin, and is decided from what
 //   GitHub shows about the pull request: checks, control-plane files, the label
@@ -17,14 +17,14 @@
 // - deploys to a linked Supabase project ask first;
 // - creating an ATDD oracle tag asks; deleting or moving one asks in the main
 //   session and is denied for subagents and bypassPermissions, including forced
-//   creation with git tag -f and pushes that can move tags wholesale (ADR 0010, ADR 0029);
+//   moves with git tag -f and pushes that can move tags wholesale (ADR 0010, ADR 0029);
 // - a subagent never acts on GitHub: for an event with agent_id, git push and every
 //   gh command off a read-only list are denied, also inside bash -c or eval (ADR 0013).
 //
-// Parsing is deliberately simple: the command is split into segments on
-// shell operators, and each segment is read as words. It recognises the common
-// forms; an unusual form it cannot read is allowed, because the repository's
-// rulesets remain the real guarantee.
+// Commands are read as shell words, preserving quoted operators. At the gates of
+// ADR 0034 an unread form asks in the main session and denies to subagents and
+// bypassPermissions; elsewhere unread commands stay allowed. Deciding exceptions
+// keep earlier verdicts and apply the same gate rule.
 //
 // global/settings.json runs it from two entries. With --skip-merge it
 // runs for every Bash command and fails open like the other hooks; of the merge
@@ -42,31 +42,16 @@ import { spawn, spawnSync } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
-import { Verdict, failOpen, git as runGit, readEvent } from './lib.mjs';
+import { Verdict, failOpen, git as readGit, readEvent } from './lib.mjs';
 import { ghIsRead, gitCommand, gitSubcommand, program } from './commands.mjs';
 import { isTest, testMatchers } from './oracle.mjs';
+import { commandWords, gateCommands, nonliteral, rawGateCommands, shellParts, supabaseIndex, withoutMessages } from './git-shell.mjs';
 
 const mode = process.argv[2];
 const mergeOnly = mode === '--merge-only';
 const skipMerge = mode === '--skip-merge';
 const processDeadline = performance.now() + (skipMerge ? 12000 : 27000);
 const remaining = (deadline = processDeadline) => Math.floor(Math.min(deadline, processDeadline) - performance.now());
-let gitTimeoutReported = false;
-
-function git(cwd, args) {
-  const timeout = remaining();
-  const onError = (error) => {
-    if (!gitTimeoutReported) {
-      process.stderr.write(`guard-git: could not read local git (${error.message})\n`);
-      gitTimeoutReported = true;
-    }
-  };
-  if (timeout < 1) {
-    onError(new Error('hook time budget exhausted'));
-    return undefined;
-  }
-  return runGit(cwd, args, { timeout, killSignal: 'SIGKILL', onError });
-}
 
 // main and master, and the branch origin/HEAD names: a repository may make develop
 // or trunk its default. Read once for each repository a command reaches.
@@ -79,21 +64,24 @@ function protectedBranches(dir) {
   return defaultBranches.get(dir);
 }
 
-function words(segment) {
-  const result = [];
-  for (const word of segment.match(/"[^"]*"|'[^']*'|\S+/g) ?? []) {
-    // An unquoted # at the start of a word comments out everything after it.
-    if (word.startsWith('#')) break;
-    result.push(word.replace(/^["']|["']$/g, ''));
-  }
-  return result;
+const decisionBudget = Number(process.env.GUARD_GIT_DECISION_BUDGET_MS) || 10000;
+// The merge entry bounds each phase of its decision and the whole entry with processDeadline.
+const decisionDeadline = mergeOnly ? processDeadline : performance.now() + decisionBudget;
+function checkBudget() {
+  if (performance.now() >= decisionDeadline) throw new Error(`decision time budget of ${decisionBudget} ms exhausted`);
 }
 
-// Splits on &&, ||, ;, | and newlines. Quoted operators are rare in the
-// commands this hook cares about, and a split inside quotes only produces
-// extra segments that match nothing.
-function segments(command) {
-  return command.split(/&&|\|\||;|\||\n/).map((s) => s.trim()).filter(Boolean);
+// Bound required local reads too: an unknown branch is not evidence of a safe push.
+function git(cwd, args, options = {}) {
+  checkBudget();
+  let timedOut = false;
+  const result = readGit(cwd, args, {
+    ...options, timeout: Math.max(1, Math.min(options.timeout ?? Infinity, Math.ceil(decisionDeadline - performance.now()), remaining())),
+    onError(error) { timedOut = error.code === 'ETIMEDOUT'; options.onError?.(error); },
+  });
+  if (timedOut) throw new Error(`git read exceeded the decision time budget of ${decisionBudget} ms`);
+  checkBudget();
+  return result;
 }
 
 // Reads the options of a git subcommand into the flags that were given and the
@@ -142,7 +130,7 @@ const PUSH_OPTIONS = ['--verbose', '--quiet', '--repo', '--all', '--branches', '
   '--thin', '--receive-pack', '--exec', '--set-upstream', '--progress', '--prune', '--verify', '--follow-tags',
   '--signed', '--atomic', '--push-option', '--ipv4', '--ipv6'];
 const REF_CHANGING = new Set(['checkout', 'switch', 'commit', 'reset', 'tag', 'update-ref', 'merge', 'rebase',
-  'cherry-pick', 'revert', 'pull', 'fetch', 'push', 'am', 'branch', 'stash', 'symbolic-ref', 'remote', 'worktree']);
+  'cherry-pick', 'revert', 'pull', 'fetch', 'push', 'am', 'branch', 'stash', 'symbolic-ref', 'remote', 'worktree', 'bisect']);
 
 function coversOracleTags(pattern) {
   const wildcard = pattern.indexOf('*');
@@ -159,12 +147,8 @@ const isOracleTag = (name) => name.startsWith('oracle/');
 // flag, or with no name at all, the command only reads.
 function classifyTag(args) {
   const { flags, positional } = parseOptions(args, {
-    longOptions: ['--annotate', '--sign', '--no-sign', '--force', '--delete', '--verify', '--list',
-      '--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains',
-      '--no-contains', '--points-at', '--merged', '--no-merged', '--column', '--no-column',
-      '--create-reflog', '--ignore-case', '--omit-empty', '--trailer', '--edit'],
-    longWithValue: ['--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains',
-      '--no-contains', '--points-at', '--merged', '--no-merged'],
+    longOptions: TAG_OPTIONS,
+    longWithValue: TAG_VALUES,
     shortWithValue: ['m', 'F', 'u'],
     shortOptionalValue: ['n'],
   });
@@ -202,18 +186,32 @@ function trackSwitch(sub, rest, dir, branches) {
 async function checkGit(args, cwd, verdict, branches, session) {
   const { subcommand: sub, rest, directories } = gitCommand(args);
   let dir = cwd;
-  for (const directory of directories) dir = isAbsolute(directory) ? directory : resolve(dir, directory);
+  for (const directory of directories) {
+    const expanded = directory.replace(/^~(?=\/|$)/, process.env.HOME ?? '~');
+    dir = isAbsolute(expanded) ? expanded : resolve(dir, expanded);
+  }
   trackSwitch(sub, rest, dir, branches);
   const branch = branches.get(dir) ?? git(dir, ['branch', '--show-current']);
-  const hasCommits = git(dir, ['rev-parse', '--verify', '-q', 'HEAD']) !== undefined;
+  const refs = sub === 'push'
+    ? git(dir, ['for-each-ref', '--format=%(refname)', 'refs/heads/', 'refs/tags/'])?.split('\n').filter(Boolean) ?? []
+    : [];
+  const hasCommits = sub !== 'push' && git(dir, ['rev-parse', '--verify', '-q', 'HEAD']) !== undefined;
 
   if (sub === 'commit') {
-    if (hasFlag(rest, '--no-verify', '-n')) {
+    if (skipsHooks(sub, rest)) {
       verdict.add('deny', 'Commits must not skip hooks with --no-verify.');
     }
     if (protectedBranches(dir).has(branch) && hasCommits) {
       verdict.add('deny', `Do not commit on ${branch}: create a branch from an updated ${branch} first.`);
     }
+  }
+
+  if (['commit', 'push', 'merge', 'rebase', 'am'].includes(sub)
+    && args.some((arg) => /hooksPath/i.test(arg))) {
+    verdict.add('deny', 'Git must not skip hooks with core.hooksPath.');
+  }
+  if (['merge', 'rebase', 'am'].includes(sub) && skipsHooks(sub, rest)) {
+    verdict.add('deny', 'Git must not skip hooks with --no-verify.');
   }
 
   if (sub === 'push') {
@@ -228,10 +226,12 @@ async function checkGit(args, cwd, verdict, branches, session) {
     }
     const remote = positional[0] ?? values.get('--repo');
     const refspecs = positional.slice(1);
-    const targets = refspecs.length > 0
-      ? refspecs.map((r) => r.replace(/^\+/, '').split(':').pop().replace(/^refs\/heads\//, ''))
-      : [branch];
-    const forced = has('--force', '-f', '--force-with-lease', '--force-if-includes');
+    const targets = has('--mirror') ? [...protectedBranches(dir)]
+      : has('--all', '--branches') ? refs.filter((r) => r.startsWith('refs/heads/')).map((r) => r.slice('refs/heads/'.length))
+      : refspecs.length > 0
+        ? refspecs.map((r) => r.replace(/^\+/, '').split(':').pop().replace(/^refs\/heads\//, '')).map((r) => ['HEAD', '@'].includes(r) ? branch : r)
+        : [branch];
+    const forced = has('--force', '-f', '--force-with-lease', '--force-if-includes', '--mirror');
     const force = forced
       || refspecs.some((r) => r.startsWith('+'));
     const deletes = has('--delete', '-d') || refspecs.some((r) => r.startsWith(':'));
@@ -253,16 +253,18 @@ async function checkGit(args, cwd, verdict, branches, session) {
     if (force && !targets.some((t) => guarded.has(t))) {
       verdict.add('ask', 'Force push: confirm that rewriting the remote branch is intended.');
     }
-    if (deletes || refspecs.some((r) => r.includes('refs/tags/'))) {
-      verdict.add('ask', 'This deletes or rewrites remote refs.');
+    if (deletes) verdict.add('ask', 'This deletes remote refs.');
+    if (has('--tags', '--follow-tags') || refspecs.some((r) => /^(?:refs\/)?tags\//.test(r.replace(/^\+/, '').split(':').pop()))
+      || refspecs.some((r) => r === 'tag' || refs.includes(`refs/tags/${r}`))) {
+      verdict.add('ask', 'This pushes a tag: confirm the human approved publishing it.');
     }
     if (force) {
-      const oracles = git(dir, ['for-each-ref', '--format=%(refname)', 'refs/tags/oracle/'])?.split('\n').filter(Boolean) ?? [];
-      const wholesale = (forced && has('--tags', '--follow-tags')) || refspecs.some((refspec) => {
+      const oracles = refs.filter((r) => r.startsWith('refs/tags/oracle/'));
+      const wholesale = has('--mirror') || (forced && has('--tags')) || refspecs.some((refspec) => {
         const destination = refspec.replace(/^\+/, '').split(':').pop();
         return (forced || refspec.startsWith('+')) && coversOracleTags(destination);
       });
-      if (oracles.length > 0 && wholesale) {
+      if (wholesale && (oracles.length > 0 || has('--mirror') || refspecs.some((r) => coversOracleTags(r.split(':').pop())))) {
         await checkOracleChange(dir, 'oracle/*', 'move-many', undefined, verdict, session, remote);
       }
     }
@@ -431,16 +433,16 @@ async function remoteOracleCommit(dir, remote, ref) {
 }
 
 async function checkOracleChange(dir, name, action, target, verdict, session, remote) {
+  if (action === 'create') {
+    verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
+    return;
+  }
   if (session.subagent) {
     verdict.add('deny', 'A subagent must not delete or move an ATDD oracle tag; return to the main session for human approval.');
     return;
   }
   if (session.permissionMode === 'bypassPermissions') {
     verdict.add('deny', 'Deleting or moving an ATDD oracle tag is denied in bypassPermissions; switch to a mode that shows permission prompts.');
-    return;
-  }
-  if (action === 'create') {
-    verdict.add('ask', 'Creating an oracle tag freezes the approved tests: confirm the human approved the oracle.');
     return;
   }
   if (action === 'move-many') {
@@ -937,7 +939,7 @@ async function checkGh(args, verdict, cwd, readPullRequest, permissionMode) {
 function checkSupabase(args, verdict) {
   const line = args.join(' ');
   const remote = /^(db push|link|functions deploy|secrets set|secrets unset|db reset --linked|migration repair)\b/;
-  if (remote.test(line) || (args[0] === 'db' && hasFlag(args, '--linked', '--db-url'))) {
+  if (remote.test(line) || hasFlag(args, '--linked', '--db-url')) {
     verdict.add('ask', 'This acts on a remote Supabase project. Deploys normally go through the pull request and CI.');
   }
 }
@@ -955,92 +957,271 @@ function checkSubagent(w, verdict) {
   }
 }
 
-// bash -c, sh -c, zsh -c and eval run a string this hook would otherwise read as one word.
-// The string is taken from the whole command, because segments() splits inside quotes.
-const WRAPPER = /(?:^|[\s;&|(`])(?:\S*\/)?(?:(?:ba|z|k|da)?sh(?:\s+-{1,2}[A-Za-z-]+)*?\s+-[A-Za-z]*c[A-Za-z]*|eval)\s+("[^"]*"|'[^']*'|[^;&|\n]+)/g;
-
-function wrapped(command) {
-  return [...command.matchAll(WRAPPER)].map((m) => m[1].replace(/^(["'])([\s\S]*)\1$/, '$2'));
-}
-
-function actsOnGitHub(command) {
-  const direct = segments(command).some((segment) => {
-    const w = words(segment);
-    while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
-    return program(w[0]) === 'gh' || (program(w[0]) === 'git' && gitSubcommand(w.slice(1)) === 'push');
-  });
-  return direct || wrapped(command).some(actsOnGitHub);
-}
-
-// A wrapper that runs gh or git push is denied even for a read: what it runs is harder to read
-// than a plain command, and a subagent has no need to hide one.
-function checkWrappers(command, verdict) {
-  if (wrapped(command).some(actsOnGitHub)) {
-    verdict.add('deny', 'A subagent must not run gh or git push inside a shell wrapper (bash -c, sh -c, zsh -c, eval); run a plain read instead (ADR 0013).');
-  }
-}
-
 function isMerge(w) {
   if (program(w[0]) !== 'gh' || w[1] !== 'pr') return false;
   const { positional } = parseOptions(w.slice(2), { longWithValue: ['--repo'], shortWithValue: ['R'] });
   return positional[0] === 'merge';
 }
 
+const CANONICAL = {
+  merge: 'gh pr merge <number> --squash --delete-branch',
+  'push to a protected branch': 'git push origin <literal-branch>',
+  'oracle tags': 'git tag <literal-oracle/name> or git push origin refs/tags/oracle/<name>',
+  'release tags': 'git push origin refs/tags/<literal-tag>',
+  'skipped hooks': 'git commit -m <message> or git push origin <branch>, with hooks enabled',
+  'GitHub actions of a subagent': 'gh pr view <number>; return writes to the orchestrator',
+  'remote Supabase actions': 'supabase db push (human approval)',
+};
+const TAG_OPTIONS = ['--annotate', '--sign', '--no-sign', '--force', '--delete', '--verify', '--list',
+  '--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains', '--no-contains',
+  '--points-at', '--merged', '--no-merged', '--column', '--no-column', '--create-reflog', '--ignore-case',
+  '--omit-empty', '--trailer', '--edit'];
+const TAG_VALUES = ['--message', '--file', '--local-user', '--cleanup', '--format', '--sort', '--contains',
+  '--no-contains', '--points-at', '--merged', '--no-merged'];
+const COMMIT_OPTIONS = ['--all', '--patch', '--reuse-message', '--reedit-message', '--fixup', '--squash',
+  '--reset-author', '--short', '--branch', '--porcelain', '--long', '--null', '--file', '--author', '--date',
+  '--message', '--template', '--signoff', '--trailer', '--no-verify', '--allow-empty', '--allow-empty-message',
+  '--cleanup', '--edit', '--no-edit', '--amend', '--no-post-rewrite', '--include', '--only', '--pathspec-from-file',
+  '--pathspec-file-nul', '--untracked-files', '--verbose', '--quiet', '--dry-run', '--status', '--no-status',
+  '--gpg-sign', '--no-gpg-sign', '--no-ahead-behind'];
+const BUILTIN_GIT = new Set(['add', 'am', 'apply', 'archive', 'bisect', 'blame', 'branch', 'bundle', 'cat-file', 'checkout',
+  'cherry', 'cherry-pick', 'clean', 'clone', 'commit', 'config', 'describe', 'diff', 'difftool', 'fetch', 'format-patch',
+  'diff-tree', 'for-each-ref', 'fsck', 'gc', 'grep', 'help', 'init', 'log', 'ls-files', 'ls-remote', 'ls-tree', 'merge', 'merge-base', 'mergetool',
+  'mv', 'notes', 'pull', 'push', 'range-diff', 'rebase', 'reflog', 'remote', 'reset', 'restore', 'revert',
+  'rev-list', 'rev-parse', 'rm', 'shortlog', 'show', 'show-ref', 'sparse-checkout', 'stage', 'stash', 'status', 'submodule',
+  'switch', 'symbolic-ref', 'tag', 'update-index', 'update-ref', 'version', 'worktree']);
+
+function skipsHooks(sub, args) {
+  const { flags } = parseOptions(args, {
+    longOptions: COMMIT_OPTIONS, shortWithValue: ['m', 'F', 'C', 'c', 't'],
+  });
+  return flags.has('--no-verify') || (sub === 'commit' && flags.has('-n'));
+}
+
+function remoteSupabase(args) {
+  return /^(?:db push|functions deploy|secrets (?:set|unset)|migration repair)\b/.test(args.join(' '))
+    || hasFlag(args, '--linked', '--db-url');
+}
+
+function gatesFor(candidate, subagent) {
+  const w = candidate.tokens.map((t) => t.value);
+  const name = program(w[0]);
+  const gates = [];
+  if (name === 'gh') {
+    if ((w.some((word) => word.split('/').includes('merge') || word.includes('mergePullRequest')))
+      && !ghIsRead(w.slice(1))) gates.push('merge');
+    if (subagent && (candidate.issue || !ghIsRead(w.slice(1)))) gates.push('GitHub actions of a subagent');
+  } else if (name === 'git') {
+    const { subcommand: sub, rest } = gitCommand(w.slice(1));
+    // Read-only subcommands keep their own meaning, even with an oracle path argument.
+    const own = ['push', 'tag', 'update-ref', 'fetch', 'commit', 'merge', 'rebase', 'am', 'config'].includes(sub);
+    const all = [...candidate.assignments.map((t) => t.value), ...w];
+    const skipped = all.some((word) => /hooksPath/i.test(word) || /^(?:--no-v|GIT_CONFIG_|HUSKY)/.test(word))
+      || (sub === 'commit' && skipsHooks(sub, rest));
+    const alias = all.some((word) => word.startsWith('alias.'));
+    const push = sub === 'push' || (!BUILTIN_GIT.has(sub) && w.includes('push'));
+    if (push) gates.push('push to a protected branch');
+    if ((sub === 'tag' && classifyTag(rest).mode !== 'read') || sub === 'update-ref' || alias
+      || (sub === 'push' && (rest.some((a) => /^(?:--mirror|--prune)/.test(a)) || rest.some((a) => /(?:^|[/:])oracle\//.test(a) || /(?:^|[+:])refs\/tags\//.test(a))))
+      || (sub === 'fetch' && rest.some((a) => /^--prune-t/.test(a) || /^-[^-]*P/.test(a) || a.includes('refs/tags/')))
+      || (!BUILTIN_GIT.has(sub) && all.some((a) => /(?:^|[/:])oracle\//.test(a) || a.includes('refs/tags/')))) gates.push('oracle tags');
+    if (push) gates.push('release tags');
+    if (skipped && (own || !BUILTIN_GIT.has(sub))) gates.push('skipped hooks');
+    if (subagent && push) gates.push('GitHub actions of a subagent');
+  } else if (name === 'supabase' && remoteSupabase(w.slice(1))) gates.push('remote Supabase actions');
+  return gates;
+}
+
+function unknownOption(args, spec, short) {
+  const { flags } = parseOptions(args, spec);
+  return [...flags].find((flag) => flag.startsWith('--') ? !(spec.longOptions ?? []).includes(flag) : !short.includes(flag.slice(1)));
+}
+
+function unreadPart(candidate, cwdIssue) {
+  const { tokens, assignments } = candidate;
+  const w = tokens.map((t) => t.value);
+  const name = program(w[0]);
+  if (candidate.issue) return [candidate.issue, ...assignments.map((t) => t.raw)].join(' ');
+  if (cwdIssue) return cwdIssue;
+  for (const token of assignments) {
+    if (/["']/.test(token.raw)) return `quoted assignment ${token.raw}`;
+    if (/^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|NAMESPACE|CONFIG_\w*)|GH_(?:REPO|HOST|TOKEN))=/.test(token.value)) return `unresolved context ${token.raw}`;
+  }
+  const programIssue = nonliteral(tokens[0], true);
+  if (programIssue) return programIssue;
+  let relevant = tokens.slice(1);
+  if (name === 'git') {
+    const { subcommand: sub, rest } = gitCommand(w.slice(1));
+    const context = tokens.find((t) => /^--(?:git-dir|work-tree)(?:=|$)/.test(t.value) || /^alias\./.test(t.value));
+    if (context) return `unresolved context ${context.raw}`;
+    if (!BUILTIN_GIT.has(sub)) return `unknown git subcommand ${sub}`;
+    if (sub === 'push' && rest.some((a) => /^--prune/.test(a))) return 'push --prune';
+    if (sub === 'update-ref' && rest.includes('--stdin')) return 'update-ref --stdin';
+    if (sub === 'fetch') return `fetch tag options or refspec ${rest.join(' ')}`;
+    if (sub === 'config') return `git config hooksPath ${rest.join(' ')}`;
+    const config = assignments.find((t) => /^GIT_CONFIG_/.test(t.value));
+    if (config) return config.raw;
+    let unknown;
+    if (sub === 'push') {
+      unknown = unknownOption(rest, {
+        longOptions: [...PUSH_OPTIONS, ...PUSH_OPTIONS.map((o) => o.replace('--', '--no-'))],
+        longWithValue: ['--repo', '--push-option', '--receive-pack', '--exec', '--recurse-submodules'], shortWithValue: ['o'],
+      }, 'vqdfnou46');
+      // Forced tag refspec globs have a canonical oracle move rule. Other globs do not.
+      const forced = parseOptions(rest, { longOptions: PUSH_OPTIONS }).flags;
+      relevant = relevant.filter((t) => !((t.value.startsWith('+') || forced.has('--force') || forced.has('-f'))
+        && t.value.includes('*') && /(?:^|:)refs\/tags\//.test(t.value.replace(/^\+/, ''))));
+    } else if (sub === 'tag') {
+      unknown = unknownOption(rest, { longOptions: TAG_OPTIONS, longWithValue: TAG_VALUES,
+        shortWithValue: ['m', 'F', 'u'], shortOptionalValue: ['n'] }, 'asfdvlnmFu');
+    } else if (sub === 'update-ref') {
+      unknown = unknownOption(rest, { longOptions: ['--no-deref', '--create-reflog'], shortWithValue: ['m'] }, 'dm');
+    } else if (sub === 'commit') {
+      unknown = unknownOption(rest, { longOptions: COMMIT_OPTIONS,
+        longWithValue: ['--message', '--file', '--reuse-message', '--reedit-message', '--author', '--date', '--template', '--cleanup'],
+        shortWithValue: ['m', 'F', 'C', 'c', 't'] }, 'apnqvsmFCctiozS');
+    }
+    if (unknown) return `unknown option ${unknown}`;
+  } else if (name === 'gh') {
+    if (w[1] === 'api') return `gh api merge ${w.slice(2).join(' ')}`;
+    // gh's value flags that do not select the pull request cannot affect the decision.
+    const ignored = new Set(['--subject', '--body', '--match-head-commit', '--jq', '-t', '-b']);
+    relevant = [];
+    for (let i = 1; i < tokens.length; i += 1) {
+      const value = tokens[i].value;
+      if (ignored.has(value)) { i += 1; continue; }
+      if ([...ignored].some((flag) => value.startsWith(flag + '='))) continue;
+      relevant.push(tokens[i]);
+    }
+    if (w[1] === 'pr' && w[2] === 'merge') {
+      const failure = mergeOptions(w.slice(3)).failure;
+      if (failure?.includes('option')) return failure;
+    }
+  }
+  return relevant.map((t) => nonliteral(t)).find(Boolean);
+}
+
+function addUnread(verdict, gates, part, session) {
+  for (const gate of gates) {
+    verdict.add(session.subagent || session.permissionMode === 'bypassPermissions' ? 'deny' : 'ask',
+      `Unread command at the ${gate} gate: ${part}. Canonical form: ${CANONICAL[gate]}.`);
+  }
+}
+
 let permissionMode;
+let session = {};
+let candidates = [];
+let command;
+const verdict = new Verdict();
 try {
   const event = readEvent();
   permissionMode = event?.permission_mode;
-  const command = event?.tool_input?.command;
+  command = event?.tool_input?.command;
   if (typeof command !== 'string') {
     if (mergeOnly) throw new Error('the event carries no Bash command');
     process.exit(0);
   }
-
-  // Only a subagent's call carries agent_id; the main session's carries none.
   const subagent = typeof event.agent_id === 'string' && event.agent_id !== '';
-  const verdict = new Verdict();
-  if (subagent && !mergeOnly) checkWrappers(command, verdict);
+  session = { subagent, permissionMode };
   let cwd = event.cwd ?? process.cwd();
+  let cwdIssue;
   const branches = new Map();
   let refsMayChange = false;
-  const parts = segments(command);
+  const parts = shellParts(command);
+  const exports = new Map();
+  const readings = parts.map((part) => {
+    const words = commandWords(part.tokens).tokens;
+    if (words[0]?.value === 'export') {
+      for (const token of words.slice(1)) {
+        if (/^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|NAMESPACE|CONFIG_\w*)|GH_(?:REPO|HOST|TOKEN)|HUSKY(?:_SKIP_HOOKS)?)=/.test(token.value)) {
+          exports.set(token.value.split('=')[0], token);
+        }
+      }
+    }
+    part.exports = [...exports.values()];
+    return gateCommands(part).map((candidate) => ({ ...candidate,
+      assignments: [...part.exports, ...candidate.assignments] }));
+  });
+  candidates = readings.flat().map((candidate) => ({ ...candidate, gates: gatesFor(candidate, subagent) }));
   let merged = false;
-  for (const segment of parts) {
-    const w = words(segment);
-    // Skip leading environment assignments such as FOO=1 git push.
-    while (w.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
-    // The merge entry's if does not match flags before merge, so the entry for
-    // every Bash command must deny these forms without reading the pull request.
-    if (isMerge(w) && w[2] !== 'merge') {
-      verdict.add('deny', 'Write gh pr flags after merge so the merge guard can verify the pull request.');
+  for (let i = 0; i < parts.length; i += 1) {
+    checkBudget();
+    const words = commandWords(parts[i].tokens);
+    const assignments = [...parts[i].exports, ...words.assignments];
+    const original = words.tokens;
+    const tokens = withoutMessages(original);
+    const w = tokens.map((t) => t.value);
+    let unread = false;
+    for (const candidate of readings[i]) {
+      const gates = gatesFor(candidate, subagent).filter((g) => !mergeOnly || g === 'merge' || (g === 'GitHub actions of a subagent' && gatesFor(candidate, subagent).includes('merge')));
+      if (!gates.length) continue;
+      const issue = unreadPart(candidate, cwdIssue);
+      if (issue) {
+        addUnread(verdict, gates, issue, session);
+        unread = true;
+        // An unresolved gh context still asks. Keep any merge findings from the
+        // hook's own context as additional evidence, never as verification.
+        if (!skipMerge && !subagent && permissionMode !== 'bypassPermissions'
+          && issue.startsWith('unresolved context GH_')
+          && !candidate.tokens.some((token) => nonliteral(token))) {
+          const evidence = new Verdict();
+          await checkGh(candidate.tokens.slice(1).map((token) => token.value), evidence, cwd, true, permissionMode);
+          if (evidence.decision === 'ask') {
+            for (const reason of evidence.reasons) verdict.add('ask', `Merge evidence from the hook's current context: ${reason}`);
+          }
+        }
+      }
     }
-    if (subagent && (!mergeOnly || isMerge(w))) checkSubagent(w, verdict);
-    if (w[0] === 'cd' && w[1]) {
-      cwd = isAbsolute(w[1]) ? w[1] : resolve(cwd, w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
-    } else if (program(w[0]) === 'git' && !mergeOnly) {
-      refsMayChange = await checkGit(w.slice(1), cwd, verdict, branches, {
-        subagent, permissionMode: event.permission_mode, refsMayChange,
-      }) || refsMayChange;
-    } else if (program(w[0]) === 'gh' && !subagent) {
-      // A subagent's gh is decided by the read-only list alone, so it never reaches the
-      // merge decision and never earns its explicit allow.
-      merged = await checkGh(w.slice(1), verdict, cwd, !skipMerge, event.permission_mode) || merged;
-    } else if (!mergeOnly && (w[0] === 'supabase' || (w[0] === 'npx' && w[1] === 'supabase'))) {
-      checkSupabase(w.slice(w[0] === 'npx' ? 2 : 1), verdict);
+    if (!unread) {
+      if (isMerge(w) && w[2] !== 'merge') {
+        verdict.add('deny', 'Write gh pr flags after merge so the merge guard can verify the pull request.');
+      }
+      if (subagent && (!mergeOnly || isMerge(w))) checkSubagent(w, verdict);
+      if (['pushd', 'popd'].includes(w[0])) {
+        cwdIssue = `unresolved directory context after ${w[0]}`;
+      } else if (w[0] === 'cd' && w[1]) {
+        const directory = w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~');
+        const issue = nonliteral(tokens[1]);
+        if (issue) cwdIssue = issue;
+        else if (isAbsolute(directory) || !cwdIssue) {
+          cwdIssue = undefined;
+          cwd = isAbsolute(directory) ? directory : resolve(cwd, directory);
+        }
+      } else if (program(w[0]) === 'git' && !mergeOnly) {
+        if (assignments.some((t) => /^HUSKY(?:=0$|_SKIP_HOOKS=)/.test(t.value))) {
+          verdict.add('deny', 'Git must not skip hooks with HUSKY or HUSKY_SKIP_HOOKS.');
+        }
+        refsMayChange = await checkGit(w.slice(1), cwd, verdict, branches, {
+          ...session, refsMayChange,
+        }) || refsMayChange;
+      } else if (program(w[0]) === 'gh' && !subagent) {
+        merged = await checkGh(w.slice(1), verdict, cwd, !skipMerge, permissionMode) || merged;
+        refsMayChange ||= (w[1] === 'pr' && w[2] === 'checkout') || (w[1] === 'repo' && w[2] === 'sync');
+      } else if (!mergeOnly && supabaseIndex(tokens) !== undefined) {
+        checkSupabase(w.slice(supabaseIndex(tokens) + 1), verdict);
+      }
     }
+    checkBudget();
+    if (process.env.GUARD_GIT_TEST_THROW === '1' && i === 0) throw new Error('injected deciding exception');
   }
-  // An explicit allow lifts the prompt for the whole command, so it is only given to a
-  // command that is nothing but one plain merge, with no quotes, chains or redirections.
+  // An explicit allow lifts the prompt for the whole command. Only a single plain
+  // merge can earn it, and every relevant part must have been verified.
   if (merged && !subagent && parts.length === 1 && PLAIN_MERGE.test(command.trim())) {
     verdict.allowExplicitly(`Checks passed, no control-plane files, no needs-human label, the local copy holds nothing missing from the pull request, opened by the authenticated gh user from a branch in the base repository (ADR 0010, ADR 0024). ${merged}`);
   }
   verdict.emit();
 } catch (error) {
+  const fallback = typeof command === 'string' ? rawGateCommands(command).flatMap((c) => gatesFor(c, session.subagent)) : [];
+  const gates = [...new Set([...candidates.flatMap((c) => c.gates), ...fallback].filter((g) => !mergeOnly || g === 'merge'))];
+  if (gates.length) {
+    addUnread(verdict, gates, `deciding exception: ${mergeOnly ? couldNotDecide(error) : error.message}`, session);
+    verdict.emit();
+  }
   if (mergeOnly) {
-    // A merge cannot be undone: an unreadable decision needs human approval.
-    const verdict = new Verdict();
     mergeDecision(verdict, [couldNotDecide(error)], permissionMode, true);
     verdict.emit();
   }
+  // Preserve earlier questions or denials even when the failing command has no gate.
+  if (verdict.decision !== 'allow') verdict.emit();
   failOpen('guard-git', error);
 }

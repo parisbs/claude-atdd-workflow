@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-29
 ---
 # 0034. Guard high-consequence gates by consequence, not by form

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0034](0034-guard-high-consequence-gates-by-consequence-not-by-form.md)
 date: 2026-10-28
 ---
 # 0030. Enforce the oracle on the agent at the merge guard, not in CI

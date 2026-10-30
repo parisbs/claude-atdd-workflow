@@ -225,18 +225,16 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     }
   });
 
-  test('AC-3 (#27) --merge-only decides a merge in every compound form the guard reads, and --skip-merge never reads the pull request', () => {
+  test('AC-3 (#27) --merge-only decides readable compound merges and --skip-merge never reads their pull requests; unread GH_HOST asks or denies', () => {
     // A pull request gh cannot read ends the decision after its first call.
     const UNREADABLE = { view: { exit: 1, stderr: 'gh: not logged in' } };
     for (const command of [
       SQUASH,
       `cd ${dir} && gh pr merge 12 --squash`,
       `cd ${dir}; gh pr merge 12 --squash`,
-      'GH_HOST=github.com gh pr merge 12 --squash',
       'FOO=1 BAR=2 gh pr merge 12 --squash',
       'gh pr merge 12 --squash -R o/r',
       'gh pr merge 12 --squash --repo=o/r',
-      `cd ${dir} && GH_HOST=github.com gh pr merge 12 --squash -R o/r`,
       'echo start; gh pr merge 12 --squash',
       'false || gh pr merge 12 --squash',
       'gh pr merge 12 --squash | cat',
@@ -247,6 +245,21 @@ describe('guard-git entries of global/settings.json (#27)', () => {
       assert.ok(ghCalls().some((call) => call[0] === 'pr' && call[1] === 'view'), `${command}: the pull request was not read`);
       assert.deepEqual(outcome(guardGit(event(command), github(UNREADABLE), '--skip-merge')), ['allow', false], command);
       assert.deepEqual(ghCalls(), [], `${command}: --skip-merge called gh`);
+    }
+    for (const command of [
+      'GH_HOST=github.com gh pr merge 12 --squash',
+      `cd ${dir} && GH_HOST=github.com gh pr merge 12 --squash -R o/r`,
+    ]) {
+      for (const [session, decision] of [
+        [{ permission_mode: 'default' }, 'ask'],
+        [{ permission_mode: 'default', agent_id: 'agent-1' }, 'deny'],
+        [{ permission_mode: 'bypassPermissions' }, 'deny'],
+      ]) {
+        const result = runConfigured(event(command, session), { env: github(UNREADABLE) });
+        assert.equal(result.decision, decision, `${command}: ${result.reason}`);
+        assert.match(result.reason, /Unread command at the merge gate:/, command);
+        assert.match(result.reason, /GH_HOST/, command);
+      }
     }
   });
 
@@ -393,22 +406,49 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     }
   });
 
-  test('AC-7 (#57) denies --admin for gh by a path, as for gh', () => {
-    for (const command of PATH_FORMS) {
+  test('AC-7 (#57) denies --admin for readable gh by a path, as for gh; unread GH_HOST asks or denies', () => {
+    for (const command of PATH_FORMS.filter((command) => !command.startsWith('GH_HOST='))) {
       const admin = `${command} --admin`;
       const result = runConfigured(event(admin), { env: github() });
       assert.equal(result.decision, 'deny', `${admin}: ${result.reason}`);
       assert.match(result.reason, /--admin/, admin);
     }
+    for (const command of PATH_FORMS.filter((command) => command.startsWith('GH_HOST='))) {
+      const admin = `${command} --admin`;
+      for (const [session, decision] of [
+        [{ permission_mode: 'default' }, 'ask'],
+        [{ permission_mode: 'default', agent_id: 'agent-1' }, 'deny'],
+        [{ permission_mode: 'bypassPermissions' }, 'deny'],
+      ]) {
+        const result = runConfigured(event(admin, session), { env: github() });
+        assert.equal(result.decision, decision, `${admin}: ${result.reason}`);
+        assert.match(result.reason, /Unread command at the merge gate:/, admin);
+        assert.match(result.reason, /GH_HOST/, admin);
+      }
+    }
   });
 
-  test('AC-7 (#57) denies a merge without --squash for gh by a path, as for gh', () => {
-    for (const command of PATH_FORMS) {
+  test('AC-7 (#57) denies a merge without --squash for readable gh by a path, as for gh; unread GH_HOST asks or denies', () => {
+    for (const command of PATH_FORMS.filter((command) => !command.startsWith('GH_HOST='))) {
       const bare = withFlag(withFlag(command, ' --squash', ''), ' -s', '');
       assert.ok(!/ (--squash|-s)\b/.test(bare), bare);
       const result = runConfigured(event(bare), { env: github() });
       assert.equal(result.decision, 'deny', `${bare}: ${result.reason}`);
       assert.match(result.reason, /--squash/, bare);
+    }
+    for (const command of PATH_FORMS.filter((command) => command.startsWith('GH_HOST='))) {
+      const bare = withFlag(withFlag(command, ' --squash', ''), ' -s', '');
+      assert.ok(!/ (--squash|-s)\b/.test(bare), bare);
+      for (const [session, decision] of [
+        [{ permission_mode: 'default' }, 'ask'],
+        [{ permission_mode: 'default', agent_id: 'agent-1' }, 'deny'],
+        [{ permission_mode: 'bypassPermissions' }, 'deny'],
+      ]) {
+        const result = runConfigured(event(bare, session), { env: github() });
+        assert.equal(result.decision, decision, `${bare}: ${result.reason}`);
+        assert.match(result.reason, /Unread command at the merge gate:/, bare);
+        assert.match(result.reason, /GH_HOST/, bare);
+      }
     }
   });
 
@@ -420,14 +460,26 @@ describe('guard-git entries of global/settings.json (#27)', () => {
     }
   });
 
-  test('AC-7 (#57) reads the pull request for gh by a path but never gives the explicit allow, even when it is green', () => {
-    for (const command of PATH_FORMS) {
+  test('AC-7 (#57) reads readable gh path pull requests without explicit allow, even when green; unread GH_HOST asks or denies', () => {
+    for (const command of PATH_FORMS.filter((command) => !command.startsWith('GH_HOST='))) {
       const env = github();
       const result = runConfigured(event(command), { env });
       assert.deepEqual(outcome(result), ['allow', false], `${command}: ${result.reason}`);
       assert.deepEqual(result.failures, [], `${command}: ${result.stderr}`);
       assert.ok(ghCalls().some((call) => call[0] === 'pr' && call[1] === 'view'),
         `${command}: the merge decision did not read the pull request`);
+    }
+    for (const command of PATH_FORMS.filter((command) => command.startsWith('GH_HOST='))) {
+      for (const [session, decision] of [
+        [{ permission_mode: 'default' }, 'ask'],
+        [{ permission_mode: 'default', agent_id: 'agent-1' }, 'deny'],
+        [{ permission_mode: 'bypassPermissions' }, 'deny'],
+      ]) {
+        const result = runConfigured(event(command, session), { env: github() });
+        assert.equal(result.decision, decision, `${command}: ${result.reason}`);
+        assert.match(result.reason, /Unread command at the merge gate:/, command);
+        assert.match(result.reason, /GH_HOST/, command);
+      }
     }
   });
 
