@@ -13,11 +13,12 @@ import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
+import { fixtureGit } from './git-fixture.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function sh(cwd, ...args) {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  const r = fixtureGit(cwd, ...args);
   assert.equal(r.status, 0, r.stderr);
   return r.stdout.trim();
 }

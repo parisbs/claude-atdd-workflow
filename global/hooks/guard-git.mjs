@@ -39,16 +39,34 @@
 // a merge and, at worst, a non-merge with merge in that scope. Without a flag the
 // hook applies every rule.
 import { spawn, spawnSync } from 'node:child_process';
-import { lstatSync, realpathSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
-import { Verdict, failOpen, git, readEvent } from './lib.mjs';
+import { Verdict, failOpen, git as runGit, readEvent } from './lib.mjs';
 import { ghIsRead, gitCommand, gitSubcommand, program } from './commands.mjs';
 import { isTest, testMatchers } from './oracle.mjs';
 
 const mode = process.argv[2];
 const mergeOnly = mode === '--merge-only';
 const skipMerge = mode === '--skip-merge';
+const processDeadline = performance.now() + (skipMerge ? 12000 : 27000);
+const remaining = (deadline = processDeadline) => Math.floor(Math.min(deadline, processDeadline) - performance.now());
+let gitTimeoutReported = false;
+
+function git(cwd, args) {
+  const timeout = remaining();
+  const onError = (error) => {
+    if (!gitTimeoutReported) {
+      process.stderr.write(`guard-git: could not read local git (${error.message})\n`);
+      gitTimeoutReported = true;
+    }
+  };
+  if (timeout < 1) {
+    onError(new Error('hook time budget exhausted'));
+    return undefined;
+  }
+  return runGit(cwd, args, { timeout, killSignal: 'SIGKILL', onError });
+}
 
 // main and master, and the branch origin/HEAD names: a repository may make develop
 // or trunk its default. Read once for each repository a command reaches.
@@ -295,24 +313,27 @@ const PLAIN_MERGE = /^gh pr merge(?: (?!#)[A-Za-z0-9@%+=:,./_#-]+)*$/;
 const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
-// All gh calls, ls-remote and the bounded git config --get core.sshCommand read
-// share this budget, counted from the start of the process. A merge decision makes
-// up to three gh calls and one ls-remote, and global/settings.json blocks the merge
-// when the hook runs past 30 s; 10 s leaves the rest for Node to
-// start, for git, for a timed-out gh to exit after its signal, and for the hook to
-// print its ask, so a slow GitHub ends in a question rather than in a block.
+// Three gh calls and ls-remote share 10 s of elapsed call time, each capped at
+// 6 s. Each merge's local work, oracle discovery, SSH config read and comparison
+// get 5 s apiece: N merges could take 10 + N * 20 s. One process deadline caps
+// all reads at 27 s (12 s for --skip-merge), leaving 3 s of the entry's 30 s
+// (15 s) for startup and the verdict. Local reads never spend the gh budget.
 const ghBudget = () => Number(process.env.GUARD_GIT_GH_BUDGET_MS) || 10000;
+let ghElapsed = 0;
+const ghRemaining = (started) => Math.min(remaining(), Math.floor(ghBudget() - ghElapsed - (started === undefined ? 0 : performance.now() - started)));
 const brief = (text) => (text ?? '').trim().split('\n')[0].slice(0, 200);
 
 // Runs gh without a shell and says why when it could not give an answer. A call
 // never runs past what is left of the shared budget.
 function gh(args, cwd) {
-  const left = Math.floor(ghBudget() - performance.now());
+  const left = ghRemaining();
   const outOfBudget = { failure: `gh ran out of the time budget of ${ghBudget()} ms for this hook` };
   // A timeout of 0 would mean no timeout at all, so a spent budget skips the call.
   if (left < 1) return outOfBudget;
   const limit = Math.min(ghLimit(), left);
-  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: limit });
+  const started = performance.now();
+  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: limit, killSignal: 'SIGKILL' });
+  ghElapsed += performance.now() - started;
   if (run.error?.code === 'ENOENT') return { failure: 'gh is not installed or not on PATH' };
   if (run.error?.code === 'ETIMEDOUT') return limit < ghLimit() ? outOfBudget : { failure: `gh timed out after ${limit} ms` };
   if (run.error) return { failure: `gh could not run (${run.error.message})` };
@@ -340,62 +361,68 @@ function oracleDeletionReason(dir, name) {
 // holding the pipes open must not keep the hook alive. Respect a custom SSH
 // command; otherwise use BatchMode. Peel annotated tags to their commits.
 async function remoteOracleLookup(dir, remote, ref) {
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-  const configLimit = Math.floor(Math.min(5000, ghBudget() - performance.now()));
-  if (configLimit < 1) return { failure: `could not read ${remote}: time budget exhausted` };
-  const config = env.GIT_SSH_COMMAND === undefined
-    ? spawnSync('git', ['config', '--get', 'core.sshCommand'], {
-      cwd: dir, encoding: 'utf8', timeout: configLimit, killSignal: 'SIGKILL',
-    }) : undefined;
-  // Exit 1 with no output means the setting is absent; other failures are unreadable.
-  if (config && (config.error || (config.status !== 0 && (config.status !== 1 || config.stdout || config.stderr)))) {
-    return { failure: `could not read core.sshCommand: ${config.error?.message || brief(config.stderr) || `git exited with ${config.status}`}` };
-  }
-  if (config?.status === 1) {
-    const ssh = env.GIT_SSH ? `'${env.GIT_SSH.replace(/'/g, "'\\''")}'` : 'ssh';
-    env.GIT_SSH_COMMAND = `${ssh} -o BatchMode=yes`;
-  }
-  const left = Math.floor(ghBudget() - performance.now());
-  if (left < 1) return { failure: `could not read ${remote}: time budget exhausted` };
-  const limit = Math.min(ghLimit(), left);
-  const run = await new Promise((done) => {
-    const child = spawn('git', ['ls-remote', '--', remote, ref, `${ref}^{}`], {
-      cwd: dir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8').on('data', (data) => { stdout += data; });
-    child.stderr.setEncoding('utf8').on('data', (data) => { stderr += data; });
-    const timer = setTimeout(() => {
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
-      child.stdout.destroy();
-      child.stderr.destroy();
-      child.unref();
-      done({ error: { code: 'ETIMEDOUT' } });
-    }, limit);
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      done({ error });
-    });
-    child.on('close', (status) => {
-      clearTimeout(timer);
-      done({ status, stdout, stderr });
-    });
-  });
-  if (run.error || run.status !== 0) {
-    const why = run.error?.code === 'ETIMEDOUT' ? `git ls-remote timed out after ${limit} ms`
-      : run.error?.message || brief(run.stderr) || `git ls-remote exited with ${run.status}`;
-    return { failure: `could not read ${remote}: ${why}` };
-  }
-  const refs = new Map();
-  for (const line of run.stdout.trim().split('\n').filter(Boolean)) {
-    const [commit, name] = line.split(/\s+/);
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(commit) || ![ref, `${ref}^{}`].includes(name)) {
-      return { failure: `could not read ${ref} on ${remote}: git ls-remote returned unreadable refs` };
+  let started;
+  try {
+    const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+    const configLimit = Math.min(5000, remaining());
+    if (configLimit < 1) return { failure: `could not read ${remote}: time budget exhausted` };
+    const config = env.GIT_SSH_COMMAND === undefined
+      ? spawnSync('git', ['config', '--get', 'core.sshCommand'], {
+        cwd: dir, encoding: 'utf8', timeout: configLimit, killSignal: 'SIGKILL',
+      }) : undefined;
+    // Exit 1 with no output means the setting is absent; other failures are unreadable.
+    if (config && (config.error || (config.status !== 0 && (config.status !== 1 || config.stdout || config.stderr)))) {
+      return { failure: `could not read core.sshCommand: ${config.error?.message || brief(config.stderr) || `git exited with ${config.status}`}` };
     }
-    refs.set(name, commit);
+    if (config?.status === 1) {
+      const ssh = env.GIT_SSH ? `'${env.GIT_SSH.replace(/'/g, "'\\''")}'` : 'ssh';
+      env.GIT_SSH_COMMAND = `${ssh} -o BatchMode=yes`;
+    }
+    const left = ghRemaining();
+    if (left < 1) return { failure: `could not read ${remote}: time budget exhausted` };
+    const limit = Math.min(ghLimit(), left);
+    started = performance.now();
+    const run = await new Promise((done) => {
+      const child = spawn('git', ['ls-remote', '--', remote, ref, `${ref}^{}`], {
+        cwd: dir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.setEncoding('utf8').on('data', (data) => { stdout += data; });
+      child.stderr.setEncoding('utf8').on('data', (data) => { stderr += data; });
+      const timer = setTimeout(() => {
+        try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+        child.stdout.destroy();
+        child.stderr.destroy();
+        child.unref();
+        done({ error: { code: 'ETIMEDOUT' } });
+      }, limit);
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        done({ error });
+      });
+      child.on('close', (status) => {
+        clearTimeout(timer);
+        done({ status, stdout, stderr });
+      });
+    });
+    if (run.error || run.status !== 0) {
+      const why = run.error?.code === 'ETIMEDOUT' ? `git ls-remote timed out after ${limit} ms`
+        : run.error?.message || brief(run.stderr) || `git ls-remote exited with ${run.status}`;
+      return { failure: `could not read ${remote}: ${why}` };
+    }
+    const refs = new Map();
+    for (const line of run.stdout.trim().split('\n').filter(Boolean)) {
+      const [commit, name] = line.split(/\s+/);
+      if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(commit) || ![ref, `${ref}^{}`].includes(name)) {
+        return { failure: `could not read ${ref} on ${remote}: git ls-remote returned unreadable refs` };
+      }
+      refs.set(name, commit);
+    }
+    return { commit: refs.get(`${ref}^{}`) ?? refs.get(ref) };
+  } finally {
+    if (started !== undefined) ghElapsed += performance.now() - started;
   }
-  return { commit: refs.get(`${ref}^{}`) ?? refs.get(ref) };
 }
 
 async function remoteOracleCommit(dir, remote, ref) {
@@ -541,22 +568,38 @@ function provenanceReasons(pr, host, cwd) {
 
 // Normalizes HTTPS, scp and SSH remote URLs so another repository's local work
 // cannot affect this pull request, even when its branch has the same name.
-function remoteRepository(remote) {
+const remoteAliases = new Map();
+function remoteRepository(remote, host, cwd, deadline) {
+  let url;
   try {
-    const url = new URL(remote.replace(/^git@([^:]+):/, 'ssh://git@$1/'));
-    const path = url.pathname.replace(/\/$/, '').replace(/\.git$/, '');
-    if (!['https:', 'http:', 'ssh:'].includes(url.protocol) || !/^\/[^/]+\/[^/]+$/.test(path)) return undefined;
-    return `${url.hostname}${path}`.toLowerCase();
+    url = new URL(remote.replace(/^((?:[^/@:]+@)?[^/:]+):(?!\/\/)\/?/, 'ssh://$1/'));
   } catch {
     return undefined;
   }
+  const path = url.pathname.replace(/\/$/, '').replace(/\.git$/, '');
+  if (!['https:', 'http:', 'ssh:'].includes(url.protocol) || !/^\/[^/]+\/[^/]+$/.test(path)) return undefined;
+  if (url.protocol === 'ssh:' && host && url.hostname.toLowerCase() !== host.toLowerCase()) {
+    const key = `${cwd}\0${url.hostname}`;
+    if (!remoteAliases.has(key)) {
+      const left = remaining(deadline);
+      const run = left < 1 ? undefined : spawnSync('ssh', ['-G', '--', url.hostname], {
+        cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
+      });
+      const hostname = !run?.error && run?.status === 0 ? /^hostname\s+(\S+)\s*$/im.exec(run.stdout)?.[1] : undefined;
+      remoteAliases.set(key, hostname);
+    }
+    const hostname = remoteAliases.get(key);
+    if (!hostname) throw new Error(`Could not read the remote: ssh -G could not resolve alias ${url.hostname}.`);
+    url.hostname = hostname;
+  }
+  return `${url.hostname}${path}`.toLowerCase();
 }
 
 // Reads local git without trimming paths, taking optional locks or lazily fetching.
 // Each caller supplies a deadline: local work, oracle discovery and oracle
-// comparison each share five seconds across their reads.
+// comparison each share five seconds across their reads, within the process deadline.
 function localGit(cwd, args, deadline) {
-  const left = Math.floor(deadline - performance.now());
+  const left = remaining(deadline);
   if (left < 1) throw new Error(`Could not read the local copy in ${cwd}: git exhausted its time budget.`);
   const run = spawnSync('git', ['--no-optional-locks', ...args], {
     cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
@@ -566,6 +609,47 @@ function localGit(cwd, args, deadline) {
     throw new Error(`Could not read the local copy in ${cwd}: git ${args[0]} failed (${brief(run.stderr) || run.error?.message || run.status}).`, { cause: run });
   }
   return run.stdout;
+}
+
+function localWorktrees(cwd, deadline) {
+  try {
+    return localGit(cwd, ['worktree', 'list', '--porcelain', '-z'], deadline)
+      .split('\0\0').filter(Boolean).map((record) => record.split('\0'));
+  } catch (error) {
+    if (error.cause?.status !== 129) throw error;
+    // Git before 2.36 has no -z; worktree paths are printed unquoted.
+    return localGit(cwd, ['-c', 'core.quotePath=false', 'worktree', 'list', '--porcelain'], deadline)
+      .trimEnd().split('\n\n').filter(Boolean).map((record) => record.split('\n'));
+  }
+}
+
+// Rebase state lives in the common git directory, even if a locked worktree is
+// offline. Only enter a detached worktree when that state names a branch we check.
+function rebasingWorktrees(cwd, branches, worktrees, deadline) {
+  const common = resolve(cwd, localGit(cwd, ['rev-parse', '--git-common-dir'], deadline).trim());
+  let linked = [];
+  try {
+    linked = readdirSync(resolve(common, 'worktrees')).map((name) => resolve(common, 'worktrees', name));
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+  }
+  const paths = new Set();
+  for (const gitdir of [common, ...linked]) {
+    for (const backend of ['merge', 'apply']) {
+      let branch;
+      try {
+        branch = readFileSync(resolve(gitdir, `rebase-${backend}`, 'head-name'), 'utf8').trim();
+      } catch (error) {
+        if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+      }
+      if (!branches.includes(branch)) continue;
+      const path = gitdir === common
+        ? worktrees[0]?.find((field) => field.startsWith('worktree '))?.slice(9)
+        : dirname(resolve(gitdir, readFileSync(resolve(gitdir, 'gitdir'), 'utf8').trim()));
+      paths.add(realpathSync(path));
+    }
+  }
+  return paths;
 }
 
 // Reads porcelain's NUL records so spaces, newlines and rename paths survive.
@@ -629,7 +713,7 @@ function localWorkReasons(pr, where, cwd) {
     const repository = remoteRepository(`https://${where[1]}/${where[2]}/${where[3]}`);
     const matching = new Set(remotes.trim().split('\n').flatMap((line) => {
       const [name, url] = line.split(/\s+/);
-      return url && remoteRepository(url) === repository ? [name] : [];
+      return url && remoteRepository(url, where[1], cwd, deadline) === repository ? [name] : [];
     }));
     if (matching.size === 0) return { reasons: [] };
     if (typeof pr.headRefName !== 'string' || !pr.headRefName) {
@@ -655,10 +739,19 @@ function localWorkReasons(pr, where, cwd) {
     const missing = localGit(cwd, ['log', '--no-show-signature', '--format=%h %s', ...branches, '--not', pr.headRefOid, '--'], deadline).trim();
     const reasons = [];
     if (missing) reasons.push(`Local commits missing from the pushed head ${pr.headRefOid}: ${summarize(missing.split('\n'), '; ')}.`);
-    const worktrees = localGit(cwd, ['worktree', 'list', '--porcelain', '-z'], deadline);
-    for (const record of worktrees.split('\0\0')) {
-      const fields = record.split('\0');
-      if (!fields.some((field) => field.startsWith('branch ') && branches.includes(field.slice(7)))) continue;
+    const stashes = localGit(cwd, ['stash', 'list', '--format=%gd%x00%gs'], deadline).trim();
+    for (const line of stashes.split('\n').filter(Boolean)) {
+      const [entry, subject] = line.split('\0');
+      if (branches.some((branch) => ['WIP on ', 'On '].some((prefix) => subject?.startsWith(`${prefix}${branch.slice(11)}:`)))) {
+        reasons.push(`Stashed local work in ${entry}: ${subject}.`);
+      }
+    }
+    const worktrees = localWorktrees(cwd, deadline);
+    const rebasing = worktrees.some((fields) => fields.includes('detached'))
+      ? rebasingWorktrees(cwd, branches, worktrees, deadline) : new Set();
+    for (const fields of worktrees) {
+      const attached = fields.some((field) => field.startsWith('branch ') && branches.includes(field.slice(7)));
+      if (!attached && !fields.includes('detached')) continue;
       const path = fields.find((field) => field.startsWith('worktree '))?.slice(9);
       if (!path) throw new Error('Could not read the path of a local branch worktree.');
       if (fields.some((field) => field === 'prunable' || field.startsWith('prunable '))) {
@@ -668,6 +761,10 @@ function localWorkReasons(pr, where, cwd) {
           if (error.code === 'ENOENT' || error.code === 'ENOTDIR') continue;
           throw new Error(`Could not read the local copy in ${path}: ${error.message}`);
         }
+      }
+      if (!attached) {
+        if (!rebasing.has(path)) continue;
+        reasons.push(`Rebase in progress in worktree ${path}.`);
       }
       const paths = changedPaths(localGit(path, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], deadline));
       if (paths.length > 0) reasons.push(`Uncommitted changes in worktree ${path}: ${summarize(paths, ', ')}.`);
@@ -699,7 +796,7 @@ async function mergeOracle(pr, where, cwd) {
     }
     // ls-remote uses the fetch URL, even when a separate push URL matches.
     const matching = remotes.trim().split('\n').map((line) => line.split(/\s+/))
-      .find(([, remote, usage]) => usage === '(fetch)' && remoteRepository(remote) === remoteRepository(url));
+      .find(([, remote, usage]) => usage === '(fetch)' && remoteRepository(remote, where[1], cwd, deadline) === remoteRepository(url));
     const remote = matching?.[0] ?? url;
     const lookup = await remoteOracleLookup(cwd, remote, `refs/tags/${tag}`);
     if (lookup.failure) throw new Error(lookup.failure);

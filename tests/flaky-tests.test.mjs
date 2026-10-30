@@ -127,6 +127,11 @@ const ALLOWED = [
     reason: 'chmod of a worktree directory to make it unreadable and back, not an executable',
   },
   {
+    file: 'guard-git-local-work-gaps.test.mjs',
+    line: /chmodSync\(wt, /,
+    reason: 'chmod of a worktree directory to make it unreadable and back, not an executable',
+  },
+  {
     file: 'install-backups.test.mjs',
     line: /chmodSync\(join\(dir, 'global', 'hooks', 'demo-hook\.mjs'\)/,
     reason: 'a demo hook that the installer copies and the tests only read, never run',
