@@ -1,18 +1,49 @@
 // Common Bash writes read as words, never executed (ADR 0002, ADR 0033).
 // Targets and find results are compared with the oracle inventory, never a
-// recursive filesystem walk. Unread forms pass; a failed segment does not
-// discard other findings. This is a safety net, not a shell interpreter.
-import { existsSync, realpathSync, statSync } from 'node:fs';
+// recursive filesystem walk. What it does not read goes to options.unread, and
+// a failure to options.error; the caller decides whether that names a frozen
+// or configuration path (ADR 0034). A program it does not know is not a span,
+// and a failed segment does not discard other findings. This is a safety net,
+// not a shell interpreter.
+import { existsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { gitCommand, program } from './commands.mjs';
 import { globToRegExp } from './oracle.mjs';
 import { realPath } from './codex.mjs';
 
+// The index of the character that closes the substitution opened at `start`
+// (`$(` or a backtick), or -1. Parentheses nest; quotes and escapes are skipped.
+function substitutionEnd(command, start) {
+  if (command[start] === '`') {
+    for (let i = start + 1; i < command.length; i += 1) {
+      if (command[i] === '\\') i += 1;
+      else if (command[i] === '`') return i;
+    }
+    return -1;
+  }
+  let depth = 1;
+  for (let i = start + 2; i < command.length; i += 1) {
+    const ch = command[i];
+    if (ch === '\\') i += 1;
+    else if (ch === "'") {
+      i = command.indexOf("'", i + 1);
+      if (i < 0) return -1;
+    } else if (ch === '"') {
+      for (i += 1; i < command.length && command[i] !== '"'; i += 1) if (command[i] === '\\') i += 1;
+    } else if (ch === '(') depth += 1;
+    else if (ch === ')' && --depth === 0) return i;
+  }
+  return -1;
+}
+
 // Keep quoted scripts literal and attach heredoc bodies to their input
-// operator. An unread input must not swallow later command segments.
+// operator. An unread input must not swallow later command segments. A command
+// substitution stays whole inside its word; `result.substitutions` maps the
+// index of that word to the text of each substitution in it.
 function tokens(command, error, check) {
   const result = [];
+  result.substitutions = new Map();
   let word = '';
   let started = false;
   let quote;
@@ -41,9 +72,31 @@ function tokens(command, error, check) {
         word += next;
         started = true;
       }
+    } else if (ch === '`' || (ch === '$' && command[i + 1] === '(' && command[i + 2] !== '(')) {
+      const end = substitutionEnd(command, i);
+      word += command.slice(i, end < 0 ? command.length : end + 1);
+      started = true;
+      if (end < 0) {
+        i = command.length;
+        error(new Error('unterminated command substitution'));
+      } else {
+        const at = result.length;
+        result.substitutions.set(at, [...(result.substitutions.get(at) ?? []), command.slice(i + (ch === '`' ? 1 : 2), end)]);
+        i = end;
+      }
     } else if (quote === '"') {
       if (ch === quote) quote = undefined;
       else word += ch;
+    } else if (ch === '$' && command[i + 1] === "'") {
+      // ANSI-C quoting: a backslash takes the next character literally, so \' does not end it.
+      let j = i + 2;
+      for (; j < command.length && command[j] !== "'"; j += 1) {
+        if (command[j] === '\\') j += 1;
+        word += command[j] ?? '';
+      }
+      started = true;
+      if (j >= command.length) error(new Error('unterminated shell quote'));
+      i = j;
     } else if (ch === '"' || ch === "'") {
       quote = ch;
       started = true;
@@ -181,10 +234,12 @@ function writeOperands(cmd, args) {
   return operands(args, values);
 }
 
-function unwrap(words) {
+// Strips what precedes the program; each assignment word goes to `assign`.
+function unwrap(words, assign) {
   for (;;) {
     const cmd = program(words[0]);
-    if (/^[A-Za-z_][A-Za-z_0-9]*=/.test(words[0] ?? '') || ['if', 'elif', 'while', 'until', 'then', 'do', 'else', '{', '!', 'time'].includes(cmd)) words.shift();
+    if (/^[A-Za-z_][A-Za-z_0-9]*=/.test(words[0] ?? '')) assign(words.shift());
+    else if (['if', 'elif', 'while', 'until', 'then', 'do', 'else', '{', '!', 'time'].includes(cmd)) words.shift();
     else if (['sudo', 'doas', 'nice', 'stdbuf', 'nohup', 'exec', 'command', 'env'].includes(cmd)) {
       words.shift();
       const values = ['sudo', 'doas'].includes(cmd) ? ['-u', '-g', '-h', '-p']
@@ -204,34 +259,81 @@ function unwrap(words) {
   }
 }
 
+const nonliteral = (word) => /[$`]/.test(word);
+const BRACE_RANGE = /\{[^{}]*\.\.[^{}]*\}/;
+const REDIRECTS = ['>', '>>', '&>', '&>>', '>|', '<', '<<', '<<-', '<<<', '<>', '>&', '<&'];
+const interpreter = (cmd) => ['bash', 'sh', 'zsh', 'node', 'python', 'python3', 'perl', 'ruby'].includes(cmd) || /^python\d+(?:\.\d+)*$/.test(cmd);
+const XARGS_VALUES = ['-n', '-L', '-P', '-s', '-E', '-d', '-a', '--max-args', '--max-lines', '--max-procs', '--max-chars', '--eof', '--delimiter', '--arg-file'];
+const xargsKnown = (arg) => /^-[0rtpxo]+$/.test(arg) || /^-[nLPsEda]./.test(arg)
+  || /^--(?:max-args|max-lines|max-procs|max-chars|eof|delimiter|arg-file)=/.test(arg)
+  || ['--null', '--no-run-if-empty', '--verbose', '--interactive', '--exit', '--open-tty'].includes(arg);
+
 // Each result is an absolute candidate path. The caller supplies the oracle
 // inventory and records each write immediately, before later work can fail.
-export function shellWrites(command, cwd, options = {}, depth = 0) {
-  if (depth > 8) return [];
+// Text it does not read goes to options.unread(span, part), silently.
+export function shellWrites(command, cwd, options = {}, depth = 0, unknown = false) {
+  const unread = (span, part) => options.unread?.(span, part);
+  if (depth > 8) {
+    unread(command, 'nesting beyond depth 8');
+    return [];
+  }
   cwd = realPath(cwd);
   const results = [];
   const error = options.error ?? (() => {});
   const check = options.check ?? (() => {});
   const inventories = options.inventories ??= new Map();
   const directories = options.directories ??= new Set();
+  const assigned = options.assigned ??= new Map();
   const inventory = (dir = cwd) => {
     check();
     if (!inventories.has(dir)) inventories.set(dir, options.files?.(dir) ?? []);
     return inventories.get(dir);
   };
+  // An unreadable file list leaves the target undecided, which is a span for the caller.
   const under = (target) => {
     const files = inventory(target);
+    if (files.unreadable) {
+      unread(target, 'the oracle file list could not be read');
+      return [];
+    }
     const exact = files.byPath?.get(target);
     return exact ? [exact] : files.byDirectory?.get(target) ?? [];
   };
+  // The word and the values assigned earlier to the variables it uses, and theirs in turn.
+  const spanOf = (word) => {
+    const parts = [word];
+    const used = new Set();
+    for (let i = 0; i < parts.length && parts.length < 20; i += 1) {
+      for (const [, name] of parts[i].matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)/g)) {
+        if (used.has(name) || !assigned.get(name)) continue;
+        used.add(name);
+        parts.push(assigned.get(name));
+      }
+    }
+    return parts.join(' ');
+  };
+  let unknownCwd = unknown;
+  let previous;
   const emit = (path, action) => {
     check();
     results.push(path);
     options.write?.(path, action);
   };
-  const expand = (path, dir = cwd) => {
-    if (!path || /[$`]/.test(path)) return [];
-    inventory(dir);
+  // A write position: a word the reader cannot resolve is a span, not a path.
+  const expand = (path, dir = cwd, reading = false) => {
+    if (!path) return [];
+    if (nonliteral(path)) {
+      if (!reading) unread(spanOf(path), 'a non-literal write target');
+      return [];
+    }
+    if (!reading && BRACE_RANGE.test(path)) {
+      unread(path, 'a brace range');
+      return [];
+    }
+    if (!reading && unknownCwd && dir === cwd && !isAbsolute(path) && path !== '~' && !path.startsWith('~/')) {
+      unread(path, 'a write after a cd to a directory the guard cannot resolve');
+      return [];
+    }
     return braces(path, check).flatMap((part) => {
       const target = absolute(dir, part);
       if (!/[*?]/.test(target)) return [realPath(target)];
@@ -241,71 +343,116 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
       const pattern = resolve(anchor, relative(base, target));
       const re = globToRegExp(pattern);
       const files = inventory(anchor);
+      if (files.unreadable) {
+        unread(path, 'the oracle file list could not be read');
+        return [];
+      }
       const candidates = [...(files.byDirectory?.keys() ?? []), ...(files.byPath?.keys() ?? [])];
       return candidates.filter((path) => { check(); return re.test(path); });
     });
   };
+  // The inventory is consulted for a directory, and for a target that does not exist and
+  // can hold tests; any other target is recorded by its path.
   const add = (path, action = 'changed', dir = cwd) => {
     for (const target of expand(path, dir)) {
-      const files = under(target);
+      const exists = existsSync(target);
+      const directory = exists && statSync(target).isDirectory();
+      const files = directory || (!exists && options.mayHoldTests?.(target)) ? under(target) : [];
       if (files.length) files.forEach((file) => emit(file.path, action));
-      else if (!existsSync(target) || !statSync(target).isDirectory()) emit(target, action);
+      else if (!directory) emit(target, action);
     }
   };
-  const nested = (script, dir = cwd) => results.push(...shellWrites(script, dir, options, depth + 1));
+  const nested = (script, dir = cwd) => results.push(...shellWrites(script, dir, options, depth + 1, unknownCwd && dir === cwd));
   const inline = (script) => {
     const names = new Set(script.split(/[\s'"`(){}\[\],;=]+/).filter((name) => name && name !== '.' && !/[*?$`]/.test(name)));
-    const files = inventory();
+    const root = options.rootOf?.(cwd);
     for (const name of names) {
       check();
-      const paths = new Set([absolute(cwd, name), ...(files.root ? [absolute(files.root, name)] : [])]);
+      const paths = new Set([absolute(cwd, name), ...(root ? [absolute(root, name)] : [])]);
       for (const path of paths) {
-        let file = files.byPath?.get(path);
-        if (!file && name.includes('/') && existsSync(path)) {
-          const target = realPath(path);
-          file = inventory(target).byPath?.get(target);
+        if (!options.mayHoldTests?.(path)) continue;
+        const target = realPath(path);
+        const files = inventory(target);
+        if (files.unreadable) unread(name, 'the oracle file list could not be read');
+        else {
+          const file = files.byPath?.get(target);
+          if (file) emit(file.path, 'changed');
         }
-        if (file) emit(file.path, 'changed');
       }
     }
   };
   const stack = [];
-  const directoryStack = [];
+  let directoryStack = [];
   let words = [];
   let redirects = [];
   let bodies = [];
+  let strings = [];
+  let substitutions = [];
   let piped;
-  const read = (pipe) => {
-    const current = unwrap(words);
+  const read = (pipe, toXargs) => {
+    const env = new Map();
+    const current = unwrap(words, (word) => {
+      const at = word.indexOf('=');
+      env.set(word.slice(0, at), word.slice(at + 1));
+      assigned.set(word.slice(0, at), word.slice(at + 1));
+    });
     const outputs = redirects;
     const stdin = bodies;
+    const hereStrings = strings;
+    const inner = substitutions;
     words = [];
     redirects = [];
     bodies = [];
+    strings = [];
+    substitutions = [];
+    inner.forEach((script) => nested(script));
     for (const path of outputs) add(path);
     const cmd = program(current[0]);
     const args = current.slice(1);
     let found = piped;
+    if (interpreter(cmd)) hereStrings.forEach((word) => unread(word, 'a here-string script'));
     if (['cd', 'pushd'].includes(cmd)) {
       const paths = operands(args);
-      if (paths.length === 1 && !/[$`]/.test(paths[0])) {
-        const target = absolute(cwd, paths[0]);
-        const dir = realPath(target);
-        if (!existsSync(dir) && !directories.has(dir)) realpathSync(target);
-        if (cmd === 'pushd') directoryStack.push(cwd);
-        cwd = dir;
+      if (paths.length <= 1 && !(cmd === 'pushd' && !paths.length)) {
+        const operand = paths[0] ?? '~';
+        const before = unknownCwd ? undefined : cwd;
+        if (cmd === 'pushd') directoryStack.push({ cwd, unknownCwd });
+        if (operand === '-') {
+          if (previous === undefined) unknownCwd = true;
+          else {
+            cwd = previous;
+            unknownCwd = false;
+          }
+        } else {
+          const dir = nonliteral(operand) ? undefined : realPath(absolute(cwd, operand));
+          const resolvable = dir !== undefined && (existsSync(dir) ? statSync(dir).isDirectory() : directories.has(dir));
+          // A relative operand cannot be resolved against a directory that is unknown.
+          if (!resolvable || (unknownCwd && !isAbsolute(operand) && operand !== '~' && !operand.startsWith('~/'))) unknownCwd = true;
+          else {
+            cwd = dir;
+            unknownCwd = false;
+          }
+        }
+        previous = before;
       }
     } else if (cmd === 'popd') {
-      if (directoryStack.length) cwd = directoryStack.pop();
+      if (directoryStack.length) {
+        const top = directoryStack.pop();
+        previous = unknownCwd ? undefined : cwd;
+        ({ cwd, unknownCwd } = top);
+      }
     } else if (cmd === 'mkdir') {
+      const parents = args.includes('--parents') || args.some((arg) => /^-[^-]*p/.test(arg));
       for (const path of operands(args, ['-m', '--mode'])) {
         const target = realPath(absolute(cwd, path));
         directories.add(target);
-        if (args.includes('-p') || args.includes('--parents')) {
+        if (parents) {
           let parent = dirname(target);
           while (!existsSync(parent)) { check(); directories.add(parent); parent = dirname(parent); }
         }
       }
+    } else if (cmd === 'eval') {
+      unread(args.join(' '), 'eval');
     } else if (['bash', 'sh', 'zsh'].includes(cmd)) {
       const script = scriptOf(args, ['-c'], ['-o', '-O'], true);
       if (script !== undefined) nested(script);
@@ -317,6 +464,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
       const predicates = args.slice(start < 0 ? args.length : start, exec < 0 ? undefined : exec);
       // Unsupported predicates are a named gap, rather than an overestimate
       // that could turn a directory-only search into a frozen-file deletion.
+      // They are a span when the find writes.
       let supported = true;
       let name;
       for (let i = 0; i < predicates.length; i += 1) {
@@ -325,9 +473,11 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         else if (arg === '-type') supported &&= predicates[++i] === 'f';
         else if (!['-delete', '-print', '-print0', '-depth'].includes(arg)) supported = false;
       }
+      const writes = exec >= 0 || args.includes('-delete');
+      if (!supported && (writes || toXargs)) unread([...roots, ...predicates].join(' '), 'a find expression the guard does not read');
       const namePattern = name && globToRegExp(name);
       const candidates = new Map();
-      if (supported && (pipe || exec >= 0 || args.includes('-delete'))) {
+      if (supported && (pipe || writes)) {
         for (const root of roots.length ? roots : ['.']) {
           for (const target of expand(root)) {
             for (const file of under(target)) {
@@ -359,7 +509,8 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         else if (arg === '-i' || arg === '--replace') replacement = '{}';
         else if (arg.startsWith('-I') || arg.startsWith('-i')) replacement = arg.slice(2);
         else if (arg.startsWith('--replace=')) replacement = arg.slice('--replace='.length);
-        else if (['-n', '-L', '-P', '-s', '-E', '-d', '-a', '--max-args', '--max-lines', '--max-procs', '--max-chars', '--eof', '--delimiter', '--arg-file'].includes(arg)) i += 1;
+        else if (XARGS_VALUES.includes(arg)) i += 1;
+        else if (!xargsKnown(arg)) unread(command, 'an xargs option the guard does not read');
       }
       if (!piped) nested(args.slice(i).map(quoteWord).join(' '));
       for (const path of piped ?? []) {
@@ -368,14 +519,33 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         nested((replacement ? invocation.map((arg) => arg.replaceAll(replacement, path)) : [...invocation, path]).map(quoteWord).join(' '));
       }
     } else if (cmd === 'git') {
-      const { subcommand, rest, directories } = gitCommand(args);
-      const dir = directories.reduce((base, path) => absolute(base, path), cwd);
+      const { subcommand, rest, directories: contexts } = gitCommand(args);
+      const dir = contexts.reduce((base, path) => absolute(base, path), cwd);
       const separator = rest.indexOf('--');
-      if (subcommand === 'checkout') {
+      const globals = args.slice(0, args.length - rest.length - 1);
+      // Where the git command runs is not known: the paths it writes are spans.
+      const uncertain = contexts.some(nonliteral) || globals.some((arg) => /^--(?:git-dir|work-tree)(?:=|$)/.test(arg))
+        || ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR'].some((name) => env.has(name))
+        || (unknownCwd && contexts.length > 0 && !contexts.some((path) => isAbsolute(path) || path === '~' || path.startsWith('~/')));
+      const known = (path) => {
+        const target = realPath(absolute(dir, path));
+        if (existsSync(target) && statSync(target).isDirectory()) return true;
+        if (!options.mayHoldTests?.(target)) return false;
+        const files = inventory(target);
+        if (files.unreadable) {
+          unread(path, 'the oracle file list could not be read');
+          return false;
+        }
+        return files.byPath?.has(target);
+      };
+      if (uncertain && ['checkout', 'restore', 'rm', 'mv'].includes(subcommand)) {
+        const paths = subcommand === 'checkout' && separator >= 0 ? rest.slice(separator + 1) : operands(rest, ['--source', '-s', '--pathspec-from-file']);
+        paths.forEach((path) => unread(path, 'a git context the guard does not resolve'));
+      } else if (subcommand === 'checkout') {
         const paths = separator >= 0 ? rest.slice(separator + 1) : operands(rest);
         // Existing directories and exact frozen files are path writes; a
         // branch checkout remains a known gap.
-        paths.filter((path) => separator >= 0 || inventory(realPath(absolute(dir, path))).byPath?.has(realPath(absolute(dir, path))) || (existsSync(absolute(dir, path)) && statSync(absolute(dir, path)).isDirectory())).forEach((path) => add(path, 'changed', dir));
+        paths.filter((path) => separator >= 0 || known(path)).forEach((path) => add(path, 'changed', dir));
       } else if (['restore', 'rm'].includes(subcommand)) {
         const flags = separator >= 0 ? rest.slice(0, separator) : rest;
         const staged = flags.some((arg) => arg === '--staged' || /^-[^-]*S/.test(arg));
@@ -393,9 +563,16 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
         if (target) {
           for (const dest of expand(target)) {
             if (existsSync(dest) && statSync(dest).isDirectory()) {
-              for (const source of sources.flatMap((path) => expand(path))) {
-                add(resolve(dest, basename(source)));
-                for (const file of under(source)) add(resolve(dest, basename(source), relative(source, file.path)));
+              for (const original of sources) {
+                // The name written in a directory comes from the source.
+                if (nonliteral(original)) {
+                  unread(`${target} ${spanOf(original)}`, 'a non-literal source copied into a directory');
+                  continue;
+                }
+                for (const source of expand(original, cwd, true)) {
+                  add(resolve(dest, basename(source)));
+                  for (const file of under(source)) add(resolve(dest, basename(source), relative(source, file.path)));
+                }
               }
             } else add(dest);
           }
@@ -411,33 +588,55 @@ export function shellWrites(command, cwd, options = {}, depth = 0) {
     }
     piped = pipe ? found : undefined;
   };
-  const safeRead = (pipe) => {
-    try { read(pipe); } catch (failure) {
+  const safeRead = (pipe, toXargs) => {
+    try { read(pipe, toXargs); } catch (failure) {
       error(failure);
       words = [];
       redirects = [];
       bodies = [];
+      strings = [];
+      substitutions = [];
       piped = undefined;
     }
   };
   const parts = tokens(command, error, check);
+  const note = (index) => { substitutions.push(...(parts.substitutions.get(index) ?? [])); };
+  // Whether a pipe from here reaches xargs before the next command separator.
+  const feedsXargs = (from) => {
+    for (let j = from; j < parts.length; j += 1) {
+      if (typeof parts[j] === 'string') {
+        if (program(parts[j]) === 'xargs') return true;
+      } else if (parts[j].op !== '|' && !REDIRECTS.includes(parts[j].op)) return false;
+    }
+    return false;
+  };
+  let segments = 0;
+  const segment = (pipe, toXargs) => {
+    safeRead(pipe, toXargs);
+    // Test-only knob (GUARD_TESTS_TEST_THROW): a deciding exception after the first segment.
+    if (options.testThrow && depth === 0 && (segments += 1) === 1) throw new Error('injected deciding exception (GUARD_TESTS_TEST_THROW)');
+  };
   for (let i = 0; i < parts.length; i += 1) {
     check();
     const token = parts[i];
-    if (typeof token === 'string') words.push(token);
-    else if (['>', '>>', '&>', '&>>', '>|', '<', '<<', '<<-', '<<<', '<>', '>&', '<&'].includes(token.op)) {
+    if (typeof token === 'string') {
+      words.push(token);
+      note(i);
+    } else if (REDIRECTS.includes(token.op)) {
       const path = parts[i + 1];
       if (typeof path === 'string') {
         i += 1;
+        note(i);
         if (['>', '>>', '&>', '&>>', '>|', '<>'].includes(token.op) || (token.op === '>&' && !/^(?:\d+|-)$/.test(path))) redirects.push(path);
+        if (token.op === '<<<') strings.push(path);
         if (token.body !== undefined) bodies.push(token.body);
       }
     } else {
-      safeRead(token.op === '|');
-      if (token.op === '(') stack.push(cwd);
-      if (token.op === ')' && stack.length) cwd = stack.pop();
+      segment(token.op === '|', token.op === '|' && feedsXargs(i + 1));
+      if (token.op === '(') stack.push({ cwd, previous, unknownCwd, directoryStack: [...directoryStack] });
+      if (token.op === ')' && stack.length) ({ cwd, previous, unknownCwd, directoryStack } = stack.pop());
     }
   }
-  safeRead(false);
+  segment(false, false);
   return [...new Set(results)];
 }
