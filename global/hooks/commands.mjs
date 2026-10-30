@@ -16,7 +16,7 @@ export const program = (word) => (word ?? '').split('/').pop();
 // The git subcommand after the global options, which can take a value of their own:
 // `git -c key=value push` and `git -C dir push` are both a push.
 export function gitCommand(args) {
-  const withValue = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'];
+  const withValue = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--attr-source', '--shallow-file'];
   const directories = [];
   let i = 0;
   while (i < args.length && args[i].startsWith('-')) {
@@ -69,6 +69,6 @@ export function ghIsRead(args) {
     const showsToken = args.some((a) => a === '--show-token' || a.startsWith('--show-token=') || /^-[A-Za-z]*t/.test(a));
     return sub === 'status' && !showsToken;
   }
-  return Boolean(GH_READS[cmd]?.includes(sub));
+  return Object.hasOwn(GH_READS, cmd) && GH_READS[cmd].includes(sub);
 }
 

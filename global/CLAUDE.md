@@ -124,10 +124,10 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   Never pass an earlier agent's verdict or its reasoning; a review pass after
   fixes gets the earlier findings as records plus the fix commits.
 - Actions fall into three classes (ADR 0010):
-  - Free for subagents: reading, researching, drafting, editing in the worktree,
-    commits on the work branch, running tests. Subagents never act on GitHub;
-    they return a report. `guard-git` enforces this for any subagent: it denies
-    `git push` and every `gh` command off a read-only list (ADR 0013).
+  - Free for subagents: reading, researching, drafting, editing in the worktree, commits on the work branch,
+    running tests, and returning a report. Subagents never act on GitHub: `guard-git` denies `git push`
+    and `gh` commands off its read-only list (ADR 0013). At ADR 0034 gates, unread commands ask in the
+    main session and deny subagents and `bypassPermissions`; elsewhere they stay allowed.
   - Orchestrator only: pushing the work branch, opening pull requests, issues,
     labels, milestones and comments, and merging under the conditions below.
   - Human only: accepting or rejecting an ADR, amending a frozen test (the
