@@ -25,7 +25,9 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
 - Never edit the installed copies in `~/.claude`. Change the repository on a branch, then install. The
   installer copies and never links, because Cowork sessions skip a symlinked `~/.claude/CLAUDE.md`
   (ADR 0001).
-- What must always hold is a hook, a permission rule or CI; prose is for judgement (ADR 0002). Hooks fail
+- What must always hold is a hook, a permission rule or CI; prose is for judgement (ADR 0002).
+  A guard that throws while deciding a command that reaches a high-consequence gate of ADR 0034 asks or
+  denies instead; a hook that cannot start or times out still fails open. Hooks fail
   open with a visible message, except the merge decision, which fails closed: it asks when it cannot read the
   pull request (ADR 0010) and denies in `bypassPermissions` (ADR 0030), and its own entry in `global/settings.json` blocks the merge when the hook cannot
   start, fails or times out (`onFailure: "block"`, Claude Code 2.1.295 or later). Claude Code also runs that
@@ -37,11 +39,17 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   denying unread events and commands, and its entry in the researcher's frontmatter declares
   `onFailure: "block"` so a call is blocked when the hook cannot start, fails or times out.
 - The hooks are a safety net for one machine that limits what the agent does on its own, not a boundary: they
-  read a command as words and allow a form they cannot read, except `guard-readonly`, which denies a form it
-  cannot read. That net, with human review at the gates that are already human (the control-plane merge,
-  ADRs and oracle tags), is the workflow's protection against the agent. GitHub cannot tell the agent from the
-  human, who share a token, so CI and rulesets are tools a human or team applies to themselves, not a
-  guarantee against the agent (ADR 0032, restating ADR 0002 and 0008).
+  read a command as words. At the high-consequence gates of ADR 0034 (merge, push to a protected branch,
+  oracle tags, release tags, skipped hooks, frozen tests, GitHub actions of a subagent and remote Supabase
+  actions) a command that reaches a gate's trigger and that they cannot read asks in the main session and
+  is denied to subagents and in `bypassPermissions`; elsewhere they allow it. Two named exceptions remain:
+  a hook that cannot start or times out fails open, except the merge entry, and `guard-tests` allows a program
+  it does not know. `guard-readonly` denies a form it cannot read. The frozen-test gate (`guard-tests`)
+  remains a named gap until audit item A-12 implements this rule. That net, with human review at the gates
+  that are already human (the control-plane merge, ADRs and oracle tags), is the workflow's protection
+  against the agent. GitHub cannot tell the agent from the human, who share a token, so CI and rulesets are
+  tools a human or team applies to themselves, not a guarantee against the agent (ADR 0032, restating ADR 0002
+  and 0008).
 - A hook that prints `allow` lifts the permission prompt for the whole command, and `Verdict` prints nothing
   for an allow, which means no opinion. Print one only for a command verified end to end, and only when it
   is nothing but that command (ADR 0010).

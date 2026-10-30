@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0034](0034-guard-high-consequence-gates-by-consequence-not-by-form.md)
 date: 2026-10-28
 ---
 # 0033. Ask before amending a frozen test in the main session
