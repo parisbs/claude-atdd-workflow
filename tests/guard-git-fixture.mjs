@@ -31,8 +31,15 @@ if (args[0] === 'pr' && args[1] === 'view') step = { stdout: scenario.pr };
 else if (args[0] === 'pr' && args[1] === 'list') step = { stdout: [] };
 else if (args[0] === 'api') step = args.some((arg) => arg === 'user' || arg === '/user')
   ? { stdout: { login: 'me' } } : { exit: 1, stderr: 'gh: Not Found (HTTP 404)' };
+if (args[0] === 'api') {
+  const endpoint = args.map((arg) => decodeURIComponent(arg)).find((arg) => arg.includes('repos/o/r/contents/'));
+  if (endpoint) {
+    const key = endpoint.slice(endpoint.indexOf('repos/o/r/contents/') + 'repos/o/r/contents/'.length);
+    step = scenario.contents?.[key] ?? { exit: 1, stderr: 'gh: Not Found (HTTP 404)' };
+  }
+}
 if (step.stderr) process.stderr.write(step.stderr);
-if (step.stdout !== undefined) process.stdout.write(JSON.stringify(step.stdout));
+if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'string' ? step.stdout : JSON.stringify(step.stdout));
 process.exit(step.exit || 0);
 `;
 
@@ -124,7 +131,7 @@ export function fixture() {
     if (branch !== 'feature/work') git(dir, 'checkout', '-q', branch);
     return { dir, a, b };
   }
-  function decide(repo, command, { session = SESSIONS[0][1], mode, configured = false, settings, extraEnv = {} } = {}) {
+  function decide(repo, command, { session = SESSIONS[0][1], mode, configured = false, settings, extraEnv = {}, pr = {}, contents = {} } = {}) {
     const id = ++counter;
     const ghFile = join(scratch, `gh-${id}.json`);
     const ghLog = join(scratch, `gh-${id}.log`);
@@ -135,7 +142,8 @@ export function fixture() {
       isCrossRepository: false, headRepositoryOwner: { login: 'o' }, headRepository: { name: 'r' },
       headRefName: 'feature/work', headRefOid: repo.b, files: [{ path: 'README.md' }], changedFiles: 1,
       statusCheckRollup: [{ __typename: 'CheckRun', name: 'Test', status: 'COMPLETED', conclusion: 'SUCCESS' }],
-    } }));
+      ...pr,
+    }, contents }));
     const runEnv = { ...env, FAKE_GH: ghFile, FAKE_GH_LOG: ghLog, FAKE_GIT_LOG: gitLog,
       GUARD_GIT_GH_BUDGET_MS: '8000', GUARD_GIT_GH_TIMEOUT_MS: '3000', ...extraEnv };
     const event = { cwd: repo.dir, tool_name: 'Bash', tool_input: { command }, ...session };

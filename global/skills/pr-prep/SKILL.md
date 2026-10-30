@@ -59,7 +59,14 @@ Deleting or moving an oracle tag asks in the main session; the agent may run
 it after the human approves. Deleting the tag before the merge turns
 `oracle-check` off for the branch. Subagents and bypassPermissions stay denied.
 
-## 4. Review
+## 4. Proposed ADRs
+
+Run `node ~/.claude/hooks/proposed-adr-check.mjs`. If it reports a mixed change,
+stop for the human's choice: accept the record in this branch, split it into
+its own pull request, or declare an experiment with the label `experiment`
+when the pull request opens (ADR 0035). If the check cannot run, stop and report why.
+
+## 5. Review
 
 Only when the repository's `CLAUDE.md` enables one (a line such as
 `Review: codex`), or when asked:
@@ -79,7 +86,7 @@ Only when the repository's `CLAUDE.md` enables one (a line such as
 - If the review cannot run (server missing, usage limit, failed turn, empty
   result), say so. Never report a review that did not run as clean.
 
-## 5. Documentation couplings
+## 6. Documentation couplings
 
 When the change alters behaviour, check and update what applies: `README.md`,
 `docs/ROADMAP.md`, the ADR directory (use `/adr-draft` for a decision that
@@ -89,7 +96,7 @@ changelog is only edited when preparing a release, unless the repository says
 otherwise. Say what you checked and what you changed; "nothing needed" is valid
 only after looking.
 
-## 6. Pull request
+## 7. Pull request
 
 - Title: the Conventional Commits subject of the squashed change.
 - Body: the repository's `.github` pull request template. Include the issue it

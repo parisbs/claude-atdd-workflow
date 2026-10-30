@@ -1,6 +1,7 @@
 [
   { "name": "next", "color": "0E8A16", "description": "Prepared and queued; waiting for an explicit go" },
   { "name": "atdd", "color": "1D76DB", "description": "Follows the acceptance-test-driven workflow" },
+  { "name": "experiment", "color": "5319E7", "description": "A declared spike or experiment: a proposed ADR may ship with it (ADR 0035)" },
   { "name": "test-change-requested", "color": "D93F0B", "description": "An agent asked to change a frozen acceptance test" },
   { "name": "needs-human", "color": "D93F0B", "description": "The pull request must be merged by a human" },
   { "name": "blocked", "color": "B60205", "description": "Cannot progress until something else changes" }

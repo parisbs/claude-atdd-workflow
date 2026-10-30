@@ -45,6 +45,7 @@ import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git as readGit, readEvent } from './lib.mjs';
 import { ghIsRead, gitCommand, gitSubcommand, program } from './commands.mjs';
 import { isTest, testMatchers } from './oracle.mjs';
+import { proposedAdrChange, proposedAdrMessage } from './proposed-adr.mjs';
 import { commandWords, gateCommands, nonliteral, rawGateCommands, shellParts, supabaseIndex, withoutMessages } from './git-shell.mjs';
 
 const mode = process.argv[2];
@@ -315,7 +316,7 @@ const PLAIN_MERGE = /^gh pr merge(?: (?!#)[A-Za-z0-9@%+=:,./_#-]+)*$/;
 const PR_FIELDS = 'author,baseRefName,changedFiles,files,headRefName,headRefOid,headRepository,headRepositoryOwner,isCrossRepository,isDraft,labels,statusCheckRollup,url';
 const PASSED_CONCLUSIONS = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
-// Three gh calls and ls-remote share 10 s of elapsed call time, each capped at
+// The gh calls and ls-remote share 10 s of elapsed call time, each capped at
 // 6 s. Each merge's local work, oracle discovery, SSH config read and comparison
 // get 5 s apiece: N merges could take 10 + N * 20 s. One process deadline caps
 // all reads at 27 s (12 s for --skip-merge), leaving 3 s of the entry's 30 s
@@ -890,9 +891,34 @@ async function mergeReasons(options, cwd) {
   }
   const sensitive = controlPlaneFiles(paths, extra);
   if (sensitive.length > 0) reasons.push(`Control-plane files changed: ${sensitive.join(', ')}.`);
+  // ADR 0035: record status comes from the pushed head, never the base or local copy.
+  const additions = new Map(pr.files.map((file) => [file.path, file.additions]));
+  const change = proposedAdrChange(paths, (path) => {
+    let failure;
+    if (!where || !/^[a-f0-9]{40}$/i.test(pr.headRefOid ?? '')) {
+      failure = 'the pull request host or head commit is unreadable';
+    } else {
+      const [, host, owner, name] = where;
+      const file = gh([
+        'api', '--hostname', host,
+        '-H', 'Accept: application/vnd.github.raw+json',
+        `repos/${owner}/${name}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${pr.headRefOid}`,
+      ], cwd);
+      if (file.stdout !== undefined) return file.stdout;
+      // A 404 is a deletion only when the pull request adds no lines to the path; otherwise the
+      // record exists at the head and GitHub would not show it (ADR 0035).
+      if (/HTTP 404/.test(file.stderr ?? '') && !(additions.get(path) > 0)) return null;
+      failure = file.failure;
+    }
+    reasons.push(`Could not read the status of ADR record ${path} at the pull request head: ${failure}.`);
+    unreadable = true;
+    return null;
+  });
+  const experiment = pr.labels.some((label) => String(label.name).toLowerCase() === 'experiment');
+  if (change.mixed) reasons.push(proposedAdrMessage(change, { experiment }));
   const oracle = await mergeOracle(pr, where, cwd);
   if (oracle.reason) reasons.push(oracle.reason);
-  return { reasons, oracle, unreadable };
+  return { reasons, oracle, unreadable, requiresHuman: change.mixed && !experiment };
 }
 
 const couldNotDecide = (error) => `Could not decide this merge (${error?.message ?? error}).`;
@@ -901,9 +927,11 @@ function askHuman(verdict, reasons) {
   verdict.add('ask', `${reasons.join(' ')} The human decides this merge (ADR 0010).`);
 }
 
-function mergeDecision(verdict, reasons, permissionMode, unreadable) {
-  if (unreadable && permissionMode === 'bypassPermissions') {
-    verdict.add('deny', `${reasons.join(' ')} The oracle requires human approval; switch from bypassPermissions to a mode that shows permission prompts.`);
+// deny: whether bypassPermissions is denied; oracle: whether the oracle gave a reason (ADR 0030).
+function mergeDecision(verdict, reasons, permissionMode, deny, oracle = false) {
+  if (deny && permissionMode === 'bypassPermissions') {
+    const approval = oracle ? 'The oracle requires human approval' : 'This merge requires human approval';
+    verdict.add('deny', `${reasons.join(' ')} ${approval}; switch from bypassPermissions to a mode that shows permission prompts.`);
   } else askHuman(verdict, reasons);
 }
 
@@ -932,7 +960,8 @@ async function checkGh(args, verdict, cwd, readPullRequest, permissionMode) {
   }
   // Valued merge-method flags keep the normal permission prompt (ADR 0030).
   if (result.reasons.length === 0) return options.valuedMethod || options.positional.length > 1 ? false : result.oracle.evidence;
-  mergeDecision(verdict, result.reasons, permissionMode, result.unreadable || !!result.oracle?.reason);
+  mergeDecision(verdict, result.reasons, permissionMode,
+    result.unreadable || !!result.oracle?.reason || result.requiresHuman, !!result.oracle?.reason);
   return false;
 }
 

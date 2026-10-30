@@ -134,7 +134,10 @@ cannot separate the effects of the workflow, developer, project and model.
     a fork, ADR 0024. It compares the pull request's head with the remote
     `oracle/<head branch>` tag: changed tests, `atdd` without a tag, or an
     unreadable oracle ask in the main session and deny in bypassPermissions
-    (ADR 0030); and for a subagent's call, no `git push` and only
+    (ADR 0030). A proposed ADR record merged together with paths outside the
+    ADR directories asks in the main session and is denied in
+    bypassPermissions unless the pull request carries `experiment`
+    (ADR 0035); and for a subagent's call, no `git push` and only
     read-only `gh` commands, ADR 0013), `guard-readonly.mjs` (the researcher's
     closed list of shell reads; denies writes, execution and unread forms, and
     fails closed), `commands.mjs` (command knowledge shared by both guards),
@@ -145,8 +148,10 @@ cannot separate the effects of the workflow, developer, project and model.
     them). The freeze binds while an `oracle/<branch>` tag exists, and in a
     linked worktree while an oracle tag's commit is an ancestor of HEAD.
     The remaining hooks are `oracle-check.mjs` (the
-    deterministic pre-PR check of the oracle), `guard-codex.mjs` (Codex
-    delegations pass `working_dir`, a worktree delegation starts from a clean
+    deterministic pre-PR check of the oracle), `proposed-adr-check.mjs` (the
+    pre-PR check that `pr-prep` runs for a proposed ADR shipped with other
+    paths), `proposed-adr.mjs` (its rule, shared with the merge decision),
+    `guard-codex.mjs` (Codex delegations pass `working_dir`, a worktree delegation starts from a clean
     directory, and a writing call of any declared Codex registration runs in a Codex
     worktree), `codex-integrate.mjs` (applies a Codex worktree's changes to the
     work branch, refusing all changes when frozen test paths are touched;
