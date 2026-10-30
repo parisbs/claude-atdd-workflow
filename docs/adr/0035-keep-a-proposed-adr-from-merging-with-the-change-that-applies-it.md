@@ -58,8 +58,9 @@ pull request exists.
 
 ### Where the control lives
 
-1. The merge guard. `guard-git` reads the front matter of every changed
-   record at the pull request's head commit and, for a mixed pull request,
+1. The merge guard. When the pull request changes a path outside the ADR
+   directories, `guard-git` reads the front matter of every changed record at
+   the pull request's head commit and, for a mixed pull request,
    adds a reason to its merge decision. The reason names each proposed record,
    the paths outside the ADR directories, and the two ways out: accept the
    record in this pull request, or move it to its own pull request and merge
@@ -134,8 +135,8 @@ pull request exists.
 - An agent's merge of a mixed pull request reaches the human with the
   records and paths named, and never passes in `bypassPermissions`. The
   earlier catch is `pr-prep`, before review time is spent.
-- The merge decision makes one more `gh api` read per changed record, within
-  its existing time budget. A failed read asks, as for the other parts of the
+- The merge decision makes one more `gh api` read per changed record when the
+  pull request also changes another path, within its existing time budget. A failed read asks, as for the other parts of the
   merge decision that fail closed.
 - `check-adrs.mjs` changes, and the `repo-bootstrap` template copies it, so
   bootstrapped repositories print the notice too.
@@ -153,15 +154,22 @@ pull request exists.
   - The merge guard sees a renamed file under its new path only, while the
     local checks also list the old one, so a file moved into an ADR directory
     counts as another path locally and not at the guard.
-  - A record with CRLF line endings is not read as proposed, so a working
-    tree checked out with `core.autocrlf` can miss what the guard catches.
+  - A record with CRLF line endings or a UTF-8 byte order mark is not read
+    as proposed, by the guard or by the local checks; a working tree checked
+    out with `core.autocrlf` can also miss what the guard catches. An added
+    record of that shape in a top-level ADR directory fails `check-adrs`.
   - A 404 for a record the pull request lists with no added lines is read as
-    a deletion; an edit that only removes lines and cannot be read that way
-    is the residual case.
+    a deletion. A record that exists at the head but that GitHub does not
+    serve, and whose change adds no lines (a pure rename, a mode change or an
+    edit that only removes lines), escapes the bypassPermissions deny; the
+    control-plane ask still applies. Reading the file's `changeType` would
+    close it.
   - A head commit that is not a 40-character SHA-1, as in a SHA-256
     repository, makes every changed record unreadable, which fails closed.
   - The local check compares with the local `main` by default; a stale
     `main` gives an older merge base and can report a change as mixed that
-    is not.
+    is not. A base argument starting with `-` reaches `git merge-base` as an
+    option, and a change list larger than the default output buffer makes
+    the check exit 2, which stops `pr-prep`.
 - This record is itself applied by the pull request that adds it: it is done
   only when the human accepts it there.

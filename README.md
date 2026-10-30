@@ -150,8 +150,8 @@ cannot separate the effects of the workflow, developer, project and model.
     The remaining hooks are `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle), `proposed-adr-check.mjs` (the
     pre-PR check that `pr-prep` runs for a proposed ADR shipped with other
-    paths) and `proposed-adr.mjs` (its rule, shared with the merge decision), `guard-codex.mjs` (Codex
-    delegations pass `working_dir`, a worktree delegation starts from a clean
+    paths), `proposed-adr.mjs` (its rule, shared with the merge decision),
+    `guard-codex.mjs` (Codex delegations pass `working_dir`, a worktree delegation starts from a clean
     directory, and a writing call of any declared Codex registration runs in a Codex
     worktree), `codex-integrate.mjs` (applies a Codex worktree's changes to the
     work branch, refusing all changes when frozen test paths are touched;
