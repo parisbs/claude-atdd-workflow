@@ -20,13 +20,15 @@ function isProposed(text) {
 // readRecord returns the head/working-tree contents, or null for a deleted record.
 export function proposedAdrChange(paths, readRecord) {
   const changed = [...new Set(paths)];
+  const other = changed.filter((path) => !adrDirectory.test(path));
+  // Without another path the change cannot be mixed, so no record is read (ADR 0035).
+  if (other.length === 0) return { proposed: [], other, mixed: false };
   const proposed = changed.filter((path) => {
     if (!adrDirectory.test(path) || !recordName.test(posix.basename(path))) return false;
     const text = readRecord(path);
     return text !== null && isProposed(text);
   });
-  const other = changed.filter((path) => !adrDirectory.test(path));
-  return { proposed, other, mixed: proposed.length > 0 && other.length > 0 };
+  return { proposed, other, mixed: proposed.length > 0 };
 }
 
 export function proposedAdrMessage(change, { branch = false, experiment = false } = {}) {
