@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-30
 ---
 # 0035. Keep a proposed ADR from merging with the change that applies it
