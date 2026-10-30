@@ -204,8 +204,10 @@ for (const [label, env] of [
   ['read deadline exhaustion', { GUARD_TESTS_GIT_BUDGET_MS: '1' }],
 ]) rule('AC-3 (H6/H12)', label, 'echo first; rm tests/a.test.mjs', 'echo first; echo hi > src/out', { env, visibleFailure: true });
 for (const mode of ['fail', 'oversized']) {
-  for (const target of ['tests', FILE, 'package.json']) rule('AC-4 (H6)', `${mode} inventory protects ${target}`, `rm -rf ${target}`, 'echo hi > /tmp/issue-77-out', {
-    env: { CONSEQUENCE_TREE: mode }, path: target, unread: target === 'tests',
+  // A literal write to package.json is a read form that asks in every session (ADR 0033), so the
+  // configuration case uses an unread form.
+  for (const target of ['tests', FILE, 'package.json']) rule('AC-4 (H6)', `${mode} inventory protects ${target}`, `${target === 'package.json' ? 'eval ' : ''}rm -rf ${target}`, 'echo hi > /tmp/issue-77-out', {
+    env: { CONSEQUENCE_TREE: mode }, path: target, unread: target !== FILE,
   });
 }
 const nested = (path) => {
