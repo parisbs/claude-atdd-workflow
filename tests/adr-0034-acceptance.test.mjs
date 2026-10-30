@@ -1,6 +1,6 @@
 // Issue #73: accepting ADR 0034 updates the invariants and status metadata without rewriting decided bodies.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -17,14 +17,21 @@ function record(number) {
   assert.ok(file, `ADR ${number} is missing`);
   return { file, text: read(`docs/adr/${file}`) };
 }
-function baseline(file) {
-  const r = spawnSync('git', ['show', `${BASE}:${file}`], {
-    cwd: root, encoding: 'utf8', timeout: 5000,
-    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', LC_ALL: 'C' },
-  });
-  assert.equal(r.status, 0, `cannot read the committed baseline ${BASE}:${file}: ${r.stderr}`);
-  return r.stdout;
-}
+// Digests of the texts at main d4f4707: CI checks out one commit, so the baseline cannot be read with git show.
+const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+const BASELINE = {
+  safetyNetTail: '8c5a83e50e8c4d45070a1ade165d183d22b1d65089685189df5746f0222d37ae',
+  failOpen: 'c30ef141250da73c941d2c2c5ccf96cbf9f842d05cb05896e7c4ec9f2d42f4d2',
+  bodies: {
+    '0002': ['3af3a90fa3f64b1058f05db9ce9a487c0a82a9aac1e1cf8f9cb09d4dbaadad65', '2026-09-29'],
+    '0010': ['d68cb3768c784590d748c28ba2290e7c67ac39d46053763a54fc13c09a18f047', '2026-10-02'],
+    '0013': ['f93d72f682988f71ad52e7d4c13e1cefffa1f3b0f152261f63a426d0f1ead064', '2026-10-05'],
+    '0029': ['ba2dc21fbfda5e01785b574e0f5b271af6c5224795a6d7ba7eb5c3bb98dd5a69', '2026-10-23'],
+    '0030': ['4a831e4c73e3defab963d7e7cfcef4ce1095818ffb3842b08436b4ea98074a10', '2026-10-28'],
+    '0032': ['8b725567062271cc85c69c28761b8dbb66ea2d655d453b26a8eff094d4a316fc', '2026-10-28'],
+    '0033': ['af9e039c70728b617cee75a4ba359d72ed4898c325f95e87e85efeb83818d9c7', '2026-10-28'],
+  },
+};
 const invariants = () => read('CLAUDE.md').split('\n## Invariants\n')[1]?.split('\n## ')[0] ?? '';
 const bullet = (text, start) => normalize(text.split('\n').reduce((blocks, line) => {
   if (line.startsWith('- ')) blocks.push(line);
@@ -56,16 +63,15 @@ describe('ADR 0034 acceptance (#73)', () => {
 
   test('AC-19 the safety-net invariant keeps the human-review and CI text unchanged', () => {
     const current = bullet(invariants(), 'The hooks are a safety net');
-    const previous = bullet(baseline('CLAUDE.md'), 'The hooks are a safety net');
     assert.ok(current.includes('That net,'));
-    assert.equal(current.slice(current.indexOf('That net,')), previous.slice(previous.indexOf('That net,')));
+    assert.equal(sha256(current.slice(current.indexOf('That net,'))), BASELINE.safetyNetTail, current);
   });
 
   test('AC-19 the fail-open invariant gains the deciding-exception sentence and keeps its other exceptions', () => {
     const text = bullet(invariants(), 'What must always hold');
     const sentence = 'A guard that throws while deciding a command that reaches a high-consequence gate of ADR 0034 asks or denies instead; a hook that cannot start or times out still fails open.';
     assert.ok(text.includes(sentence), text);
-    assert.equal(normalize(text.replace(sentence, '')), bullet(baseline('CLAUDE.md'), 'What must always hold'));
+    assert.equal(sha256(normalize(text.replace(sentence, ''))), BASELINE.failOpen, text);
   });
 
   for (const number of ['0002', '0010', '0013', '0029', '0030', '0032', '0033']) {
@@ -77,12 +83,11 @@ describe('ADR 0034 acceptance (#73)', () => {
     });
     test(`AC-19 ADR ${number} keeps its body byte for byte from main ${BASE}`, () => {
       const { file, text } = record(number);
-      const before = frontMatter(baseline(`docs/adr/${file}`));
+      const [body, date] = BASELINE.bodies[number];
       const after = frontMatter(text);
-      assert.ok(before, `${BASE}:${file} has no front matter`);
       assert.ok(after, `${file} has no front matter`);
-      assert.equal(after.rest, before.rest, `${file}: a decided body changed`);
-      assert.equal(after.fields.date, before.fields.date, `${file}: accepting an amendment does not change its date`);
+      assert.equal(sha256(after.rest), body, `${file}: a decided body changed`);
+      assert.equal(after.fields.date, date, `${file}: accepting an amendment does not change its date`);
     });
   }
 });
