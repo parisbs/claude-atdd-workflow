@@ -924,9 +924,10 @@ function askHuman(verdict, reasons) {
   verdict.add('ask', `${reasons.join(' ')} The human decides this merge (ADR 0010).`);
 }
 
-function mergeDecision(verdict, reasons, permissionMode, unreadable) {
-  if (unreadable && permissionMode === 'bypassPermissions') {
-    verdict.add('deny', `${reasons.join(' ')} The oracle requires human approval; switch from bypassPermissions to a mode that shows permission prompts.`);
+function mergeDecision(verdict, reasons, permissionMode, unreadable, requiresHuman = false) {
+  if ((unreadable || requiresHuman) && permissionMode === 'bypassPermissions') {
+    const approval = unreadable ? 'The oracle requires human approval' : 'This merge requires human approval';
+    verdict.add('deny', `${reasons.join(' ')} ${approval}; switch from bypassPermissions to a mode that shows permission prompts.`);
   } else askHuman(verdict, reasons);
 }
 
@@ -955,7 +956,7 @@ async function checkGh(args, verdict, cwd, readPullRequest, permissionMode) {
   }
   // Valued merge-method flags keep the normal permission prompt (ADR 0030).
   if (result.reasons.length === 0) return options.valuedMethod || options.positional.length > 1 ? false : result.oracle.evidence;
-  mergeDecision(verdict, result.reasons, permissionMode, result.unreadable || !!result.oracle?.reason || result.requiresHuman);
+  mergeDecision(verdict, result.reasons, permissionMode, result.unreadable || !!result.oracle?.reason, result.requiresHuman);
   return false;
 }
 

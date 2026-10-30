@@ -149,8 +149,6 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   with the `oracle/<head branch>` tag on the base repository's remote and asks when test
   paths changed, the label `atdd` has no tag, or the oracle cannot be read;
   bypassPermissions denies (ADR 0030).
-- A task that adds or changes an ADR record is done when the human accepted it
-  in the pull request that applies it, or it merged alone as proposed (ADR 0035).
 - Routing: the `Implement:` line of the repository's `CLAUDE.md` says who writes
   code, `claude` (the `claude-implementer` subagent, ADR 0011) or `codex`; without
   the line, `claude-implementer`. The human can override it in the session.
