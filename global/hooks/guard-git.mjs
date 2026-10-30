@@ -45,7 +45,7 @@ import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
 import { Verdict, failOpen, git as readGit, readEvent } from './lib.mjs';
 import { ghIsRead, gitCommand, gitSubcommand, program } from './commands.mjs';
 import { isTest, testMatchers } from './oracle.mjs';
-import { commandWords, gateCommands, nonliteral, shellParts, withoutMessages } from './git-shell.mjs';
+import { commandWords, gateCommands, nonliteral, rawGateCommands, shellParts, supabaseIndex, withoutMessages } from './git-shell.mjs';
 
 const mode = process.argv[2];
 const mergeOnly = mode === '--merge-only';
@@ -250,9 +250,10 @@ async function checkGit(args, cwd, verdict, branches, session) {
     if (force && !targets.some((t) => guarded.has(t))) {
       verdict.add('ask', 'Force push: confirm that rewriting the remote branch is intended.');
     }
-    if (deletes || has('--tags', '--follow-tags') || refspecs.some((r) => /^(?:refs\/)?tags\//.test(r.replace(/^\+/, '').split(':').pop()))
+    if (deletes) verdict.add('ask', 'This deletes remote refs.');
+    if (has('--tags', '--follow-tags') || refspecs.some((r) => /^(?:refs\/)?tags\//.test(r.replace(/^\+/, '').split(':').pop()))
       || refspecs.some((r) => r === 'tag' || refs.includes(`refs/tags/${r}`))) {
-      verdict.add('ask', 'This deletes or rewrites remote refs.');
+      verdict.add('ask', 'This pushes a tag: confirm the human approved publishing it.');
     }
     if (force) {
       const oracles = refs.filter((r) => r.startsWith('refs/tags/oracle/'));
@@ -901,11 +902,11 @@ const COMMIT_OPTIONS = ['--all', '--patch', '--reuse-message', '--reedit-message
   '--cleanup', '--edit', '--no-edit', '--amend', '--no-post-rewrite', '--include', '--only', '--pathspec-from-file',
   '--pathspec-file-nul', '--untracked-files', '--verbose', '--quiet', '--dry-run', '--status', '--no-status',
   '--gpg-sign', '--no-gpg-sign', '--no-ahead-behind'];
-const BUILTIN_GIT = new Set(['add', 'am', 'apply', 'archive', 'bisect', 'blame', 'branch', 'bundle', 'checkout',
+const BUILTIN_GIT = new Set(['add', 'am', 'apply', 'archive', 'bisect', 'blame', 'branch', 'bundle', 'cat-file', 'checkout',
   'cherry', 'cherry-pick', 'clean', 'clone', 'commit', 'config', 'describe', 'diff', 'difftool', 'fetch', 'format-patch',
-  'fsck', 'gc', 'grep', 'help', 'init', 'log', 'ls-files', 'ls-remote', 'ls-tree', 'merge', 'merge-base', 'mergetool',
+  'diff-tree', 'for-each-ref', 'fsck', 'gc', 'grep', 'help', 'init', 'log', 'ls-files', 'ls-remote', 'ls-tree', 'merge', 'merge-base', 'mergetool',
   'mv', 'notes', 'pull', 'push', 'range-diff', 'rebase', 'reflog', 'remote', 'reset', 'restore', 'revert',
-  'rev-list', 'rev-parse', 'rm', 'show', 'show-ref', 'sparse-checkout', 'stage', 'stash', 'status', 'submodule',
+  'rev-list', 'rev-parse', 'rm', 'shortlog', 'show', 'show-ref', 'sparse-checkout', 'stage', 'stash', 'status', 'submodule',
   'switch', 'symbolic-ref', 'tag', 'update-index', 'update-ref', 'version', 'worktree']);
 
 function skipsHooks(sub, args) {
@@ -1028,11 +1029,12 @@ function addUnread(verdict, gates, part, session) {
 let permissionMode;
 let session = {};
 let candidates = [];
+let command;
 const verdict = new Verdict();
 try {
   const event = readEvent();
   permissionMode = event?.permission_mode;
-  const command = event?.tool_input?.command;
+  command = event?.tool_input?.command;
   if (typeof command !== 'string') {
     if (mergeOnly) throw new Error('the event carries no Bash command');
     process.exit(0);
@@ -1044,12 +1046,27 @@ try {
   const branches = new Map();
   let refsMayChange = false;
   const parts = shellParts(command);
-  const readings = parts.map((part) => gateCommands(part));
+  const exports = new Map();
+  const readings = parts.map((part) => {
+    const words = commandWords(part.tokens).tokens;
+    if (words[0]?.value === 'export') {
+      for (const token of words.slice(1)) {
+        if (/^(?:GIT_(?:DIR|WORK_TREE|COMMON_DIR|NAMESPACE|CONFIG_\w*)|GH_(?:REPO|HOST|TOKEN)|HUSKY(?:_SKIP_HOOKS)?)=/.test(token.value)) {
+          exports.set(token.value.split('=')[0], token);
+        }
+      }
+    }
+    part.exports = [...exports.values()];
+    return gateCommands(part).map((candidate) => ({ ...candidate,
+      assignments: [...part.exports, ...candidate.assignments] }));
+  });
   candidates = readings.flat().map((candidate) => ({ ...candidate, gates: gatesFor(candidate, subagent) }));
   let merged = false;
   for (let i = 0; i < parts.length; i += 1) {
     checkBudget();
-    const { assignments, tokens: original } = commandWords(parts[i].tokens);
+    const words = commandWords(parts[i].tokens);
+    const assignments = [...parts[i].exports, ...words.assignments];
+    const original = words.tokens;
     const tokens = withoutMessages(original);
     const w = tokens.map((t) => t.value);
     let unread = false;
@@ -1078,10 +1095,14 @@ try {
         verdict.add('deny', 'Write gh pr flags after merge so the merge guard can verify the pull request.');
       }
       if (subagent && (!mergeOnly || isMerge(w))) checkSubagent(w, verdict);
-      if (w[0] === 'cd' && w[1]) {
-        cwdIssue = nonliteral(tokens[1]);
-        if (!cwdIssue) {
-          const directory = w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~');
+      if (['pushd', 'popd'].includes(w[0])) {
+        cwdIssue = `unresolved directory context after ${w[0]}`;
+      } else if (w[0] === 'cd' && w[1]) {
+        const directory = w[1].replace(/^~(?=\/|$)/, process.env.HOME ?? '~');
+        const issue = nonliteral(tokens[1]);
+        if (issue) cwdIssue = issue;
+        else if (isAbsolute(directory) || !cwdIssue) {
+          cwdIssue = undefined;
           cwd = isAbsolute(directory) ? directory : resolve(cwd, directory);
         }
       } else if (program(w[0]) === 'git' && !mergeOnly) {
@@ -1094,8 +1115,8 @@ try {
       } else if (program(w[0]) === 'gh' && !subagent) {
         merged = await checkGh(w.slice(1), verdict, cwd, !skipMerge, permissionMode) || merged;
         refsMayChange ||= (w[1] === 'pr' && w[2] === 'checkout') || (w[1] === 'repo' && w[2] === 'sync');
-      } else if (!mergeOnly && (w[0] === 'supabase' || (['npx', 'bunx'].includes(w[0]) && w[1] === 'supabase'))) {
-        checkSupabase(w.slice(w[0] === 'supabase' ? 1 : 2), verdict);
+      } else if (!mergeOnly && supabaseIndex(tokens) !== undefined) {
+        checkSupabase(w.slice(supabaseIndex(tokens) + 1), verdict);
       }
     }
     checkBudget();
@@ -1108,7 +1129,8 @@ try {
   }
   verdict.emit();
 } catch (error) {
-  const gates = [...new Set(candidates.flatMap((c) => c.gates).filter((g) => !mergeOnly || g === 'merge'))];
+  const fallback = typeof command === 'string' ? rawGateCommands(command).flatMap((c) => gatesFor(c, session.subagent)) : [];
+  const gates = [...new Set([...candidates.flatMap((c) => c.gates), ...fallback].filter((g) => !mergeOnly || g === 'merge'))];
   if (gates.length) {
     addUnread(verdict, gates, `deciding exception: ${mergeOnly ? couldNotDecide(error) : error.message}`, session);
     verdict.emit();
