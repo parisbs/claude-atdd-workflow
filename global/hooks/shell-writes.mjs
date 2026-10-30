@@ -62,26 +62,44 @@ function substitutionEnd(command, start) {
   return -1;
 }
 
+// The text of each command substitution in an expanded heredoc body.
+function substitutionsOf(body) {
+  const inner = [];
+  for (let i = 0; i < body.length; i += 1) {
+    if (body[i] === '\\') i += 1;
+    else if (body[i] === '`' || (body[i] === '$' && body[i + 1] === '(' && body[i + 2] !== '(')) {
+      const end = substitutionEnd(body, i);
+      if (end < 0) break;
+      inner.push(body.slice(i + (body[i] === '`' ? 1 : 2), end));
+      i = end;
+    }
+  }
+  return inner;
+}
+
 // Keep quoted scripts literal and attach heredoc bodies to their input
 // operator. An unread input must not swallow later command segments. A command
 // substitution stays whole inside its word; `result.substitutions` maps the
-// index of that word to the text of each substitution in it.
+// index of that word to the text of each substitution in it. The body of a heredoc
+// whose delimiter is unquoted is expanded, so its substitutions are listed in `inner`.
 function tokens(command, error, check) {
   const result = [];
   result.substitutions = new Map();
   let word = '';
   let started = false;
+  let quoted = false;
   let quote;
   let heredoc;
   const pending = [];
   const finish = () => {
     if (started) {
       result.push(word);
-      if (heredoc) pending.push({ token: heredoc, delimiter: word });
+      if (heredoc) pending.push({ token: heredoc, delimiter: word, quoted });
       heredoc = undefined;
     }
     word = '';
     started = false;
+    quoted = false;
   };
   for (let i = 0; i < command.length; i += 1) {
     if (i % 1024 === 0) check();
@@ -96,6 +114,7 @@ function tokens(command, error, check) {
         if (quote && !['$', '`', '"', '\\'].includes(next)) word += '\\';
         word += next;
         started = true;
+        quoted = true;
       }
     } else if (ch === '`' || (ch === '$' && command[i + 1] === '(' && command[i + 2] !== '(')) {
       const end = substitutionEnd(command, i);
@@ -120,11 +139,13 @@ function tokens(command, error, check) {
         word += command[j] ?? '';
       }
       started = true;
+      quoted = true;
       if (j >= command.length) error(new Error('unterminated shell quote'));
       i = j;
     } else if (ch === '"' || ch === "'") {
       quote = ch;
       started = true;
+      quoted = true;
     } else if (command.startsWith('$((', i)) {
       const end = command.indexOf('))', i + 3);
       word += command.slice(i, end < 0 ? command.length : end + 2);
@@ -144,7 +165,7 @@ function tokens(command, error, check) {
       i += op.length - 1;
       if (op === '<<' || op === '<<-') heredoc = token;
       if (op === '\n') {
-        for (const { token: input, delimiter } of pending.splice(0)) {
+        for (const { token: input, delimiter, quoted: literal } of pending.splice(0)) {
           const start = i + 1;
           let cursor = start;
           let found = false;
@@ -153,6 +174,7 @@ function tokens(command, error, check) {
             const line = command.slice(cursor, end < 0 ? command.length : end);
             if ((input.op === '<<-' ? line.replace(/^\t+/, '') : line) === delimiter) {
               input.body = command.slice(start, cursor);
+              if (!literal) input.inner = substitutionsOf(input.body);
               i = end < 0 ? command.length : end;
               found = true;
               break;
@@ -292,12 +314,31 @@ const XARGS_VALUES = ['-n', '-L', '-P', '-s', '-E', '-d', '-a', '--max-args', '-
 const xargsKnown = (arg) => /^-[0rtpxo]+$/.test(arg) || /^-[nLPsEda]./.test(arg)
   || /^--(?:max-args|max-lines|max-procs|max-chars|eof|delimiter|arg-file)=/.test(arg)
   || ['--null', '--no-run-if-empty', '--verbose', '--interactive', '--exit', '--open-tty'].includes(arg);
+// Programs that write what they are given; the rest read, or are unknown and stay allowed.
+const WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'install', 'ln', 'tee', 'truncate', 'touch', 'dd', 'rsync', 'patch', 'git', 'bash', 'sh', 'zsh', 'eval']);
+// Whether a command, given as words, writes; `xargs` writes when the command it runs does.
+function writes(words) {
+  const current = unwrap([...words], () => {});
+  const cmd = program(current[0]);
+  if (cmd === 'xargs') {
+    let i = 1;
+    for (; i < current.length && current[i].startsWith('-'); i += 1) {
+      if (current[i] === '--') { i += 1; break; }
+      if (current[i] === '-I' || XARGS_VALUES.includes(current[i])) i += 1;
+    }
+    return i < current.length && writes(current.slice(i));
+  }
+  return WRITERS.has(cmd) || inPlace(cmd, current.slice(1));
+}
 
 // Each result is an absolute candidate path. The caller supplies the oracle
 // inventory and records each write immediately, before later work can fail.
-// Text it does not read goes to options.unread(span, part), silently.
+// Text it does not read goes to options.unread(span, part, cause, dir), silently; `dir` is the
+// directory the reader had reached there, or undefined when it did not know.
 export function shellWrites(command, cwd, options = {}, depth = 0, unknown = false) {
-  const unread = (span, part, cause) => options.unread?.(span, part, cause);
+  let unknownCwd = unknown;
+  // The span is resolved in the directory the reader had reached, or in none when it lost track.
+  const unread = (span, part, cause, at = cwd) => options.unread?.(span, part, cause, unknownCwd && at === cwd ? undefined : at);
   if (depth > 8) {
     unread(command, 'nesting beyond depth 8');
     return [];
@@ -337,7 +378,6 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
     }
     return parts.join(' ');
   };
-  let unknownCwd = unknown;
   let previous;
   const emit = (path, action) => {
     check();
@@ -348,11 +388,11 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
   const expand = (path, dir = cwd, reading = false) => {
     if (!path) return [];
     if (nonliteral(path)) {
-      if (!reading) unread(spanOf(path), 'a non-literal write target');
+      if (!reading) unread(spanOf(path), 'a non-literal write target', undefined, dir);
       return [];
     }
     if (!reading && BRACE_RANGE.test(path)) {
-      unread(path, 'a brace range');
+      unread(path, 'a brace range', undefined, dir);
       return [];
     }
     if (!reading && unknownCwd && dir === cwd && !isAbsolute(path) && path !== '~' && !path.startsWith('~/')) {
@@ -369,7 +409,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       const re = globToRegExp(pattern);
       const files = inventory(anchor);
       if (files.unreadable) {
-        unread(path, 'the oracle file list could not be read');
+        unread(path, 'the oracle file list could not be read', undefined, dir);
         return [];
       }
       const candidates = [...(files.byDirectory?.keys() ?? []), ...(files.byPath?.keys() ?? [])];
@@ -377,12 +417,13 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
     });
   };
   // The inventory is consulted for a directory, and for a target that does not exist and
-  // can hold tests; any other target is recorded by its path.
-  const add = (path, action = 'changed', dir = cwd) => {
+  // can hold tests; any other target is recorded by its path. `writesDirectory` is set when the
+  // writer can write a directory, so a missing one may have held frozen tests of any name.
+  const add = (path, action = 'changed', dir = cwd, writesDirectory = false) => {
     for (const target of expand(path, dir)) {
       const exists = existsSync(target);
       const directory = exists && statSync(target).isDirectory();
-      const files = directory || (!exists && options.mayHoldTests?.(target)) ? under(target) : [];
+      const files = directory || (!exists && (writesDirectory || options.mayHoldTests?.(target))) ? under(target) : [];
       if (files.length) files.forEach((file) => emit(file.path, action));
       else if (!directory) emit(target, action);
     }
@@ -414,7 +455,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
   let strings = [];
   let substitutions = [];
   let piped;
-  const read = (pipe, toXargs) => {
+  const read = (pipe, toWriter) => {
     const env = new Map();
     const current = unwrap(words, (word) => {
       const at = word.indexOf('=');
@@ -482,6 +523,18 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
           while (!existsSync(parent)) { check(); directories.add(parent); parent = dirname(parent); }
         }
       }
+    } else if (['export', 'declare', 'typeset', 'local', 'readonly'].includes(cmd)) {
+      for (const word of args) if (!word.startsWith('-') && /^[A-Za-z_][A-Za-z_0-9]*=/.test(word)) assigned.set(word.slice(0, word.indexOf('=')), word.slice(word.indexOf('=') + 1));
+    } else if (cmd === 'for' && args[1] === 'in') {
+      assigned.set(args[0], args.slice(2).join(' '));
+    } else if (cmd === 'read') {
+      // Its value comes from a producer the reader cannot follow: the whole command stands for it.
+      const names = [];
+      for (let i = 0; i < args.length; i += 1) {
+        if (['-d', '-p', '-n', '-N', '-t', '-u', '-a'].includes(args[i])) i += 1;
+        else if (!args[i].startsWith('-')) names.push(args[i]);
+      }
+      for (const name of names.length ? names : ['REPLY']) assigned.set(name, command);
     } else if (cmd === 'eval') {
       unread(args.join(' '), 'eval');
     } else if (['bash', 'sh', 'zsh'].includes(cmd)) {
@@ -498,17 +551,43 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       // They are a span when the find writes.
       let supported = true;
       let name;
+      const patterns = [];
       for (let i = 0; i < predicates.length; i += 1) {
         const arg = predicates[i];
-        if (arg === '-name') name = predicates[++i];
+        if (arg === '-name') patterns.push(name = predicates[++i]);
         else if (arg === '-type') supported &&= predicates[++i] === 'f';
         else if (!['-delete', '-print', '-print0', '-depth'].includes(arg)) supported = false;
       }
-      const writes = exec >= 0 || args.includes('-delete');
-      if (!supported && (writes || toXargs)) unread([...roots, ...predicates].join(' '), 'a find expression the guard does not read');
+      // A find writes when it deletes, when a command it runs writes, or when a writer reads its output.
+      const executes = [];
+      args.forEach((arg, at) => {
+        if (['-exec', '-execdir', '-ok', '-okdir'].includes(arg)) {
+          const rest = args.slice(at + 1);
+          const end = rest.findIndex((word) => word === ';' || word === '+');
+          executes.push(end < 0 ? rest : rest.slice(0, end));
+        }
+      });
+      const writing = exec >= 0 || args.includes('-delete');
+      if (!supported && (args.includes('-delete') || executes.some((words) => words.length && writes(words)) || toWriter?.())) {
+        // The frozen files its roots can reach, not the root words, which name no file themselves.
+        const span = [];
+        for (const root of roots.length ? roots : ['.']) {
+          span.push(root);
+          // The whole repository without a name is not a frozen-file deletion the guard can tell.
+          const target = nonliteral(root) ? undefined : absolute(cwd, root);
+          if (!patterns.length && target !== undefined && options.rootOf?.(target) === target) continue;
+          for (const found of expand(root)) {
+            for (const file of under(found)) {
+              check();
+              if (!patterns.length || patterns.some((pattern) => globToRegExp(pattern).test(basename(file.path)))) span.push(file.path);
+            }
+          }
+        }
+        unread(span.join(' '), 'a find expression the guard does not read');
+      }
       const namePattern = name && globToRegExp(name);
       const candidates = new Map();
-      if (supported && (pipe || writes)) {
+      if (supported && (pipe || writing)) {
         // The candidates of a find come from the oracle of the directory it runs in as well.
         inventory(cwd);
         for (const root of roots.length ? roots : ['.']) {
@@ -566,7 +645,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
         if (!options.mayHoldTests?.(target)) return false;
         const files = inventory(target);
         if (files.unreadable) {
-          unread(path, 'the oracle file list could not be read');
+          unread(path, 'the oracle file list could not be read', undefined, dir);
           return false;
         }
         return files.byPath?.has(target);
@@ -578,17 +657,23 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
         const paths = separator >= 0 ? rest.slice(separator + 1) : operands(rest);
         // Existing directories and exact frozen files are path writes; a
         // branch checkout remains a known gap.
-        paths.filter((path) => separator >= 0 || known(path)).forEach((path) => add(path, 'changed', dir));
+        paths.filter((path) => separator >= 0 || known(path)).forEach((path) => add(path, 'changed', dir, true));
       } else if (['restore', 'rm'].includes(subcommand)) {
         const flags = separator >= 0 ? rest.slice(0, separator) : rest;
         const staged = flags.some((arg) => arg === '--staged' || /^-[^-]*S/.test(arg));
         const worktree = flags.some((arg) => arg === '--worktree' || /^-[^-]*W/.test(arg));
         if (subcommand !== 'restore' || !staged || worktree) {
-          operands(rest, ['--source', '-s', '--pathspec-from-file']).forEach((path) => add(path, subcommand === 'rm' ? 'deleted' : 'changed', dir));
+          const recursive = subcommand === 'restore' || flags.some((arg) => arg === '--recursive' || /^-[^-]*r/.test(arg));
+          operands(rest, ['--source', '-s', '--pathspec-from-file']).forEach((path) => add(path, subcommand === 'rm' ? 'deleted' : 'changed', dir, recursive));
         }
       } else if (subcommand === 'mv') nested(['mv', ...rest].map(quoteWord).join(' '), dir);
     } else if (['tee', 'cp', 'mv', 'install', 'ln', 'rm', 'truncate', 'touch'].includes(cmd) || inPlace(cmd, args)) {
       const paths = writeOperands(cmd, args);
+      const flags = args.slice(0, args.indexOf('--') < 0 ? undefined : args.indexOf('--'));
+      // Whether the writer can write a directory, so a missing target may have held frozen tests.
+      const directory = cmd === 'mv' || (cmd === 'rm' && flags.some((arg) => arg === '--recursive' || /^-[^-]*[rR]/.test(arg)))
+        || (cmd === 'cp' && flags.some((arg) => ['--recursive', '--archive'].includes(arg) || /^-[^-]*[rRa]/.test(arg)))
+        || (cmd === 'install' && flags.some((arg) => arg === '--directory' || /^-[^-]*d/.test(arg)));
       if (['cp', 'mv', 'install', 'ln'].includes(cmd)) {
         const targetAt = args.findIndex((arg) => arg === '-t' || arg === '--target-directory' || arg.startsWith('--target-directory='));
         const target = targetAt < 0 ? paths.at(-1) : args[targetAt].split('=')[1] ?? args[targetAt + 1];
@@ -607,11 +692,11 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
                   for (const file of under(source)) add(resolve(dest, basename(source), relative(source, file.path)));
                 }
               }
-            } else add(dest);
+            } else add(dest, 'changed', cwd, directory);
           }
         }
-        if (cmd === 'mv') sources.forEach((path) => add(path, 'deleted'));
-      } else paths.forEach((path) => add(path, cmd === 'rm' ? 'deleted' : 'changed'));
+        if (cmd === 'mv') sources.forEach((path) => add(path, 'deleted', cwd, true));
+      } else paths.forEach((path) => add(path, cmd === 'rm' ? 'deleted' : 'changed', cwd, directory));
     }
     if (['node', 'python', 'perl', 'ruby'].includes(cmd) || /^python\d+(?:\.\d+)*$/.test(cmd)) {
       const values = cmd === 'node' ? ['-r', '--require', '--import'] : cmd.startsWith('python') ? ['-W', '-X'] : ['-I'];
@@ -621,8 +706,8 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
     }
     piped = pipe ? found : undefined;
   };
-  const safeRead = (pipe, toXargs) => {
-    try { read(pipe, toXargs); } catch (failure) {
+  const safeRead = (pipe, toWriter) => {
+    try { read(pipe, toWriter); } catch (failure) {
       error(failure);
       words = [];
       redirects = [];
@@ -634,18 +719,24 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
   };
   const parts = tokens(command, error, check);
   const note = (index) => { substitutions.push(...(parts.substitutions.get(index) ?? [])); };
-  // Whether a pipe from here reaches xargs before the next command separator.
-  const feedsXargs = (from) => {
-    for (let j = from; j < parts.length; j += 1) {
-      if (typeof parts[j] === 'string') {
-        if (program(parts[j]) === 'xargs') return true;
-      } else if (parts[j].op !== '|' && !REDIRECTS.includes(parts[j].op)) return false;
+  // Whether a pipe from here reaches a command that writes before the next command separator.
+  const feedsWriter = (from) => {
+    let words = [];
+    for (let j = from; j <= parts.length; j += 1) {
+      const part = parts[j];
+      if (typeof part === 'string') words.push(part);
+      else if (part && REDIRECTS.includes(part.op)) j += 1;
+      else {
+        if (words.length && writes(words)) return true;
+        if (part?.op !== '|') return false;
+        words = [];
+      }
     }
     return false;
   };
   let segments = 0;
-  const segment = (pipe, toXargs) => {
-    safeRead(pipe, toXargs);
+  const segment = (pipe, toWriter) => {
+    safeRead(pipe, toWriter);
     // Test-only knob (GUARD_TESTS_TEST_THROW): a deciding exception after the first segment.
     if (options.testThrow && depth === 0 && (segments += 1) === 1) throw new Error('injected deciding exception (GUARD_TESTS_TEST_THROW)');
   };
@@ -663,13 +754,14 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
         if (['>', '>>', '&>', '&>>', '>|', '<>'].includes(token.op) || (token.op === '>&' && !/^(?:\d+|-)$/.test(path))) redirects.push(path);
         if (token.op === '<<<') strings.push(path);
         if (token.body !== undefined) bodies.push(token.body);
+        if (token.inner) substitutions.push(...token.inner);
       }
     } else {
-      segment(token.op === '|', token.op === '|' && feedsXargs(i + 1));
+      segment(token.op === '|', token.op === '|' ? () => feedsWriter(i + 1) : undefined);
       if (token.op === '(') stack.push({ cwd, previous, unknownCwd, directoryStack: [...directoryStack] });
       if (token.op === ')' && stack.length) ({ cwd, previous, unknownCwd, directoryStack } = stack.pop());
     }
   }
-  segment(false, false);
+  segment(false);
   return [...new Set(results)];
 }
