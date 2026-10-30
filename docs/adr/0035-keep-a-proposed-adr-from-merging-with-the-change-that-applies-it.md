@@ -82,12 +82,14 @@ pull request exists.
    prints a notice on stdout naming the records and the paths, and its exit
    code stays what its other checks give. CI shows the notice; it never fails
    on it.
-4. Done for ADR work. Briefs, `task-package` and the Delegation section of
-   `global/CLAUDE.md` define a task that adds or changes a record as done when
-   the human accepted the record in the pull request that applies it, or when
-   the record merged alone as proposed. The orchestrator's merge conditions in
+4. Done for ADR work. Briefs and `task-package` define a task that adds or
+   changes a record as done when the human accepted the record in the pull
+   request that applies it, or when the record merged alone as proposed. The
+   orchestrator's merge conditions in the Delegation section of
    `global/CLAUDE.md` list "no proposed record together with other paths,
-   unless the pull request carries `experiment`" next to the others.
+   unless the pull request carries `experiment`" next to the others; the
+   definition of done stays in `task-package`, which every brief is built
+   from, because that section is loaded in every session and kept short.
 
 ### Declaring an exception
 
@@ -148,5 +150,18 @@ pull request exists.
     name does not match `NNNN-*.md`, is not read.
   - Merges the human makes outside the agent's tool calls, in a terminal or
     on GitHub, are outside every guard, by design.
+  - The merge guard sees a renamed file under its new path only, while the
+    local checks also list the old one, so a file moved into an ADR directory
+    counts as another path locally and not at the guard.
+  - A record with CRLF line endings is not read as proposed, so a working
+    tree checked out with `core.autocrlf` can miss what the guard catches.
+  - A 404 for a record the pull request lists with no added lines is read as
+    a deletion; an edit that only removes lines and cannot be read that way
+    is the residual case.
+  - A head commit that is not a 40-character SHA-1, as in a SHA-256
+    repository, makes every changed record unreadable, which fails closed.
+  - The local check compares with the local `main` by default; a stale
+    `main` gives an older merge base and can report a change as mixed that
+    is not.
 - This record is itself applied by the pull request that adds it: it is done
   only when the human accepts it there.
