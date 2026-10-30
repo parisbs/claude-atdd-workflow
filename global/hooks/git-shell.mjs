@@ -1,6 +1,6 @@
 // A small shell reader for guard-git. Keep raw spellings beside dequoted words:
 // the gate trigger can see a program even when its form cannot be evaluated.
-import { program } from './commands.mjs';
+import { gitCommand, program } from './commands.mjs';
 
 // Heredoc bodies start after the header's newline, including inside $(...).
 function heredocAt(text, at) {
@@ -89,6 +89,7 @@ export function shellParts(command) {
   let background = false;
   let issue;
   let redirectTarget = false;
+  let hereString = false;
   let pendingDoc;
   const docs = [];
   const finish = (operator) => {
@@ -97,11 +98,24 @@ export function shellParts(command) {
     tokens = [];
     issue = undefined;
     redirectTarget = false;
+    hereString = false;
     pendingDoc = undefined;
     background = operator === '&';
   };
   for (let i = 0; i < text.length;) {
     const c = text[i];
+    if ((c === '<' || c === '>') && text[i + 1] === '(') {
+      const end = substitutionEnd(text, i + 2);
+      const raw = text.slice(i, end);
+      const reason = end ? `process substitution ${c}(` : `unclosed process substitution ${c}(`;
+      tokens.push({ value: raw, raw, redirect: redirectTarget,
+        substitutions: [{ text: text.slice(i + 2, end ? end - 1 : undefined), issue: reason }] });
+      if (!end) issue = reason;
+      redirectTarget = false;
+      hereString = false;
+      i = end ?? text.length;
+      continue;
+    }
     const redirect = /^(?:[0-9]*(?:<<<|<<-?|>>|<>|<&|>&|>\||[<>])|&>>?)/.exec(text.slice(i));
     if (redirect) {
       const raw = redirect[0];
@@ -109,6 +123,7 @@ export function shellParts(command) {
       tokens.push(token);
       if (/^[0-9]*<<-?$/.test(raw)) pendingDoc = { ...heredocAt(text, i + raw.search(/</)), token, header: tokens };
       redirectTarget = true;
+      hereString = /^[0-9]*<<<$/.test(raw);
       i += raw.length;
       continue;
     }
@@ -123,7 +138,8 @@ export function shellParts(command) {
           let pipedInterpreter = false;
           while (at >= 0 && parts[at]?.operator === '|') {
             at += 1;
-            pipedInterpreter ||= INTERPRETERS.has(program(commandWords(parts[at]?.tokens ?? []).tokens[0]?.value));
+            const piped = commandWords(parts[at]?.tokens ?? []).tokens;
+            pipedInterpreter ||= INTERPRETERS.has(program(piped[commandIndex(piped)]?.value));
           }
           doc.token.heredoc = { ...body, quoted: doc.quoted, header: doc.header, pipedInterpreter };
           i = body.end;
@@ -153,6 +169,7 @@ export function shellParts(command) {
       if (!quote && (/\s/.test(ch) || ';|&(){}<>'.includes(ch))) break;
       // Decode ANSI-C words for the trigger; their raw spellings stay unread.
       if (!quote && ch === '$' && text[i + 1] === "'") { quote = 'ansi'; ansiNul = false; i += 2; continue; }
+      if (!quote && ch === '$' && text[i + 1] === '"') { quote = '"'; i += 2; continue; }
       if (quote === 'ansi') {
         if (ch === "'") { quote = undefined; i += 1; continue; }
         if (ch === '\\' && i + 1 < text.length) {
@@ -196,8 +213,9 @@ export function shellParts(command) {
     }
     const raw = text.slice(start, i);
     if (quote) issue = 'unclosed quote';
-    tokens.push({ value, raw, substitutions, redirect: redirectTarget });
+    tokens.push({ value, raw, substitutions, redirect: redirectTarget, hereString });
     redirectTarget = false;
+    hereString = false;
     if (pendingDoc) { docs.push(pendingDoc); pendingDoc = undefined; }
   }
   finish();
@@ -205,9 +223,46 @@ export function shellParts(command) {
 }
 
 const DATA_PROGRAMS = new Set(['echo', 'printf', 'grep', 'rg', 'which', 'type', 'man', 'npm']);
-const INTERPRETERS = new Set(['bash', 'sh', 'zsh', 'ksh', 'dash', 'eval', 'python', 'python3', 'node']);
+const INTERPRETERS = new Set(['bash', 'sh', 'zsh', 'ksh', 'dash', 'eval', 'python', 'python3', 'node', 'source', '.']);
 const GATE_PROGRAMS = new Set(['git', 'gh', 'supabase']);
 const assignment = (token) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(token.value);
+const PREFIX_VALUES = {
+  env: ['-u', '--unset', '-C', '--chdir'],
+  sudo: ['-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '--close-from', '-T', '--command-timeout', '-R', '--chroot', '-D', '--chdir'],
+  timeout: ['-k', '--kill-after', '-s', '--signal'],
+  nice: ['-n', '--adjustment'],
+  exec: ['-a'],
+  command: [], time: ['-f', '--format', '-o', '--output'], nohup: [],
+  ionice: ['-c', '--class', '-n', '--classdata', '-p', '--pid', '-P', '--pgid', '-u', '--uid'],
+};
+
+// Resolve only the command position for triggers; prefixes remain unread at a gate.
+function commandIndex(tokens) {
+  let at = 0;
+  while (Object.hasOwn(PREFIX_VALUES, program(tokens[at]?.value))) {
+    const name = program(tokens[at].value);
+    if (name === 'command' && ['-v', '-V'].includes(tokens[at + 1]?.value)) return at;
+    at += 1;
+    while (tokens[at]) {
+      const value = tokens[at].value;
+      if (value === '--') { at += 1; break; }
+      if (name === 'env' && assignment(tokens[at])) { at += 1; continue; }
+      if (!value.startsWith('-')) break;
+      at += PREFIX_VALUES[name].includes(value) ? 2 : 1;
+    }
+    if (name === 'timeout' && tokens[at]) at += 1;
+  }
+  return at;
+}
+
+function heredocData(tokens) {
+  const name = program(tokens[0]?.value);
+  if (DATA_PROGRAMS.has(name) || ['cat', 'tee'].includes(name)) return true;
+  if (name !== 'git') return false;
+  const { subcommand, rest } = gitCommand(tokens.slice(1).map((token) => token.value));
+  return ['commit', 'tag'].includes(subcommand) && rest.some((value, i) =>
+    ['-F-', '--file=-'].includes(value) || (['-F', '--file'].includes(value) && rest[i + 1] === '-'));
+}
 
 export function commandWords(tokens) {
   tokens = tokens.filter((token) => !token.redirect);
@@ -258,6 +313,9 @@ export function gateCommands(part, inherited, depth = 0) {
   if (depth > 20) throw new Error('shell reader nesting budget exhausted');
   const { assignments, tokens: original } = commandWords(part.tokens);
   const tokens = withoutMessages(original);
+  const resolved = commandIndex(tokens);
+  const executable = tokens.slice(resolved);
+  const interpreter = INTERPRETERS.has(program(executable[0]?.value));
   const result = [];
   const issue = inherited || part.issue;
   const nested = (text, reason) => {
@@ -273,14 +331,14 @@ export function gateCommands(part, inherited, depth = 0) {
     const doc = token.heredoc;
     if (doc) {
       const header = commandWords(doc.header).tokens;
-      const interpreter = INTERPRETERS.has(program(header[0]?.value))
-        || doc.pipedInterpreter;
-      if (interpreter) executableText(doc.text, doc.issue || 'interpreter heredoc <<');
+      const target = header.slice(commandIndex(header));
+      if (doc.pipedInterpreter || !heredocData(target)) executableText(doc.text, doc.issue || 'heredoc <<');
       else if (doc.issue) nested(doc.text, doc.issue);
       else if (!doc.quoted) {
         for (const sub of bodySubstitutions(doc.text)) nested(sub.text, sub.issue);
       }
     }
+    if (token.hereString && interpreter) executableText(token.value, issue || 'interpreter here-string <<<');
   }
   for (const token of part.tokens.filter((t) => t.redirect).concat(assignments, tokens)) {
     for (const sub of token.substitutions ?? []) nested(sub.text, sub.issue);
@@ -289,8 +347,8 @@ export function gateCommands(part, inherited, depth = 0) {
   const first = program(tokens[0]?.value);
   if (first === 'command' && tokens[1]?.value === '-v') return result;
   if (DATA_PROGRAMS.has(first)) return result;
-  if (INTERPRETERS.has(first)) {
-    for (const token of tokens.slice(1)) {
+  if (interpreter) {
+    for (const token of executable.slice(1)) {
       if (token.value.startsWith('-')) continue;
       executableText(token.value, issue || `interpreter ${first}`);
     }
@@ -299,8 +357,10 @@ export function gateCommands(part, inherited, depth = 0) {
   const runner = supabaseIndex(tokens);
   if (runner !== undefined) at = runner;
   else if (!GATE_PROGRAMS.has(first)) {
-    at = 1;
-    while (tokens[at] && (tokens[at].value.startsWith('-') || /^\d+$/.test(tokens[at].value))) at += 1;
+    at = resolved || 1;
+    if (!resolved) {
+      while (tokens[at] && (tokens[at].value.startsWith('-') || /^\d+$/.test(tokens[at].value))) at += 1;
+    }
     const wrapped = supabaseIndex(tokens.slice(at));
     if (wrapped !== undefined) at += wrapped;
   }
