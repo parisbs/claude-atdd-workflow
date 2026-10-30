@@ -111,8 +111,11 @@ function nearestAncestorTag(root, read) {
     if (!byCommit.has(commit)) byCommit.set(commit, ref);
   }
   if (byCommit.size === 0) return undefined;
-  const heads = byCommit.size === 1 ? [...byCommit.keys()]
+  // A failed merge-base, or commits it names that the map does not hold, fall back to the
+  // distance of every distinct commit, which is bounded by commits, not by tags.
+  let heads = byCommit.size === 1 ? [...byCommit.keys()]
     : (read(root, ['merge-base', '--independent', ...byCommit.keys()]) ?? '').split('\n').filter(Boolean);
+  if (!heads.length || heads.some((commit) => !byCommit.has(commit))) heads = [...byCommit.keys()];
   let nearest;
   for (const commit of heads) {
     const distance = Number(read(root, ['rev-list', '--count', `${commit}..HEAD`]));
