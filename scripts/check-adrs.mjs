@@ -9,11 +9,13 @@
 // Exit 0 when clean; otherwise non-zero, with one line per problem on stderr, starting with the file
 // (file:line when a line is known). Both refs are committed trees, compared directly, not through a merge
 // base. A local run against a branch behind main should pass the merge base as <base-ref>.
+// ADR 0035: a mixed change with proposed records prints an informational notice only.
 // The repo-bootstrap templates carry a copy of this file: change it here, then install.
 import { spawnSync } from 'node:child_process';
 import { posix } from 'node:path';
 
 const directories = ['docs/adr', 'docs/adrs', 'docs/decisions'];
+const adrDirectory = /(^|\/)docs\/(adr|adrs|decisions)\//;
 const recordName = /^\d{4}-[^/]+\.md$/;
 const known = new Set(['proposed', 'accepted', 'rejected', 'superseded', 'deprecated']);
 // The statuses a decided base record may move to. A missing or unrecognised base status may only be
@@ -268,6 +270,15 @@ try {
   // An index may link records of another directory; their existence is read from the whole HEAD tree.
   let allPaths;
   const exists = (path) => headPaths.has(path) || (allPaths ??= paths(head)).has(path);
+  // Keep this small rule local: bootstrapped repositories run this script alone (ADR 0035).
+  const changed = git('scripts/check-adrs.mjs', 'diff', '--no-ext-diff', '--no-renames', '--name-only', '-z', base, head, '--')
+    .split('\0').filter(Boolean);
+  const proposed = changed.filter((file) => adrDirectory.test(file) && recordName.test(posix.basename(file))
+    && exists(file) && record(blob(head, file)).word === 'proposed');
+  const other = changed.filter((file) => !adrDirectory.test(file));
+  if (proposed.length && other.length) {
+    console.log(`Notice (ADR 0035): proposed ADR records: ${proposed.join(', ')}. Paths outside the ADR directories: ${other.join(', ')}.`);
+  }
   for (const directory of directories) {
     const records = (files) => [...files].filter((file) => file.startsWith(`${directory}/`) && recordName.test(file.slice(directory.length + 1)))
       .map((file) => file.slice(directory.length + 1));

@@ -27,6 +27,10 @@ Write each field, or "none", in this order:
   For a review pass after fixes, the earlier review findings as records plus the fix commits (hash and subject).
 - Report shape: the shared report below.
 
+For a task that adds or changes an ADR record, define done in its acceptance
+criteria: the human accepted the record in the pull request that applies it,
+or the record merged alone as proposed (ADR 0035).
+
 ## Prior findings
 
 Each finding is a record with the claim, the evidence, the source (file and line, or the command) and its status, verified or not verified.
