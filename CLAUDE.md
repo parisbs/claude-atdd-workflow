@@ -44,8 +44,7 @@ agent-assisted workflow with human-approved acceptance tests. It is edited here 
   actions) a command that reaches a gate's trigger and that they cannot read asks in the main session and
   is denied to subagents and in `bypassPermissions`; elsewhere they allow it. Two named exceptions remain:
   a hook that cannot start or times out fails open, except the merge entry, and `guard-tests` allows a program
-  it does not know. `guard-readonly` denies a form it cannot read. The frozen-test gate (`guard-tests`)
-  remains a named gap until audit item A-12 implements this rule. That net, with human review at the gates
+  it does not know. `guard-readonly` denies a form it cannot read. That net, with human review at the gates
   that are already human (the control-plane merge, ADRs and oracle tags), is the workflow's protection
   against the agent. GitHub cannot tell the agent from the human, who share a token, so CI and rulesets are
   tools a human or team applies to themselves, not a guarantee against the agent (ADR 0032, restating ADR 0002
