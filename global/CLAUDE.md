@@ -135,18 +135,18 @@ could weaken its own controls: `.github/workflows/ci.yml`,
     creating, moving or deleting an oracle tag (it asks, and the agent runs it
     once approved), publishing a release, force pushes and `--admin`. Amending, deleting
     and moving are denied to subagents and in bypassPermissions (ADR 0029, 0033).
-- The orchestrator merges without asking only when every required check is
-  green, `oracle-check` is clean, the review the repository declares with
-  `Review:` ran with no open finding, no changed file is on the control plane
-  (see the Control plane section), the pull request is not a draft and does not
-  carry `needs-human`, its author is the authenticated `gh` user (collaborators
-  and bots ask), its head branch is in the base repository and not in a fork,
-  its local branches and worktrees hold no commit or uncommitted change missing
-  from the pull request's head,
-  and the merge is `--squash --delete-branch` (ADR 0010, ADR 0024). Otherwise it
-  reports what failed or could not run, and waits. The merge guard enforces
-  the oracle condition: it compares the pull request's head with the
-  `oracle/<head branch>` tag on the base repository's remote and asks when test
+- The orchestrator merges without asking only when every required check is green,
+  `oracle-check` is clean, the review declared by `Review:` ran with no open finding,
+  no changed file is on the control plane (see the Control plane section), the pull
+  request is not a draft and does not carry `needs-human`, its author is the
+  authenticated `gh` user (collaborators and bots ask), its head branch is in the
+  base repository and not in a fork, its local branches and worktrees hold no commit
+  or uncommitted change missing from the pull request's head, no proposed ADR record
+  is together with other paths outside the ADR directories unless the pull request
+  carries the label `experiment` (ADR 0035), and the merge is `--squash --delete-branch`
+  (ADR 0010, ADR 0024). Otherwise it reports what failed or could not run, and waits.
+  The merge guard enforces the oracle condition: it compares the pull request's head
+  with the `oracle/<head branch>` tag on the base repository's remote and asks when test
   paths changed, the label `atdd` has no tag, or the oracle cannot be read;
   bypassPermissions denies (ADR 0030).
 - Routing: the `Implement:` line of the repository's `CLAUDE.md` says who writes
