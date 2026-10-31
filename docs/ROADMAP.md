@@ -216,6 +216,12 @@ subagent's worktree starts, and what it takes to bind the oracle there, is in
   is amended, added or deleted; subagents and `bypassPermissions` stay denied;
   a Bash entry reads the common writing forms, and `codex-integrate` applies
   nothing that changes a frozen test (ADR 0033, which names the known gaps).
+- #77: `guard-tests` allowed what it could not read, so the frozen-test gate was
+  a named gap in the ADR 0034 invariant. Implemented: an unread span or a reader
+  failure that names a frozen, new test or test configuration path asks in the
+  main session and is denied to subagents and in `bypassPermissions`; the
+  oracle inventory loads lazily, globs match without backtracking, and the
+  nearest oracle tag takes a bounded number of git calls.
 
 ## Efficiency (milestone `efficiency`)
 
