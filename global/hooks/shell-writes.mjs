@@ -147,10 +147,14 @@ function tokens(command, error, check) {
       started = true;
       quoted = true;
     } else if (command.startsWith('$((', i)) {
-      const end = command.indexOf('))', i + 3);
-      word += command.slice(i, end < 0 ? command.length : end + 2);
+      // The arithmetic can hold command substitutions, which the reader reads like any other.
+      const end = substitutionEnd(command, i);
+      const text = command.slice(i, end < 0 ? command.length : end + 1);
+      word += text;
       started = true;
-      i = end < 0 ? command.length : end + 1;
+      const inner = substitutionsOf(text);
+      if (inner.length) result.substitutions.set(result.length, [...(result.substitutions.get(result.length) ?? []), ...inner]);
+      i = end < 0 ? command.length : end;
     } else if (ch === '#' && !started) {
       while (i + 1 < command.length && command[i + 1] !== '\n') i += 1;
     } else if (/[;&|()<>\n]/.test(ch)) {
@@ -307,6 +311,7 @@ function unwrap(words, assign) {
 }
 
 const nonliteral = (word) => /[$`]/.test(word);
+const WHOLE_TREE = /^(?:\.\/*|\*|\.\/\*|:\/)$/;
 const BRACE_RANGE = /\{[^{}]*\.\.[^{}]*\}/;
 const REDIRECTS = ['>', '>>', '&>', '&>>', '>|', '<', '<<', '<<-', '<<<', '<>', '>&', '<&'];
 const interpreter = (cmd) => ['bash', 'sh', 'zsh', 'node', 'python', 'python3', 'perl', 'ruby'].includes(cmd) || /^python\d+(?:\.\d+)*$/.test(cmd);
@@ -315,11 +320,14 @@ const xargsKnown = (arg) => /^-[0rtpxo]+$/.test(arg) || /^-[nLPsEda]./.test(arg)
   || /^--(?:max-args|max-lines|max-procs|max-chars|eof|delimiter|arg-file)=/.test(arg)
   || ['--null', '--no-run-if-empty', '--verbose', '--interactive', '--exit', '--open-tty'].includes(arg);
 // Programs that write what they are given; the rest read, or are unknown and stay allowed.
-const WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'install', 'ln', 'tee', 'truncate', 'touch', 'dd', 'rsync', 'patch', 'git', 'bash', 'sh', 'zsh', 'eval']);
+const WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'install', 'ln', 'tee', 'truncate', 'touch', 'dd', 'rsync', 'patch', 'bash', 'sh', 'zsh', 'eval']);
+// The git subcommands that change the working tree or the index; log, diff, show and the like read.
+const GIT_WRITERS = new Set(['checkout', 'restore', 'rm', 'mv', 'reset', 'clean', 'stash', 'apply', 'am', 'switch', 'merge', 'rebase', 'cherry-pick', 'revert', 'pull']);
 // Whether a command, given as words, writes; `xargs` writes when the command it runs does.
 function writes(words) {
   const current = unwrap([...words], () => {});
   const cmd = program(current[0]);
+  if (cmd === 'git') return GIT_WRITERS.has(gitCommand(current.slice(1)).subcommand);
   if (cmd === 'xargs') {
     let i = 1;
     for (; i < current.length && current[i].startsWith('-'); i += 1) {
@@ -330,6 +338,27 @@ function writes(words) {
   }
   return WRITERS.has(cmd) || inPlace(cmd, current.slice(1));
 }
+
+// Whether the command that receives the output of a find writes the paths it reads: `xargs` with a
+// writing command, or a shell that reads its script from stdin. Others, tee among them, write
+// their own operands, which the reader reads as a segment of its own.
+function consumesPaths(words) {
+  const current = unwrap([...words], () => {});
+  const cmd = program(current[0]);
+  if (cmd === 'xargs') return writes(current);
+  if (!['bash', 'sh', 'zsh'].includes(cmd)) return false;
+  const args = current.slice(1);
+  return scriptOf(args, ['-c'], ['-o', '-O'], true) === undefined && (args.includes('-s') || !operands(args, ['-o', '-O']).length);
+}
+
+// The filters of a find that the reader does not interpret: -name, -path and -regex with their
+// case-insensitive forms. Each is a test on the basename or on the printed path.
+const FIND_FILTERS = {
+  '-name': { kind: 'name' }, '-iname': { kind: 'name', fold: true },
+  '-path': { kind: 'path' }, '-wholename': { kind: 'path' }, '-ipath': { kind: 'path', fold: true }, '-iwholename': { kind: 'path', fold: true },
+  '-regex': { kind: 'regex' }, '-iregex': { kind: 'regex', fold: true },
+};
+const FIND_EXECS = ['-exec', '-execdir', '-ok', '-okdir'];
 
 // Each result is an absolute candidate path. The caller supplies the oracle
 // inventory and records each write immediately, before later work can fail.
@@ -344,6 +373,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
     return [];
   }
   cwd = realPath(cwd);
+  options.origin ??= cwd;
   const results = [];
   const error = options.error ?? (() => {});
   const check = options.check ?? (() => {});
@@ -396,7 +426,9 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       return [];
     }
     if (!reading && unknownCwd && dir === cwd && !isAbsolute(path) && path !== '~' && !path.startsWith('~/')) {
-      unread(path, 'a write after a cd to a directory the guard cannot resolve', unknownCwd instanceof Error ? unknownCwd : undefined);
+      // The whole working tree names no word; the files below where the reader started stand for it.
+      const span = WHOLE_TREE.test(path) ? `${options.origin}/*` : path;
+      unread(span, 'a write after a cd to a directory the guard cannot resolve', unknownCwd instanceof Error ? unknownCwd : undefined);
       return [];
     }
     return braces(path, check).flatMap((part) => {
@@ -536,10 +568,14 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       }
       for (const name of names.length ? names : ['REPLY']) assigned.set(name, command);
     } else if (cmd === 'eval') {
-      unread(args.join(' '), 'eval');
+      unread(args.map(spanOf).join(' '), 'eval');
     } else if (['bash', 'sh', 'zsh'].includes(cmd)) {
       const script = scriptOf(args, ['-c'], ['-o', '-O'], true);
-      if (script !== undefined) nested(script);
+      // A script held in a variable is a span with the values of its variables.
+      if (script !== undefined) {
+        if (nonliteral(script)) unread(spanOf(script), 'a non-literal shell script');
+        else nested(script);
+      }
       stdin.forEach((body) => nested(body));
     } else if (cmd === 'find') {
       const start = args.findIndex((arg) => arg.startsWith('-') || arg === '(' || arg === '!');
@@ -551,10 +587,9 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       // They are a span when the find writes.
       let supported = true;
       let name;
-      const patterns = [];
       for (let i = 0; i < predicates.length; i += 1) {
         const arg = predicates[i];
-        if (arg === '-name') patterns.push(name = predicates[++i]);
+        if (arg === '-name') name = predicates[++i];
         else if (arg === '-type') supported &&= predicates[++i] === 'f';
         else if (!['-delete', '-print', '-print0', '-depth'].includes(arg)) supported = false;
       }
@@ -569,20 +604,53 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       });
       const writing = exec >= 0 || args.includes('-delete');
       if (!supported && (args.includes('-delete') || executes.some((words) => words.length && writes(words)) || toWriter?.())) {
+        // Every filter counts, whatever the boolean structure around it: a frozen file that passes one joins the span.
+        const filters = [];
+        for (let i = start < 0 ? args.length : start; i < args.length; i += 1) {
+          if (FIND_EXECS.includes(args[i])) {
+            const end = args.slice(i + 1).findIndex((word) => word === ';' || word === '+');
+            i += end < 0 ? args.length : end + 1;
+          } else if (FIND_FILTERS[args[i]] && i + 1 < args.length) {
+            const { kind, fold } = FIND_FILTERS[args[i]];
+            const value = args[++i];
+            let test = () => true;
+            if (!nonliteral(value)) {
+              const lower = (text) => (fold ? text.toLowerCase() : text);
+              if (kind === 'regex') {
+                // An expression that is not valid names nothing but itself, which is in the span.
+                try {
+                  const re = new RegExp(`^(?:${value})$`, fold ? 'i' : '');
+                  test = (printed) => re.test(printed);
+                } catch { test = () => false; }
+              } else {
+                // In -path a star also matches a slash.
+                const re = globToRegExp(lower(kind === 'path' ? value.replace(/\*+/g, '**') : value));
+                test = kind === 'name' ? (printed, file) => re.test(lower(basename(file.path))) : (printed, file) => re.test(lower(printed)) || re.test(lower(relative(file.root, file.path)));
+              }
+            }
+            filters.push({ test, kind, value });
+          }
+        }
         // The frozen files its roots can reach, not the root words, which name no file themselves.
         const span = [];
         for (const root of roots.length ? roots : ['.']) {
           span.push(root);
-          // The whole repository without a name is not a frozen-file deletion the guard can tell.
+          // The whole repository without a filter is not a frozen-file deletion the guard can tell.
           const target = nonliteral(root) ? undefined : absolute(cwd, root);
-          if (!patterns.length && target !== undefined && options.rootOf?.(target) === target) continue;
+          if (!filters.length && target !== undefined && options.rootOf?.(target) === target) continue;
           for (const found of expand(root)) {
             for (const file of under(found)) {
               check();
-              if (!patterns.length || patterns.some((pattern) => globToRegExp(pattern).test(basename(file.path)))) span.push(file.path);
+              // The path as find prints it: the root word, then the path below the root.
+              const below = relative(found, file.path);
+              const printed = below ? `${root.replace(/\/+$/, '')}/${below}` : root;
+              if (!filters.length || filters.some(({ test }) => test(printed, file))) span.push(file.path);
             }
           }
         }
+        // The values of the filters and the words of the commands that write name paths of their own.
+        for (const { kind, value } of filters) if (kind !== 'name') span.push(spanOf(value));
+        for (const words of executes) if (words.length && writes(words)) span.push(...words.filter((word) => word !== '{}').map(spanOf));
         unread(span.join(' '), 'a find expression the guard does not read');
       }
       const namePattern = name && globToRegExp(name);
@@ -684,7 +752,8 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
               for (const original of sources) {
                 // The name written in a directory comes from the source.
                 if (nonliteral(original)) {
-                  unread(`${target} ${spanOf(original)}`, 'a non-literal source copied into a directory');
+                  // Only a directory that can hold tests can receive one.
+                  if (under(dest).length || options.mayHoldTests?.(dest)) unread(`${target} ${spanOf(original)}`, 'a non-literal source copied into a directory');
                   continue;
                 }
                 for (const source of expand(original, cwd, true)) {
@@ -727,7 +796,7 @@ export function shellWrites(command, cwd, options = {}, depth = 0, unknown = fal
       if (typeof part === 'string') words.push(part);
       else if (part && REDIRECTS.includes(part.op)) j += 1;
       else {
-        if (words.length && writes(words)) return true;
+        if (words.length && consumesPaths(words)) return true;
         if (part?.op !== '|') return false;
         words = [];
       }
