@@ -144,8 +144,10 @@ cannot separate the effects of the workflow, developer, project and model.
     `controlplane.mjs` (those paths), `guard-tests.mjs` (asks before amending
     frozen acceptance tests in the main session; denies subagents and
     bypassPermissions, for Edit, Write, NotebookEdit and common Bash writes,
-    ADR 0033), `shell-writes.mjs` (reads those shell forms without executing
-    them). The freeze binds while an `oracle/<branch>` tag exists, and in a
+    ADR 0033; a span it cannot read or a reader failure that names a frozen,
+    new test or test configuration path asks or denies the same way, ADR 0034),
+    `shell-writes.mjs` (reads those shell forms without executing them),
+    `frozen-trigger.mjs` (what an unread span names). The freeze binds while an `oracle/<branch>` tag exists, and in a
     linked worktree while an oracle tag's commit is an ancestor of HEAD.
     The remaining hooks are `oracle-check.mjs` (the
     deterministic pre-PR check of the oracle), `proposed-adr-check.mjs` (the

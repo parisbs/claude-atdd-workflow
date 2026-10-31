@@ -48,7 +48,7 @@ describe('ADR 0034 acceptance (#73)', () => {
     const text = bullet(invariants(), 'The hooks are a safety net');
     assert.ok(text.includes('The hooks are a safety net for one machine that limits what the agent does on its own, not a boundary: they read a command as words.'), text);
     assert.ok(text.includes('At the high-consequence gates of ADR 0034'), text);
-    for (const gate of ['merge', 'push to a protected branch', 'oracle tags', 'release tags', 'skipped hooks',
+    for (const gate of ['merge', 'push to a protected branch', 'oracle tags', 'release tags', 'skipped hooks', 'frozen tests',
       'GitHub actions of a subagent', 'remote Supabase actions']) assert.ok(text.includes(gate), `${gate}: ${text}`);
     assert.ok(text.includes("a command that reaches a gate's trigger and that they cannot read asks in the main session and is denied to subagents and in `bypassPermissions`; elsewhere they allow it."), text);
     assert.ok(text.includes('Two named exceptions remain: a hook that cannot start or times out fails open, except the merge entry, and `guard-tests` allows a program it does not know.'), text);
@@ -56,9 +56,11 @@ describe('ADR 0034 acceptance (#73)', () => {
     assert.doesNotMatch(text, /read a command as words and allow a form they cannot read/);
   });
 
-  test('AC-19 frozen tests remain a named gap until A-12', () => {
+  // Amended for #77: audit item A-12 implemented the rule in guard-tests, so the gap is gone.
+  test('AC-19 the frozen-test gate is no longer a named gap after A-12', () => {
     const text = normalize(invariants());
-    assert.match(text, /(?:frozen[- ]test(?:s| gate)?|`guard-tests`)[^.\n]{0,220}(?:gap|pending|except|until)[^.\n]{0,160}A-12/i);
+    assert.doesNotMatch(text, /A-12/);
+    assert.doesNotMatch(text, /frozen-test gate \(`guard-tests`\) remains a named gap/);
   });
 
   test('AC-19 the safety-net invariant keeps the human-review and CI text unchanged', () => {
