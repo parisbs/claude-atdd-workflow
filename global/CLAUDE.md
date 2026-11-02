@@ -142,8 +142,8 @@ could weaken its own controls: `.github/workflows/ci.yml`,
   authenticated `gh` user (collaborators and bots ask), its head branch is in the
   base repository and not in a fork, its local branches and worktrees hold no commit
   or uncommitted change missing from the pull request's head, no proposed ADR record
-  is together with other paths outside the ADR directories unless the pull request
-  carries the label `experiment` (ADR 0035), and the merge is `--squash --delete-branch`
+  is together with other paths outside the ADR directories (the label `experiment`
+  does not lift this condition, ADR 0036), and the merge is `--squash --delete-branch`
   (ADR 0010, ADR 0024). Otherwise it reports what failed or could not run, and waits.
   The merge guard enforces the oracle condition: it compares the pull request's head
   with the `oracle/<head branch>` tag on the base repository's remote and asks when test

@@ -918,7 +918,7 @@ async function mergeReasons(options, cwd) {
   if (change.mixed) reasons.push(proposedAdrMessage(change, { experiment }));
   const oracle = await mergeOracle(pr, where, cwd);
   if (oracle.reason) reasons.push(oracle.reason);
-  return { reasons, oracle, unreadable, requiresHuman: change.mixed && !experiment };
+  return { reasons, oracle, unreadable, requiresHuman: change.mixed };
 }
 
 const couldNotDecide = (error) => `Could not decide this merge (${error?.message ?? error}).`;

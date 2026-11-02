@@ -64,7 +64,9 @@ it after the human approves. Deleting the tag before the merge turns
 Run `node ~/.claude/hooks/proposed-adr-check.mjs`. If it reports a mixed change,
 stop for the human's choice: accept the record in this branch, split it into
 its own pull request, or declare an experiment with the label `experiment`
-when the pull request opens (ADR 0035). If the check cannot run, stop and report why.
+when the pull request opens. The label changes only the merge reason's wording;
+the human must merge an experiment from the main session (ADR 0036).
+If the check cannot run, stop and report why.
 
 ## 5. Review
 

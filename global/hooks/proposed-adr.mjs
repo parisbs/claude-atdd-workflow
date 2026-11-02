@@ -34,6 +34,6 @@ export function proposedAdrChange(paths, readRecord) {
 export function proposedAdrMessage(change, { branch = false, experiment = false } = {}) {
   const evidence = `Proposed ADR records: ${change.proposed.join(', ')}. Paths outside the ADR directories: ${change.other.join(', ')}.`;
   return experiment
-    ? `${evidence} This pull request is a declared experiment (label experiment, ADR 0035).`
+    ? `${evidence} This pull request is a declared experiment (label experiment, ADR 0036); the human must merge it from the main session.`
     : `${evidence} Accept the record in this ${branch ? 'branch' : 'pull request'}, or move it to its own pull request and merge that one first (ADR 0035).`;
 }
