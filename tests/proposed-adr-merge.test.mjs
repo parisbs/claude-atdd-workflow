@@ -97,9 +97,9 @@ test('AC-5 indexes and templates are not records and body status does not overri
 });
 
 for (const label of ['experiment', 'Experiment']) {
-  test(`AC-6 ${label} lifts the bypass denial but retains declared experiment evidence`, { skip: POSIX }, (t) => {
+  test(`AC-6 ${label} keeps the bypass denial and states the declared experiment`, { skip: POSIX }, (t) => {
     const result = merge(t, { session: bypass, labels: [label] });
-    assert.equal(result.decision, 'ask', result.reason);
+    assert.equal(result.decision, 'deny', result.reason);
     evidence(result);
     assert.match(result.reason, /declared[\s\S]*experiment/i);
   });

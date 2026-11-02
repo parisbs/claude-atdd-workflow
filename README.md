@@ -136,8 +136,9 @@ cannot separate the effects of the workflow, developer, project and model.
     unreadable oracle ask in the main session and deny in bypassPermissions
     (ADR 0030). A proposed ADR record merged together with paths outside the
     ADR directories asks in the main session and is denied in
-    bypassPermissions unless the pull request carries `experiment`
-    (ADR 0035); and for a subagent's call, no `git push` and only
+    bypassPermissions; the label `experiment` changes only the reason's wording,
+    and the human must merge an experiment from the main session
+    (ADR 0036); and for a subagent's call, no `git push` and only
     read-only `gh` commands, ADR 0013), `guard-readonly.mjs` (the researcher's
     closed list of shell reads; denies writes, execution and unread forms, and
     fails closed), `commands.mjs` (command knowledge shared by both guards),
