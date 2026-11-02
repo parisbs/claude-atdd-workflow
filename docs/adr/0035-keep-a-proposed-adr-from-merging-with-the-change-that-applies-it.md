@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by [0036](0036-keep-the-proposed-adr-denial-when-a-pull-request-is-labelled-experiment.md)
 date: 2026-10-30
 ---
 # 0035. Keep a proposed ADR from merging with the change that applies it

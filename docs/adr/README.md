@@ -67,3 +67,4 @@ added, the legacy status and date lines removed, every other line identical.
 - [0033. Ask before amending a frozen test in the main session](0033-ask-before-amending-a-frozen-test-in-the-main-session.md)
 - [0034. Guard high-consequence gates by consequence, not by form](0034-guard-high-consequence-gates-by-consequence-not-by-form.md)
 - [0035. Keep a proposed ADR from merging with the change that applies it](0035-keep-a-proposed-adr-from-merging-with-the-change-that-applies-it.md)
+- [0036. Keep the proposed ADR denial when a pull request is labelled experiment](0036-keep-the-proposed-adr-denial-when-a-pull-request-is-labelled-experiment.md)
