@@ -5,7 +5,7 @@ date: 2026-11-02
 # 0036. Keep the proposed ADR denial when a pull request is labelled experiment
 
 - Issue: #80
-- Amends: [0035](0035-keep-a-proposed-adr-from-merging-with-the-change-that-applies-it.md) (its decision that the label lifts the bypassPermissions deny, "Declaring an exception", and known gap 1)
+- Amends: [0035](0035-keep-a-proposed-adr-from-merging-with-the-change-that-applies-it.md) (its decision that the label lifts the bypassPermissions deny, in "Where the control lives", "Declaring an exception" and known gap 1)
 
 ## Context
 
