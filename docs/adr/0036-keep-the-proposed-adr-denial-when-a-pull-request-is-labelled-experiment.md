@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-02
 ---
 # 0036. Keep the proposed ADR denial when a pull request is labelled experiment
