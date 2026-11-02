@@ -9,7 +9,7 @@ Each entry links its pull request, or its commit when it has none. Links of the 
 the private `claude-workflow` repository this project continues (ADR 0022), which is archived and not public; `#N`
 links point to this repository.
 
-## [Unreleased]
+## [0.7.0] - 2026-11-02
 
 ### Changes
 
@@ -20,10 +20,26 @@ links point to this repository.
 - test(install): cover the codex prewarm timeout, stdin, distinct packages and label wording ([#58](https://github.com/parisbs/claude-atdd-workflow/pull/58))
 - docs(experiments): record rules loading probes on CLI and desktop ([#59](https://github.com/parisbs/claude-atdd-workflow/pull/59))
 - **Breaking**: feat(guard-git): check the ATDD oracle in the merge decision ([#61](https://github.com/parisbs/claude-atdd-workflow/pull/61))
+- docs(release): define SemVer, the public interface and the release process ([#62](https://github.com/parisbs/claude-atdd-workflow/pull/62))
+- docs(adr): accept ADR 0031 ([#63](https://github.com/parisbs/claude-atdd-workflow/pull/63))
+- docs(adr): reorient the workflow into a toolbox the human directs ([#65](https://github.com/parisbs/claude-atdd-workflow/pull/65))
+- docs(experiments): record Claude model and effort calibration for tests and review ([#67](https://github.com/parisbs/claude-atdd-workflow/pull/67))
+- fix(tests): remove the three known sources of flaky test runs ([#68](https://github.com/parisbs/claude-atdd-workflow/pull/68))
+- feat(guard-tests): ask in the main session before amending a frozen test ([#69](https://github.com/parisbs/claude-atdd-workflow/pull/69))
+- docs(adr): accept ADR 0028 ([#70](https://github.com/parisbs/claude-atdd-workflow/pull/70))
+- docs(adr): propose guarding high-consequence gates by consequence ([#71](https://github.com/parisbs/claude-atdd-workflow/pull/71))
+- **Breaking**: fix(guard-git): close the local-work gaps of the merge decision ([#74](https://github.com/parisbs/claude-atdd-workflow/pull/74))
+- **Breaking**: fix(guard-git): ask or deny unread commands at the high-consequence gates ([#75](https://github.com/parisbs/claude-atdd-workflow/pull/75))
+- **Breaking**: feat(guard-git): keep a proposed ADR from merging with the change that applies it ([#78](https://github.com/parisbs/claude-atdd-workflow/pull/78))
+- **Breaking**: fix(guard-tests): ask or deny unread commands at the frozen-test gate ([#79](https://github.com/parisbs/claude-atdd-workflow/pull/79))
+- fix(guard-git): keep the proposed ADR denial when a pull request is labelled experiment ([#81](https://github.com/parisbs/claude-atdd-workflow/pull/81))
+- fix(labels): drop the ADR citation from the experiment label description ([#82](https://github.com/parisbs/claude-atdd-workflow/pull/82))
 
 ### New tools
 
-None.
+- Hook modules: `git-shell.mjs` (the quote-aware command reader of `guard-git`), `shell-writes.mjs` and `frozen-trigger.mjs` (the frozen-test reader and trigger of `guard-tests`), `proposed-adr.mjs` (the proposed ADR rule shared by `guard-git`).
+- Script: `proposed-adr-check.mjs`, the local check `pr-prep` runs before a pull request.
+- Label: `experiment`, in the bootstrap labels.
 
 ## [0.6.0] - 2026-10-23
 
@@ -158,7 +174,7 @@ None.
 - Stacks: `android`, `flutter`, `node-mcp`, `supabase`.
 - Templates: `common/AGENTS.md.template`, `common/CLAUDE.md.template`, and under `common/github/` the issue and pull request templates, `labels.json`, the `main` and `tags` rulesets and the `pr-title.yml` workflow.
 
-[Unreleased]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.6.0...HEAD
+[0.7.0]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/parisbs/claude-atdd-workflow/compare/v0.3.1...v0.4.0
