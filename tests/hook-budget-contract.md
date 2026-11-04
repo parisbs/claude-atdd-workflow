@@ -47,6 +47,8 @@ Ordinary real subprocesses use a 120000 ms emergency watchdog when the seam is
 active, independent of logicalTimeoutMs. This prevents process-start latency from
 spending a virtual budget. Configured budget harnesses also use 120000 ms; this is
 test infrastructure, not a hook default or a timing assertion.
+Seam-driven tests add no node:test timeout, including on parents that run several
+sessions; the child watchdogs are their only emergency real-time limits.
 
 An optional `realTimeoutMs` selects a native timeout test instead of a scripted
 charge. It must be a positive safe integer and requires `elapsedMs: 0`; reject
@@ -186,6 +188,8 @@ event must therefore be emitted even for an event that needs no external reads.
   The guard-git positive control charges its branch read, while guard-tests uses
   only an 8000000 us CPU check with no read charges, leaving recovery reads intact.
   Copied ~/.claude/hooks cannot accept a checkout's configuration.
+  Rejection cases invalidate one field at a time, including the steps array,
+  occurrence, elapsed time, argument contents, empty arguments, program and cwd.
 
 Class B entry-timeout policy cases kept unchanged, per test:
 

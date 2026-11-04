@@ -107,7 +107,7 @@ function verdict(r, index, { path = FILE, tag = TAG, hash = commit, unread = fal
 // The rule: an unread command that names a frozen, new or configuration path, and a control of the
 // same form that names none and stays silent. options.visibleFailure is the stderr rule of the control.
 function rule(id, label, command, control, options = {}) {
-  test(`${id} ${label}`, { timeout: 120000 }, async (t) => {
+  test(`${id} ${label}`, options.budget ? {} : { timeout: 120000 }, async (t) => {
     for (const [i, [name, session]] of SESSIONS.entries()) {
       await t.test(`${id} ${name} rule`, () => verdict(run(command, session, options), i, { ...options, unread: options.unread ?? true }));
       await t.test(`${id} ${name} control`, () => silent(run(control, session, options), options.visibleFailure));

@@ -149,7 +149,7 @@ function verdict(r, index, { path = FILE, tag = TAG, hash = commit, unread = fal
   }
 }
 function rule(id, label, command, control, options = {}) {
-  test(`${id} ${label}`, { timeout: 120000 }, async (t) => {
+  test(`${id} ${label}`, options.budget ? {} : { timeout: 120000 }, async (t) => {
     for (const [i, [name, session]] of SESSIONS.entries()) {
       await t.test(`${id} ${name} rule`, () => verdict(run(command, session, options), i, { ...options, unread: options.unread ?? true }));
       await t.test(`${id} ${name} control`, () => silent(run(control, session, options), options.visibleFailure));
@@ -283,7 +283,7 @@ test('AC-13 (H7) puts the frozen deny before 22 configuration reasons and counts
   assert.ok(r.reason.indexOf(FILE) < r.reason.indexOf('package.json'), r.reason);
   assert.match(r.reason, /3 more paths/);
 });
-test('AC-14 (H8) / AC-2 (#84) six wildcards against a 200-character frozen name finish with a verdict', { timeout: 30000 }, async () => {
+test('AC-14 (H8) / AC-2 (#84) six wildcards against a 200-character frozen name finish with a verdict', async () => {
   const root = repository('glob', [`tests/${'a'.repeat(200)}`, 'tests/aaaaab']);
   const r = await bounded('rm tests/*a*a*a*a*a*b', SESSIONS[0][1], { cwd: root, budget: hookBudget() });
   verdict(r, 0, { path: 'tests/aaaaab', hash: git(root, 'rev-parse', TAG) });
@@ -294,7 +294,7 @@ rule('AC-15 (H9)', 'unknown prior directory is unread', 'cd -; rm tests/a.test.m
 known('AC-15 (H9)', 'subshell pushd leaves the outer stack intact', 'pushd tests; (pushd unit); popd; rm tests/a.test.mjs');
 known('AC-16 (H10)', 'reads ANSI-C quoting and keeps the later rm', "echo $'it\\'s'; rm tests/a.test.mjs");
 for (const mode of ['stall', 'grandchild']) {
-  test(`AC-17 (H8/H12) / AC-2 (#84) ${mode} cannot hold the hook past its deadline`, { timeout: 90000 }, async (t) => {
+  test(`AC-17 (H8/H12) / AC-2 (#84) ${mode} cannot hold the hook past its deadline`, async (t) => {
     for (const [i, [name, session]] of SESSIONS.entries()) await t.test(`AC-17 ${name} ${mode} ${i === 0 ? 'native timeout' : 'logical timeout'}`, async () => {
       const pidFile = join(scratch, `pid-${name}-${mode}`);
       const native = i === 0;
@@ -326,7 +326,7 @@ for (const mode of ['stall', 'grandchild']) {
     });
   });
 }
-test('AC-18 (H14) / AC-2 (#84) linked-worktree lookup uses a small constant number of git calls for 1 and 300 tags', { timeout: 60000 }, async (t) => {
+test('AC-18 (H14) / AC-2 (#84) linked-worktree lookup uses a small constant number of git calls for 1 and 300 tags', async (t) => {
   const root = repository('many-tags');
   const linked = join(scratch, 'linked');
   git(root, 'worktree', 'add', '-q', '--detach', linked, 'HEAD');
