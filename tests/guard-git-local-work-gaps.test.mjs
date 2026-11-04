@@ -78,8 +78,7 @@ if (!process.env.FAKE_SSH_PIDS) process.exit(0);
 const role = process.argv[2] === 'child' || process.argv[2] === 'grandchild' ? process.argv[2] : 'ssh';
 fs.appendFileSync(process.env.FAKE_SSH_PIDS, JSON.stringify({ role, pid: process.pid, ppid: process.ppid }) + '\n');
 if (role !== 'grandchild') spawn(process.execPath, [__filename, role === 'ssh' ? 'child' : 'grandchild'], { stdio: 'inherit' });
-if (role === 'grandchild') fs.writeFileSync(process.env.FAKE_SSH_READY, 'ready');
-setTimeout(() => { fs.writeFileSync(process.env.FAKE_SSH_READY + '.completed', 'done'); process.exit(1); }, 60000);
+setTimeout(() => { fs.writeFileSync(process.env.FAKE_SSH_PIDS + '.completed', 'done'); process.exit(1); }, 60000);
 `;
 
 function green(headRefOid) {
@@ -339,20 +338,27 @@ describe('guard-git local-work gaps (#72)', () => {
     writeExecutable(join(sshBin, 'ssh'), HANGING_SSH);
     let pids = [];
     try {
-      const readyFile = join(scratch, 'ssh-ready');
-      const budget = hookBudget({ ready: [{ program: 'git', args: ['ls-remote'], readyFile, timeoutMs: 100 }] });
+      const budget = hookBudget({ steps: [{ program: 'git', args: ['ls-remote'],
+        occurrence: 1, elapsedMs: 0, realTimeoutMs: 20000 }] });
+      const started = performance.now();
       const r = decide(dir, head, { budget,
         command: 'git push -f origin oracle/feature/x',
         env: {
           PATH: `${sshBin}${delimiter}${bin}${delimiter}${process.env.PATH}`,
-          REAL_REMOTE: '1', FAKE_SSH_PIDS: pidsFile, FAKE_SSH_READY: readyFile,
+          REAL_REMOTE: '1', FAKE_SSH_PIDS: pidsFile,
           GUARD_GIT_GH_TIMEOUT_MS: '1500', GUARD_GIT_GH_BUDGET_MS: '3000',
         },
       });
       pids = lines(pidsFile).map(JSON.parse);
       asks(r, 'Move oracle/feature/x', 'git ls-remote timed out');
-      assert.ok(!existsSync(readyFile + '.completed'), 'the hook must return before the 60 s hang completes');
-      assert.equal(budget.active('guard-git').filter((event) => event.type === 'ready-timeout').length, 1);
+      assert.ok(!existsSync(pidsFile + '.completed'), 'the hook must return before the 60 s hang completes');
+      const [charge] = budget.charged('guard-git');
+      assert.equal(charge.realTimeoutMs, 20000);
+      assert.equal(charge.timeoutMs, 1500);
+      assert.equal(charge.appliedMs, 1500);
+      assert.equal(charge.timedOut, true);
+      assert.equal(charge.nativeTimeout, true, 'the existing process-group timer must fire');
+      assert.ok(performance.now() - started >= 20000, 'the native process-group timer must elapse');
       assert.deepEqual(pids.map(({ role }) => role).sort(), ['child', 'grandchild', 'ssh']);
       const ssh = pids.find(({ role }) => role === 'ssh');
       const child = pids.find(({ role }) => role === 'child');

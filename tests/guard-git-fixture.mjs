@@ -71,9 +71,8 @@ function finish() {
   if (r.stderr) process.stderr.write(r.stderr);
   process.exit(r.status === null ? 1 : r.status);
 }
-if (process.env.FAKE_GIT_READY_FILE && args[0] === 'branch' && args[1] === '--show-current') {
+if (process.env.FAKE_GIT_PID_FILE && args[0] === 'branch' && args[1] === '--show-current') {
   fs.writeFileSync(process.env.FAKE_GIT_PID_FILE, String(process.pid));
-  fs.writeFileSync(process.env.FAKE_GIT_READY_FILE, 'ready');
   setTimeout(() => {
     fs.appendFileSync(process.env.FAKE_GIT_LOG, JSON.stringify({ completed: true }) + '\n');
     finish();

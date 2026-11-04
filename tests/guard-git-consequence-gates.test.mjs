@@ -126,22 +126,6 @@ describe('guard-git consequence gates (#73)', { skip: POSIX }, () => {
       assert.equal(budget.charged('guard-git')[0].timedOut, true);
       unread(r, expected, 'push to a protected branch', /budget|deadline|timed? out/i, command);
     });
-    test(`AC-3 / AC-2 (#84) a hung required git read is killed after readiness for ${who}`, async () => {
-      const readyFile = join(fx.scratch, `ready-${who}`);
-      const pidFile = join(fx.scratch, `pid-${who}`);
-      const budget = hookBudget({ ready: [{ program: 'git', args: ['branch', '--show-current'], readyFile, timeoutMs: 100 }] });
-      try {
-        const r = fx.decide(main, 'git push origin main', { session, budget,
-          extraEnv: { FAKE_GIT_LOG_ALL: '1', FAKE_GIT_READY_FILE: readyFile, FAKE_GIT_PID_FILE: pidFile } });
-        assert.ok(existsSync(readyFile), 'the required git read was ready before its timer started');
-        assert.equal(budget.active('guard-git').filter((event) => event.type === 'ready-timeout').length, 1);
-        unread(r, expected, 'push to a protected branch', /budget|deadline|timed? out/i, 'git push origin main');
-        assert.ok(!r.gitCalls.some((call) => call.completed), 'the hook must return before the 60 s hang completes');
-        await deadProcesses([Number(readFileSync(pidFile, 'utf8'))]);
-      } finally {
-        if (existsSync(pidFile)) await cleanupProcesses([Number(readFileSync(pidFile, 'utf8'))]);
-      }
-    });
     test(`AC-3 / AC-2 (#84) a spent budget keeps verdicts already collected for ${who}`, () => {
       const command = 'git tag oracle/new; git push origin main';
       const budget = hookBudget({ steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 2, elapsedMs: 10000 }] });
@@ -161,6 +145,28 @@ describe('guard-git consequence gates (#73)', { skip: POSIX }, () => {
       assert.match(r.stderr, /guard-git:.*(?:budget|deadline|timed? out)/i);
     });
   }
+  test('AC-3 / AC-2 (#84) the native timeout kills a hung required git read in the main session', async () => {
+    const pidFile = join(fx.scratch, 'hung-git-pid');
+    const budget = hookBudget({ steps: [{ program: 'git', args: ['branch', '--show-current'],
+      occurrence: 1, elapsedMs: 0, realTimeoutMs: 15000 }] });
+    try {
+      const r = fx.decide(main, 'git push origin main', { budget,
+        extraEnv: { FAKE_GIT_LOG_ALL: '1', FAKE_GIT_PID_FILE: pidFile } });
+      assert.ok(existsSync(pidFile), 'the 15 s native timeout must leave ample time for git to start');
+      const [charge] = budget.charged('guard-git');
+      assert.equal(charge.realTimeoutMs, 15000);
+      assert.equal(charge.timeoutMs, 10000);
+      assert.equal(charge.appliedMs, 10000);
+      assert.equal(charge.timedOut, true);
+      assert.equal(charge.nativeTimeout, true, 'the timeout must come from the real spawnSync result');
+      assert.ok(r.elapsed >= 15000, 'the native timer must elapse instead of synthesizing an immediate timeout');
+      unread(r, 'ask', 'push to a protected branch', /budget|deadline|timed? out/i, 'git push origin main');
+      assert.ok(!r.gitCalls.some((call) => call.completed), 'the hook must return before the 60 s hang completes');
+      await deadProcesses([Number(readFileSync(pidFile, 'utf8'))]);
+    } finally {
+      if (existsSync(pidFile)) await cleanupProcesses([Number(readFileSync(pidFile, 'utf8'))]);
+    }
+  });
   for (const member of ['constructor', 'toString', '__proto__']) {
     test(`AC-3 gh ${member} cannot throw or erase a later subagent denial`, () => {
       const session = { agent_id: 'agent-73' };

@@ -66,13 +66,12 @@ if (args[0] === 'ls-tree' && args.includes('-rz')) {
   }
   if (process.env.CONSEQUENCE_TREE === 'stall') {
     fs.writeFileSync(process.env.CONSEQUENCE_PID, String(process.pid));
-    fs.writeFileSync(process.env.CONSEQUENCE_READY, 'ready');
     process.on('SIGTERM', () => {});
-    setTimeout(() => { fs.writeFileSync(process.env.CONSEQUENCE_READY + '.completed', 'done'); process.exit(0); }, 60000);
+    setTimeout(() => { fs.writeFileSync(process.env.CONSEQUENCE_PID + '.completed', 'done'); process.exit(0); }, 60000);
     return;
   }
   if (process.env.CONSEQUENCE_TREE === 'grandchild') {
-    const child = cp.spawn(process.execPath, ['-e', "const fs = require('node:fs'); fs.writeFileSync(process.env.CONSEQUENCE_PID, String(process.pid)); fs.writeFileSync(process.env.CONSEQUENCE_READY, 'ready'); setTimeout(() => { fs.writeFileSync(process.env.CONSEQUENCE_READY + '.completed', 'done'); }, 60000);"], { stdio: ['ignore', 1, 2] });
+    const child = cp.spawn(process.execPath, ['-e', "const fs = require('node:fs'); fs.writeFileSync(process.env.CONSEQUENCE_PID, String(process.pid)); setTimeout(() => { fs.writeFileSync(process.env.CONSEQUENCE_PID + '.completed', 'done'); }, 60000);"], { stdio: ['ignore', 1, 2] });
     child.unref();
     process.exit(0);
   }
@@ -296,17 +295,28 @@ known('AC-15 (H9)', 'subshell pushd leaves the outer stack intact', 'pushd tests
 known('AC-16 (H10)', 'reads ANSI-C quoting and keeps the later rm', "echo $'it\\'s'; rm tests/a.test.mjs");
 for (const mode of ['stall', 'grandchild']) {
   test(`AC-17 (H8/H12) / AC-2 (#84) ${mode} cannot hold the hook past its deadline`, { timeout: 90000 }, async (t) => {
-    for (const [i, [name, session]] of SESSIONS.entries()) await t.test(`AC-17 ${name} ${mode}`, async () => {
+    for (const [i, [name, session]] of SESSIONS.entries()) await t.test(`AC-17 ${name} ${mode} ${i === 0 ? 'native timeout' : 'logical timeout'}`, async () => {
       const pidFile = join(scratch, `pid-${name}-${mode}`);
-      const readyFile = join(scratch, `ready-${name}-${mode}`);
-      const budget = hookBudget({ ready: [{ program: 'git', args: ['ls-tree', '-rz'], readyFile, timeoutMs: 100 }] });
+      const native = i === 0;
+      const budget = hookBudget({ steps: [{ program: 'git', args: ['ls-tree', '-rz'], occurrence: 1,
+        elapsedMs: native ? 0 : 5000, ...(native ? { realTimeoutMs: 15000 } : {}) }] });
       let r;
       try {
-        r = await bounded('rm tests/a.test.mjs', session, { budget, env: { CONSEQUENCE_TREE: mode, CONSEQUENCE_PID: pidFile, CONSEQUENCE_READY: readyFile } });
-        assert.ok(existsSync(pidFile), 'the stalled git fixture was reached');
-        assert.equal(budget.active('guard-tests').filter((event) => event.type === 'ready-timeout').length, 1);
-        assert.ok(!existsSync(readyFile + '.completed'), 'hook must return before the 60 s hang completes');
-        if (mode === 'stall') await deadProcesses([Number(readFileSync(pidFile, 'utf8'))]);
+        const started = performance.now();
+        r = await bounded('rm tests/a.test.mjs', session, { budget,
+          env: native ? { CONSEQUENCE_TREE: mode, CONSEQUENCE_PID: pidFile } : {} });
+        const [charge] = budget.charged('guard-tests');
+        assert.equal(charge.timeoutMs, 5000);
+        assert.equal(charge.appliedMs, 5000);
+        assert.equal(charge.timedOut, true);
+        assert.equal(charge.nativeTimeout, native);
+        if (native) {
+          assert.equal(charge.realTimeoutMs, 15000);
+          assert.ok(performance.now() - started >= 15000, 'the native spawnSync timer must elapse');
+          assert.ok(existsSync(pidFile), 'the 15 s native timeout must leave ample time for the fixture to start');
+          assert.ok(!existsSync(pidFile + '.completed'), 'hook must return before the 60 s hang completes');
+          if (mode === 'stall') await deadProcesses([Number(readFileSync(pidFile, 'utf8'))]);
+        }
         verdict(r, i);
       } finally {
         if (existsSync(pidFile)) {

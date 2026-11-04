@@ -14,11 +14,11 @@ process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
 let sequence = 0;
 const available = new Map();
 
-export function hookBudget({ steps = [], cpuStepUs = 0, ready = [] } = {}) {
+export function hookBudget({ steps = [], cpuStepUs = 0 } = {}) {
   const id = ++sequence;
   const config = join(scratch, `${id}.json`);
   const trace = join(scratch, `${id}.jsonl`);
-  writeFileSync(config, JSON.stringify({ version: 1, root: BUDGET_TEST_ROOT, trace, steps, cpuStepUs, ready }));
+  writeFileSync(config, JSON.stringify({ version: 1, root: BUDGET_TEST_ROOT, trace, steps, cpuStepUs }));
   const events = () => existsSync(trace)
     ? readFileSync(trace, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
   return {

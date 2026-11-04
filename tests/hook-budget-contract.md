@@ -7,11 +7,11 @@ Activation requires **all** of the following:
 
 - `CW_HOOK_BUDGET_TEST` is exactly `issue-84:explicit-test-only`.
 - `CW_HOOK_BUDGET_CONFIG` is an absolute path to a readable JSON file with
-  `version: 1`, `root`, `trace`, `steps`, `cpuStepUs`, and `ready`.
+  `version: 1`, `root`, `trace`, `steps`, and `cpuStepUs`.
 - The real path of the running hook is exactly
   `<realpath(config.root)>/global/hooks/<hook basename>`, and
   `<root>/tests/hook-budget.mjs` exists. Resolve symlinks before comparing.
-- `root` and `trace` are absolute paths, `steps` and `ready` are arrays, and
+- `root` and `trace` are absolute paths, `steps` is an array, and
   `cpuStepUs` is a finite nonnegative safe integer. Each entry has the schema below;
   reject missing fields, invalid entries, and invalid configurations as a whole.
 
@@ -27,9 +27,9 @@ before comparing it with the existing CPU limit. Grace/trigger `wall()` checks d
 not increment CPU. All existing budget/deadline arithmetic reads these clocks;
 limits, caps, error handling, and verdict collection remain the production logic.
 
-Each step is `{ program, args, occurrence, elapsedMs, cwd? }`. `program` is `git`, `gh`,
-or `ssh`; `args` is a contiguous subsequence of the actual argv (so it also matches
-git's `--no-optional-locks` prefix). `args` is a nonempty array of strings;
+Each step is `{ program, args, occurrence, elapsedMs, cwd?, realTimeoutMs? }`.
+`program` is `git`, `gh`, or `ssh`; `args` is a contiguous subsequence of the actual
+argv (so it also matches git's `--no-optional-locks` prefix). `args` is a nonempty array of strings;
 `occurrence` is a positive safe integer; `elapsedMs` is a nonnegative safe integer.
 An optional absolute `cwd` further restricts matching to that real working directory
 (resolve symlinks on both sides). Occurrences are counted independently per step
@@ -45,27 +45,47 @@ ls-remote charges; local git and ssh charges still spend phase/process budgets.
 
 Ordinary real subprocesses use a 120000 ms emergency watchdog when the seam is
 active, independent of logicalTimeoutMs. This prevents process-start latency from
-spending a virtual budget. The tests' harness watchdog is also 120000 ms; this is
+spending a virtual budget. Configured budget harnesses also use 120000 ms; this is
 test infrastructure, not a hook default or a timing assertion.
 
-`ready` entries are `{ program, args, readyFile, timeoutMs }`, with the same program
-and args validation, an absolute readyFile path, and a positive safe integer
-timeoutMs. They match the first read with that program and args once per process.
-Tests never configure overlapping steps and readiness entries. Start the real child immediately, but arm its real
-timeout only after readyFile exists. The fixture writes the file after the hung
-child (and any descendants whose death is asserted) has started. Startup is covered
-only by the emergency watchdog. Once ready, invoke the **existing termination and
-timeout-result path** after timeoutMs real milliseconds; the seam must not supply a
-replacement successful kill or verdict. For synchronous reads an implementation
-may use a worker to bridge readiness, preserving the hook's synchronous interface.
-Destroy inherited pipes and kill process groups where the production path does so.
-When that timeout fires, advance virtual wall time by the read's logical timeout
-and account for it in ghElapsed only for gh/ls-remote, just as for a timed-out step.
-The fixture hangs for 60000 ms after readiness; tests require a timeout and no
-natural completion. Direct git stalls and the ssh tree must be dead before cleanup;
-the guard-tests inherited-pipe case retains its original return/verdict assertion
-and cleans the pipe-holding descendant in finally. The seam must not add a new
-production kill mechanism to satisfy a test.
+An optional `realTimeoutMs` selects a native timeout test instead of a scripted
+charge. It must be a positive safe integer and requires `elapsedMs: 0`; reject
+configurations that combine a nonzero elapsedMs with this field. For that matched
+read only, pass `max(logicalTimeoutMs, realTimeoutMs)` as the existing spawnSync
+`timeout` option, or as the delay of the existing ls-remote `setTimeout`. Start the
+native timer at its normal point; there is no marker polling, timer reset, worker,
+extra signalling, replacement process runner, or alternate termination path.
+Unmatched reads still use the emergency watchdog above. A successful native-mode
+read costs zero virtual time. If the actual spawnSync result has ETIMEDOUT, or the
+existing ls-remote timeout callback fires, preserve that result and charge exactly
+logicalTimeoutMs, ignoring elapsedMs. Count that charge in ghElapsed only for gh
+and ls-remote. The raised real timeout never changes a logical limit or deadline.
+For any matched step, an actual native timeout takes precedence over scripted
+charges; report the real error through the existing error path, without
+manufacturing a successful kill.
+
+The four main-session native cases use finite 60000 ms hangs and large startup
+margins: 15000 ms for guard-git's required read, 20000 ms for its ls-remote SSH
+tree, and 15000 ms each for guard-tests' direct stall and exited-parent/inherited-
+pipe case. Existing investigation measured approximately 60-130 ms for a fake-git
+startup/read; 15 seconds is over 100 times 130 ms. The longer SSH allowance covers
+three nested Node startups, targeting at least a 50-fold quiet-machine margin.
+These are deliberately large-margin physical-time exceptions, not deterministic
+budget assertions. They require PID markers, no natural completion, a native
+rather than synthetic timeout, and a load-safe elapsed-time lower bound showing
+the timer really elapsed. Direct git stalls and the SSH tree must be dead before
+cleanup. The inherited-pipe case retains its original return/verdict assertion
+and cleans its pipe-holding descendant in finally; it does not claim spawnSync
+kills an orphaned descendant. The seam must not introduce a new kill mechanism.
+
+Only the main session runs each physical case. Other sessions use scripted
+charges, retaining ask/deny semantics without sleeping or starting hung fixtures.
+The four native waits total 65000 ms of aggregate test execution, versus 1000 ms
+for the previous ten short timers: approximately 64 seconds added in aggregate.
+They occupy three independently runnable test files; guard-tests contains two
+serial 15-second cases, so the longest added per-file wait is about 29.4 seconds.
+Actual end-to-end suite overhead depends on scheduling and must be measured after
+implementation; a missing-seam run fails its support probe before any hang starts.
 
 Append JSON lines to trace with `hook` (`guard-git` or `guard-tests`) and `mode`
 (argv[2] or an empty string) on every event:
@@ -75,9 +95,11 @@ Append JSON lines to trace with `hook` (`guard-git` or `guard-tests`) and `mode`
   oracleDiscoveryMs, oracleComparisonMs, sshConfigMs. guard-tests keys: gitBudgetMs,
   gitTimeoutMs, cpuBudgetMs, graceMs. Emit once before the first decision.
 - `charge`: program, args (actual argv), occurrence, elapsedMs (requested charge),
-  appliedMs, timeoutMs (logical timeout), timedOut (boolean), nowMs (after charging).
-- `ready-timeout`: program, args, readyFile, timeoutMs, emitted only after readiness
-  and the real timeout path fires.
+  appliedMs, timeoutMs (logical timeout), realTimeoutMs (effective physical timeout
+  passed to spawnSync/setTimeout), timedOut (boolean), nativeTimeout (boolean),
+  nowMs (after charging). nativeTimeout is true only for an actual native timeout
+  result/callback, never for synthesized ETIMEDOUT. For native-mode timeout steps,
+  elapsedMs is 0, appliedMs equals timeoutMs, and both timeout flags are true.
 - `cpu-exhausted`: checks (number of deciding checks), cpuUs, limitUs, when the
   virtual CPU comparison exhausts the budget.
 
@@ -103,14 +125,16 @@ event must therefore be emitted even for an event that needs no external reads.
   tag. All three sessions must ask/deny with unread evidence; the earlier oracle
   verdict stays collected. The ordinary `git status` variant allows with stderr.
   Every required read runs before its charge, regardless of startup latency.
-  The separate readiness test kills the real stalled branch read in each session.
+  One main-session native test kills the real stalled branch read after its
+  15000 ms native timer; the three logical gate tests cover every session.
 - `guard-git-local-work-gaps`: all `decide` calls freeze uncharged time so local
   success paths cannot lose their 5000 ms phases to process startup. AC-2 scripts
   an ssh -G timeout instead of sleeping. Both AC-5 cases charge a local read 2400
   ms, more than the 2000 ms gh budget, then charge the policy/ls-remote read 400 ms;
-  that later read must still receive its 1000 ms limit. AC-7 waits for all three
-  ssh PIDs before starting the existing ls-remote group-kill timer, then checks
-  all three are dead and that the 60000 ms fixture never completed.
+  that later read must still receive its 1000 ms limit. AC-7 gives ls-remote's
+  existing group-kill timer 20000 ms to let the SSH tree start, then checks all
+  three PIDs are dead and that the 60000 ms fixture never completed. Its 1500 ms
+  logical limit is still charged, without spending 20000 ms of virtual time.
 - `guard-git-local-work-review`: all decisions freeze uncharged time. R1 F1
   charges two PR views 600 ms each and each merge's worktree list 5000 ms, proving
   two local phase timeouts still ask with oracle reads and below logical 27000 ms.
@@ -120,10 +144,13 @@ event must therefore be emitted even for an event that needs no external reads.
 - `guard-tests-consequence-gate`: AC-3/H6/H12 exhausts at a deciding CPU check
   (1000 us) or the first rev-parse read (1 ms), retaining gate/control behavior
   for all three sessions. AC-14's wildcard case and AC-18's 1/300-tag cases use
-  frozen clocks and retain verdict and constant-read assertions. AC-17's stalls
-  start timing only after the direct child or pipe-holding descendant is ready;
-  the direct SIGTERM-ignoring child must die, and both forms must return a verdict
-  without natural completion. The exact-lookup/scan case charges 10000 us per
+  frozen clocks and retain verdict and constant-read assertions. AC-17 uses a
+  15000 ms native timeout only in the main session for each fixture mode; it
+  charges the original 5000 ms logical read limit when that timer fires. The
+  direct SIGTERM-ignoring child must die, and both forms must return a verdict
+  without natural completion. Subagent and bypass variants synthesize 5000 ms
+  inventory-read timeouts from ordinary immediate reads, with no hanging child.
+  The exact-lookup/scan case charges 10000 us per
   deciding check, so exact lookup finishes but scans exhaust at check 100,
   exactly 1000000 us, independent of CPU speed.
 - `guard-tests-consequence-gate-review`: R1-F2's CPU-exhaustion rule charges

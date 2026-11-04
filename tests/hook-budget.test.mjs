@@ -62,7 +62,7 @@ describe('hook budget seam (#84)', { skip: POSIX }, () => {
   }
 
   for (const hook of ['guard-git', 'guard-tests']) {
-    for (const variant of ['no variables', 'stray 1', 'stray true', 'config alone', 'token alone', 'unreadable config', 'relative config', 'malformed config', 'unsupported version', 'invalid steps', 'invalid CPU tick', 'relative trace', 'wrong root', 'missing checkout marker', 'installed copy']) {
+    for (const variant of ['no variables', 'stray 1', 'stray true', 'config alone', 'token alone', 'unreadable config', 'relative config', 'malformed config', 'unsupported version', 'invalid steps', 'invalid real timeout', 'mixed native and logical timeout', 'invalid CPU tick', 'relative trace', 'wrong root', 'missing checkout marker', 'installed copy']) {
       test(`AC-4 (#84) ${hook} ignores ${variant}`, () => {
         const budget = hookBudget({ cpuStepUs: 8000000,
           steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 1, elapsedMs: 10000 }] });
@@ -75,10 +75,12 @@ describe('hook budget seam (#84)', { skip: POSIX }, () => {
         if (variant === 'unreadable config') env.CW_HOOK_BUDGET_CONFIG = join(fx.scratch, 'missing.json');
         if (variant === 'relative config') env.CW_HOOK_BUDGET_CONFIG = 'missing.json';
         if (variant === 'malformed config') writeFileSync(budget.config, '{');
-        if (['unsupported version', 'invalid steps', 'invalid CPU tick', 'relative trace', 'wrong root', 'missing checkout marker'].includes(variant)) {
+        if (['unsupported version', 'invalid steps', 'invalid real timeout', 'mixed native and logical timeout', 'invalid CPU tick', 'relative trace', 'wrong root', 'missing checkout marker'].includes(variant)) {
           const config = JSON.parse(readFileSync(budget.config, 'utf8'));
           if (variant === 'unsupported version') config.version = 2;
           if (variant === 'invalid steps') config.steps = [{ program: 'git', args: ['branch'], occurrence: 0, elapsedMs: -1 }];
+          if (variant === 'invalid real timeout') config.steps[0] = { ...config.steps[0], elapsedMs: 0, realTimeoutMs: 0 };
+          if (variant === 'mixed native and logical timeout') config.steps[0].realTimeoutMs = 15000;
           if (variant === 'invalid CPU tick') config.cpuStepUs = -1;
           if (variant === 'relative trace') config.trace = 'trace.jsonl';
           if (variant === 'wrong root') config.root = fx.scratch;
