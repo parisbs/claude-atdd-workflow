@@ -7,6 +7,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HOOKS, runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
+import { hookBudget } from './hook-budget.mjs';
 
 export const POSIX = process.platform === 'win32' ? 'the hook tests are POSIX-only' : false;
 export const SESSIONS = [
@@ -19,7 +20,7 @@ const GIT_ENV = {
   LC_ALL: 'C', LANG: 'C', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0',
 };
 const CLEAN_ENV = Object.fromEntries(Object.keys(process.env)
-  .filter((key) => /^(?:GIT_|GH_|HUSKY|GUARD_GIT_|FAKE_)/.test(key)).map((key) => [key, undefined]));
+  .filter((key) => /^(?:GIT_|GH_|HUSKY|GUARD_GIT_|FAKE_|CW_HOOK_BUDGET_)/.test(key)).map((key) => [key, undefined]));
 
 const FAKE_GH = String.raw`#!/usr/bin/env node
 const fs = require('node:fs');
@@ -43,14 +44,13 @@ if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'stri
 process.exit(step.exit || 0);
 `;
 
-// Network reads never reach git. The delayed local read has a finite lifetime even on the old hook,
-// which does not yet honour GUARD_GIT_DECISION_BUDGET_MS.
+// Network reads never reach git. Logged local reads finish before virtual budget charges apply.
 const FAKE_GIT = String.raw`#!/bin/sh
 case " $* " in
   *" ls-remote "*) exec node "$FAKE_GIT_DRIVER" "$@" ;;
   *" fetch "*|*" push "*|*" pull "*|*" clone "*) exit 1 ;;
 esac
-if [ "$FAKE_GIT_HANG" = 1 ] || [ "$FAKE_GIT_LOG_ALL" = 1 ]; then
+if [ "$FAKE_GIT_LOG_ALL" = 1 ]; then
   exec node "$FAKE_GIT_DRIVER" "$@"
 fi
 exec "$REAL_GIT" "$@"
@@ -66,20 +66,18 @@ if (args.some((arg) => ['fetch', 'push', 'pull', 'clone'].includes(arg))) {
   process.exit(1);
 }
 function finish() {
-  const r = spawnSync(process.env.REAL_GIT, args, { encoding: 'utf8', timeout: 3000 });
+  const r = spawnSync(process.env.REAL_GIT, args, { encoding: 'utf8', timeout: 120000 });
   if (r.stdout) process.stdout.write(r.stdout);
   if (r.stderr) process.stderr.write(r.stderr);
   process.exit(r.status === null ? 1 : r.status);
 }
-const reads = fs.readFileSync(process.env.FAKE_GIT_LOG, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
-  .filter((call) => call.args?.[0] === 'branch' && call.args[1] === '--show-current').length;
-if (process.env.FAKE_GIT_HANG === '1' && args[0] === 'branch' && args[1] === '--show-current'
-    && reads >= Number(process.env.FAKE_GIT_HANG_AFTER || 1)) {
-  fs.appendFileSync(process.env.FAKE_GIT_LOG, JSON.stringify({ delayed: true }) + '\n');
+if (process.env.FAKE_GIT_READY_FILE && args[0] === 'branch' && args[1] === '--show-current') {
+  fs.writeFileSync(process.env.FAKE_GIT_PID_FILE, String(process.pid));
+  fs.writeFileSync(process.env.FAKE_GIT_READY_FILE, 'ready');
   setTimeout(() => {
     fs.appendFileSync(process.env.FAKE_GIT_LOG, JSON.stringify({ completed: true }) + '\n');
     finish();
-  }, 2000);
+  }, 60000);
 } else finish();
 `;
 
@@ -131,7 +129,9 @@ export function fixture() {
     if (branch !== 'feature/work') git(dir, 'checkout', '-q', branch);
     return { dir, a, b };
   }
-  function decide(repo, command, { session = SESSIONS[0][1], mode, configured = false, settings, extraEnv = {}, pr = {}, contents = {} } = {}) {
+  function decide(repo, command, { session = SESSIONS[0][1], mode, configured = false, settings, budget, extraEnv = {}, pr = {}, contents = {} } = {}) {
+    budget?.require('guard-git', env);
+    const clock = budget ?? hookBudget();
     const id = ++counter;
     const ghFile = join(scratch, `gh-${id}.json`);
     const ghLog = join(scratch, `gh-${id}.log`);
@@ -145,16 +145,16 @@ export function fixture() {
       ...pr,
     }, contents }));
     const runEnv = { ...env, FAKE_GH: ghFile, FAKE_GH_LOG: ghLog, FAKE_GIT_LOG: gitLog,
-      GUARD_GIT_GH_BUDGET_MS: '8000', GUARD_GIT_GH_TIMEOUT_MS: '3000', ...extraEnv };
+      GUARD_GIT_GH_BUDGET_MS: '8000', GUARD_GIT_GH_TIMEOUT_MS: '3000', ...clock.env, ...extraEnv };
     const event = { cwd: repo.dir, tool_name: 'Bash', tool_input: { command }, ...session };
     let result;
     const start = performance.now();
     if (configured) {
-      result = runConfigured(event, { env: runEnv, settings, timeoutMs: 12000 });
+      result = runConfigured(event, { env: runEnv, settings, timeoutMs: 120000 });
       assert.deepEqual(result.failures, [], `${command}: ${result.stderr}`);
     } else {
       const r = spawnSync(process.execPath, [join(HOOKS, 'guard-git.mjs'), ...(mode ? [mode] : [])], {
-        input: JSON.stringify(event), cwd: repo.dir, encoding: 'utf8', timeout: 12000,
+        input: JSON.stringify(event), cwd: repo.dir, encoding: 'utf8', timeout: 120000,
         env: { ...process.env, ...runEnv },
       });
       assert.equal(r.status, 0, `${command}: ${r.error?.message ?? r.stderr}`);
@@ -162,10 +162,11 @@ export function fixture() {
       result = { decision: out.permissionDecision ?? 'allow', reason: out.permissionDecisionReason ?? '',
         explicit: Boolean(out.permissionDecision), stderr: r.stderr };
     }
+    budget?.active('guard-git');
     const calls = (file) => existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
     return { ...result, elapsed: performance.now() - start, ghCalls: calls(ghLog), gitCalls: calls(gitLog) };
   }
-  return { scratch, home, git, repository, decide, close: () => rmSync(scratch, { recursive: true, force: true }) };
+  return { scratch, home, env, git, repository, decide, close: () => rmSync(scratch, { recursive: true, force: true }) };
 }
 
 export function silent(result, command) {

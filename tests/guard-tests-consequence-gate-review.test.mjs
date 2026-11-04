@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { hookBudget } from './hook-budget.mjs';
 import { SETTINGS, runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 
@@ -73,10 +74,13 @@ exec ${quote(realGit)} "$@"
   commit = git(dir, 'rev-parse', TAG);
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
-function run(command, session, { cwd = dir, env = {}, tool = 'Bash', input } = {}) {
-  return runConfigured({ cwd, tool_name: tool, tool_input: input ?? { command }, ...session }, {
-    settings: SETTINGS_TESTS, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...env },
+function run(command, session, { cwd = dir, env = {}, tool = 'Bash', input, budget } = {}) {
+  budget?.require('guard-tests', { PATH: `${bin}${delimiter}${process.env.PATH}` });
+  const result = runConfigured({ cwd, tool_name: tool, tool_input: input ?? { command }, ...session }, {
+    settings: SETTINGS_TESTS, timeoutMs: budget ? 120000 : undefined, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...budget?.env, ...env },
   });
+  budget?.active('guard-tests');
+  return result;
 }
 function healthy(r) {
   assert.deepEqual(r.failures, [], `hook failed: ${r.failures.join('; ')} ${r.stderr}`);
@@ -142,8 +146,8 @@ rule('AC-5 (R1-F2)', 'rule for eval of a glob of frozen tests', "eval 'rm tests/
 rule('AC-4 (R1-F2)', 'rule for a glob when the oracle file list cannot be read', 'rm tests/*.test.mjs', 'rm src/*.js', {
   env: { REVIEW_TREE: 'fail' }, path: 'tests/', visibleFailure: 'optional',
 });
-rule('AC-3 (R1-F2)', 'rule for a glob when the CPU budget is exhausted', 'rm tests/*.mjs', 'rm src/*.js', {
-  env: { GUARD_TESTS_CPU_BUDGET_MS: '1' }, path: 'tests/', visibleFailure: true,
+rule('AC-3 (R1-F2)', 'AC-2 (#84) rule for a glob when the CPU budget is exhausted', 'rm tests/*.mjs', 'rm src/*.js', {
+  env: { GUARD_TESTS_CPU_BUDGET_MS: '1' }, budget: hookBudget({ cpuStepUs: 1000 }), path: 'tests/', visibleFailure: true,
 });
 rule('AC-8 (R1-F2)', 'rule for a find from the repository root with an unsupported predicate',
   "find . -newer src/x.js -name '*.test.mjs' -delete", "find src -newer src/x.js -name '*.test.mjs' -delete");

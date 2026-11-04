@@ -18,6 +18,7 @@
 // https://github.com/o/r.git, so no case touches the network. The cases without a Bash command spawn the
 // hook with --merge-only directly: no entry of global/settings.json runs without a command.
 import assert from 'node:assert/strict';
+import { hookBudget } from './hook-budget.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -136,6 +137,7 @@ describe('guard-git merge decision: flags and repository as gh reads them, unrea
     const stdout = green({ headRefOid: fx.head, ...pr });
     writeFileSync(gh, JSON.stringify({ view: view ?? { stdout }, api: NOT_FOUND, user: { stdout: { login: 'me' } } }));
     const result = runConfigured({ cwd: fx.dir, tool_name: 'Bash', tool_input: { command }, ...extra }, {
+      timeoutMs: 120000,
       env: {
         ...GIT_ENV,
         PATH: `${bin}${delimiter}${process.env.PATH}`,
@@ -144,6 +146,7 @@ describe('guard-git merge decision: flags and repository as gh reads them, unrea
         REAL_GIT,
         GUARD_GIT_GH_BUDGET_MS: '8000',
         GUARD_GIT_GH_TIMEOUT_MS: '3000',
+        ...hookBudget().env,
       },
     });
     const calls = existsSync(ghLog) ? readFileSync(ghLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];

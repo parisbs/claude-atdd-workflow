@@ -19,6 +19,7 @@
 // guard-git-oracle-tags.test.mjs do (their fixtures are repeated here: a test file cannot import another
 // without running its suites). The repositories are temporary, so no case touches the network.
 import assert from 'node:assert/strict';
+import { hookBudget } from './hook-budget.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -154,6 +155,7 @@ describe('guard-git command forms: comments, gh pr flags before merge, git tag -
       user: { stdout: { login: 'me' } },
     }));
     const result = runConfigured({ cwd: fx.dir, tool_name: 'Bash', tool_input: { command }, ...extra }, {
+      timeoutMs: 120000,
       env: {
         ...GIT_ENV,
         PATH: `${bin}${delimiter}${process.env.PATH}`,
@@ -162,6 +164,7 @@ describe('guard-git command forms: comments, gh pr flags before merge, git tag -
         REAL_GIT,
         GUARD_GIT_GH_BUDGET_MS: '8000',
         GUARD_GIT_GH_TIMEOUT_MS: '3000',
+        ...hookBudget().env,
       },
     });
     const calls = existsSync(ghLog) ? readFileSync(ghLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];

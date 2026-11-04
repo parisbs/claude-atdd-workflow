@@ -1,6 +1,9 @@
 // Issue #73 (ADR 0034): unread commands ask or deny at each consequence gate, while ordinary work stays quiet.
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { cleanupProcesses, deadProcesses, hookBudget } from './hook-budget.mjs';
 import { handlersFor, SETTINGS } from './claude-hooks.mjs';
 import { fixture, POSIX, SESSIONS, silent, unread } from './guard-git-fixture.mjs';
 
@@ -115,31 +118,47 @@ describe('guard-git consequence gates (#73)', { skip: POSIX }, () => {
       assert.equal(r.explicit, false);
       assert.match(r.stderr, /guard-git:.*(?:could not evaluate|allowing)/i);
     });
-    test(`AC-3 a decision budget bounds a required git read at a gate for ${who}`, () => {
+    test(`AC-3 / AC-2 (#84) a decision budget bounds a required git read at a gate for ${who}`, () => {
       const command = 'git push origin main';
-      const r = fx.decide(main, command, { session,
-        extraEnv: { GUARD_GIT_DECISION_BUDGET_MS: '300', FAKE_GIT_HANG: '1' } });
-      assert.ok(r.gitCalls.some((call) => call.delayed), 'the required branch read did not reach the fake git');
+      const budget = hookBudget({ steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 1, elapsedMs: 10000 }] });
+      const r = fx.decide(main, command, { session, budget, extraEnv: { FAKE_GIT_LOG_ALL: '1' } });
+      assert.ok(r.gitCalls.some((call) => call.args?.[0] === 'branch'), 'the required branch read must run');
+      assert.equal(budget.charged('guard-git')[0].timedOut, true);
       unread(r, expected, 'push to a protected branch', /budget|deadline|timed? out/i, command);
-      assert.ok(!r.gitCalls.some((call) => call.completed), 'the decision waited for the delayed read to complete');
     });
-    test(`AC-3 a spent budget keeps verdicts already collected for ${who}`, () => {
+    test(`AC-3 / AC-2 (#84) a hung required git read is killed after readiness for ${who}`, async () => {
+      const readyFile = join(fx.scratch, `ready-${who}`);
+      const pidFile = join(fx.scratch, `pid-${who}`);
+      const budget = hookBudget({ ready: [{ program: 'git', args: ['branch', '--show-current'], readyFile, timeoutMs: 100 }] });
+      try {
+        const r = fx.decide(main, 'git push origin main', { session, budget,
+          extraEnv: { FAKE_GIT_LOG_ALL: '1', FAKE_GIT_READY_FILE: readyFile, FAKE_GIT_PID_FILE: pidFile } });
+        assert.ok(existsSync(readyFile), 'the required git read was ready before its timer started');
+        assert.equal(budget.active('guard-git').filter((event) => event.type === 'ready-timeout').length, 1);
+        unread(r, expected, 'push to a protected branch', /budget|deadline|timed? out/i, 'git push origin main');
+        assert.ok(!r.gitCalls.some((call) => call.completed), 'the hook must return before the 60 s hang completes');
+        await deadProcesses([Number(readFileSync(pidFile, 'utf8'))]);
+      } finally {
+        if (existsSync(pidFile)) await cleanupProcesses([Number(readFileSync(pidFile, 'utf8'))]);
+      }
+    });
+    test(`AC-3 / AC-2 (#84) a spent budget keeps verdicts already collected for ${who}`, () => {
       const command = 'git tag oracle/new; git push origin main';
-      const r = fx.decide(main, command, { session,
-        extraEnv: { GUARD_GIT_DECISION_BUDGET_MS: '750', FAKE_GIT_HANG: '1', FAKE_GIT_HANG_AFTER: '2' } });
-      assert.ok(r.gitCalls.some((call) => call.delayed), 'the delayed read was not reached');
+      const budget = hookBudget({ steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 2, elapsedMs: 10000 }] });
+      const r = fx.decide(main, command, { session, budget, extraEnv: { FAKE_GIT_LOG_ALL: '1' } });
+      assert.equal(r.gitCalls.filter((call) => call.args?.[0] === 'branch' && call.args[1] === '--show-current').length, 2);
+      assert.equal(budget.charged('guard-git')[0].timedOut, true);
       unread(r, expected, 'push to a protected branch', /budget|deadline|timed? out/i, command);
       assert.match(r.reason, /Creating an oracle tag|freezes the approved tests/i);
-      assert.ok(!r.gitCalls.some((call) => call.completed), 'the decision waited for the delayed read to complete');
     });
-    test(`AC-3 a spent budget away from gates allows with a visible message for ${who}`, () => {
-      const r = fx.decide(repo, 'git status', { session,
-        extraEnv: { GUARD_GIT_DECISION_BUDGET_MS: '300', FAKE_GIT_HANG: '1' } });
-      assert.ok(r.gitCalls.some((call) => call.delayed), 'the git read did not reach the fake git');
+    test(`AC-3 / AC-2 (#84) a spent budget away from gates allows with a visible message for ${who}`, () => {
+      const budget = hookBudget({ steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 1, elapsedMs: 10000 }] });
+      const r = fx.decide(repo, 'git status', { session, budget, extraEnv: { FAKE_GIT_LOG_ALL: '1' } });
+      assert.ok(r.gitCalls.some((call) => call.args?.[0] === 'branch'), 'the required branch read must run');
+      assert.equal(budget.charged('guard-git')[0].timedOut, true);
       assert.equal(r.decision, 'allow');
       assert.equal(r.explicit, false);
       assert.match(r.stderr, /guard-git:.*(?:budget|deadline|timed? out)/i);
-      assert.ok(!r.gitCalls.some((call) => call.completed), 'the decision waited for the delayed read to complete');
     });
   }
   for (const member of ['constructor', 'toString', '__proto__']) {

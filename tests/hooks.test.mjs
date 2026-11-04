@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { hookBudget } from './hook-budget.mjs';
 import { runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 
@@ -334,12 +335,15 @@ describe('guard-git merge decision', () => {
 
   const withoutGh = () => process.env.PATH.split(delimiter).filter((d) => !existsSync(join(d, 'gh'))).join(delimiter);
 
-  function merge(command, { pr = green(), view = { stdout: pr }, api = NOT_FOUND, user = { stdout: { login: 'me' } }, env = {} } = {}) {
+  function merge(command, { pr = green(), view = { stdout: pr }, api = NOT_FOUND, user = { stdout: { login: 'me' } }, env = {}, budget } = {}) {
+    budget?.require('guard-git', { PATH: `${bin}${delimiter}${process.env.PATH}` });
+    const clock = budget ?? hookBudget();
     const scenario = join(root, 'scenario.json');
     writeFileSync(scenario, JSON.stringify({ view, api, user }));
     rmSync(`${scenario}.calls`, { force: true });
     // The entry that decides merges; AC-4 (#27) checks it together with the general one.
-    const result = guardGit({ cwd: dir, tool_input: { command } }, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...gitEnv, ...env }, '--merge-only');
+    const result = guardGit({ cwd: dir, tool_input: { command } }, { PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: scenario, ...gitEnv, ...clock.env, ...env }, '--merge-only');
+    budget?.active('guard-git');
     const calls = existsSync(`${scenario}.calls`)
       ? readFileSync(`${scenario}.calls`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l))
       : [];
@@ -446,24 +450,35 @@ describe('guard-git merge decision', () => {
     });
   }
 
-  test('AC-4 (#5) asks when the authenticated user lookup times out', () => {
-    asks(merge(SQUASH, {
-      user: { stdout: { login: 'me' }, delayMs: 1500 },
+  test('AC-4 (#5) / AC-2 (#84) asks when the authenticated user lookup times out', () => {
+    const budget = hookBudget({ steps: [
+      { program: 'gh', args: ['api', '--hostname', 'github.com', 'user'], occurrence: 1, elapsedMs: 1500 },
+    ] });
+    const result = merge(SQUASH, {
+      budget, user: { stdout: { login: 'me' } },
       env: { GUARD_GIT_GH_TIMEOUT_MS: '300' },
-    }), 'slow user lookup');
+    });
+    assert.equal(budget.charged('guard-git')[0].timeoutMs, 300);
+    asks(result, 'slow user lookup', /timed out/i);
   });
 
   // Review of #5: three serial gh calls must answer within the hook's own timeout, so
   // the calls share one budget (GUARD_GIT_GH_BUDGET_MS) besides the limit of each.
-  test('AC-4 (#5) asks when the gh calls together exceed the time budget, though each is under its limit', () => {
-    const slow = { delayMs: 1500 };
+  test('AC-4 (#5) / AC-2 (#84) asks when the gh calls together exceed the time budget, though each is under its limit', () => {
+    const budget = hookBudget({ steps: [
+      { program: 'gh', args: ['pr', 'view'], occurrence: 1, elapsedMs: 1500 },
+      { program: 'gh', args: ['api', '--hostname', 'github.com', 'user'], occurrence: 1, elapsedMs: 1500 },
+    ] });
     const result = merge(SQUASH, {
-      view: { stdout: green(), ...slow },
-      api: { ...NOT_FOUND, ...slow },
-      user: { stdout: { login: 'me' }, ...slow },
+      budget, view: { stdout: green() }, api: NOT_FOUND,
+      user: { stdout: { login: 'me' } },
       env: { GUARD_GIT_GH_TIMEOUT_MS: '4000', GUARD_GIT_GH_BUDGET_MS: '2500' },
     });
-    asks(result, 'calls over the shared budget', /time/i);
+    const charges = budget.charged('guard-git', 2);
+    assert.equal(charges[0].timedOut, false);
+    assert.equal(charges[1].timeoutMs, 1000, 'the later call gets only the unspent shared budget');
+    assert.equal(charges[1].timedOut, true);
+    asks(result, 'calls over the shared budget', /time budget/i);
   });
 
   test('AC-2 (#5) reads CLAUDE.md of the base branch with --hostname of the pull request host', () => {
@@ -692,10 +707,16 @@ describe('guard-git merge decision', () => {
     }
   });
 
-  test('AC-6 asks when gh is slower than the limit', () => {
+  test('AC-6 / AC-2 (#84) asks when gh is slower than the limit', () => {
     const env = { GUARD_GIT_GH_TIMEOUT_MS: '300' };
-    asks(merge(SQUASH, { view: { stdout: green(), delayMs: 1500 }, env }), 'slow pr view', /timed out/i);
-    asks(merge(SQUASH, { api: { stdout: '', delayMs: 1500 }, env }), 'slow gh api', /timed out/i);
+    for (const args of [['pr', 'view'], ['repos/o/r/contents/CLAUDE.md?ref=main']]) {
+      const budget = hookBudget({ steps: [{ program: 'gh', args, occurrence: 1, elapsedMs: 1500 }] });
+      const result = merge(SQUASH, { budget, env });
+      const [charge] = budget.charged('guard-git');
+      assert.equal(charge.timeoutMs, 300);
+      assert.equal(charge.timedOut, true);
+      asks(result, `slow ${args.join(' ')}`, /timed out/i);
+    }
   });
 
   test('AC-6 asks when fewer files are listed than the pull request changed', () => {

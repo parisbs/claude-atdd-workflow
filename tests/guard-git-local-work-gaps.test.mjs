@@ -8,8 +8,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import { basename, delimiter, join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import { cleanupProcesses, deadProcesses, hookBudget } from './hook-budget.mjs';
 import { runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 import { fixtureGit, GIT_ENV } from './git-fixture.mjs';
@@ -54,27 +54,7 @@ case " $* " in
       exit 129
     fi ;;
 esac
-case " $* " in
-  *" for-each-ref "*|*" remote -v "*)
-    if [ -n "$SLOW_READ" ]; then exec node "$FAKE_GIT_READ" "$@"; fi ;;
-esac
 exec "$REAL_GIT" "$@"
-`;
-
-// Only the selected local read sleeps, once. No remote call spends this time.
-const FAKE_GIT_READ = String.raw`const fs = require('node:fs');
-const { spawnSync } = require('node:child_process');
-const args = process.argv.slice(2);
-const remoteReads = fs.readFileSync(process.env.FAKE_GIT_LOG, 'utf8').split('\n')
-  .filter((line) => line.endsWith('remote -v')).length;
-const slow = process.env.SLOW_READ === 'local' ? args.includes('for-each-ref')
-  : args.includes('remote') && remoteReads === 2;
-if (slow) fs.appendFileSync(process.env.FAKE_GIT_LOG, 'slow local read\n');
-const finish = () => {
-  const r = spawnSync(process.env.REAL_GIT, args, { stdio: 'inherit' });
-  process.exit(r.status === null ? 1 : r.status);
-};
-if (slow) setTimeout(finish, 2400); else finish();
 `;
 
 // OpenSSH reads the passwd home, not HOME. A fake -G keeps alias resolution isolated on every machine.
@@ -88,8 +68,7 @@ if (!args.includes('-G') || !args.includes('gh-work')) {
   process.exit(1);
 }
 if (process.env.SSH_MODE === 'fail') process.exit(1);
-if (process.env.SSH_MODE === 'hang') setTimeout(() => process.exit(1), 8000);
-else process.stdout.write('hostname ' + (process.env.SSH_MODE === 'other' ? 'other.example.com' : 'github.com') + '\n');
+process.stdout.write('hostname ' + (process.env.SSH_MODE === 'other' ? 'other.example.com' : 'github.com') + '\n');
 `;
 
 const HANGING_SSH = String.raw`#!/usr/bin/env node
@@ -99,7 +78,8 @@ if (!process.env.FAKE_SSH_PIDS) process.exit(0);
 const role = process.argv[2] === 'child' || process.argv[2] === 'grandchild' ? process.argv[2] : 'ssh';
 fs.appendFileSync(process.env.FAKE_SSH_PIDS, JSON.stringify({ role, pid: process.pid, ppid: process.ppid }) + '\n');
 if (role !== 'grandchild') spawn(process.execPath, [__filename, role === 'ssh' ? 'child' : 'grandchild'], { stdio: 'inherit' });
-setTimeout(() => process.exit(1), 12000);
+if (role === 'grandchild') fs.writeFileSync(process.env.FAKE_SSH_READY, 'ready');
+setTimeout(() => { fs.writeFileSync(process.env.FAKE_SSH_READY + '.completed', 'done'); process.exit(1); }, 60000);
 `;
 
 function green(headRefOid) {
@@ -137,7 +117,6 @@ describe('guard-git local-work gaps (#72)', () => {
     writeExecutable(join(bin, 'gh'), FAKE_GH);
     writeExecutable(join(bin, 'git'), FAKE_GIT);
     writeExecutable(join(bin, 'ssh'), FAKE_SSH);
-    writeFileSync(join(scratch, 'git-read.cjs'), FAKE_GIT_READ);
   });
   after(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -173,18 +152,21 @@ describe('guard-git local-work gaps (#72)', () => {
     return extra;
   }
 
-  function decide(dir, head, { env = {}, api = NOT_FOUND, command = SQUASH } = {}) {
+  function decide(dir, head, { env = {}, api = NOT_FOUND, command = SQUASH, budget = hookBudget() } = {}) {
+    budget?.require('guard-git', { PATH: `${bin}${delimiter}${process.env.PATH}` });
     const file = join(scratch, `scenario-${++scenarios}.json`);
     writeFileSync(file, JSON.stringify({ view: { stdout: green(head) }, user: { stdout: { login: 'me' } }, api }));
     const r = runConfigured({ cwd: dir, permission_mode: 'default', tool_name: 'Bash', tool_input: { command } }, {
+      timeoutMs: budget ? 120000 : undefined,
       env: {
         ...GIT_ENV, PATH: `${bin}${delimiter}${process.env.PATH}`, REAL_GIT,
-        FAKE_GH: file, FAKE_GIT_LOG: `${file}.git`, FAKE_GIT_READ: join(scratch, 'git-read.cjs'),
-        FAKE_SSH_LOG: `${file}.ssh`, SSH_MODE: 'match', OLD_GIT: '', SLOW_READ: '', REAL_REMOTE: '',
+        FAKE_GH: file, FAKE_GIT_LOG: `${file}.git`,
+        FAKE_SSH_LOG: `${file}.ssh`, SSH_MODE: 'match', OLD_GIT: '', REAL_REMOTE: '',
         GIT_SSH_COMMAND: 'ssh', GIT_SSH_VARIANT: 'ssh',
-        GUARD_GIT_GH_TIMEOUT_MS: '6000', GUARD_GIT_GH_BUDGET_MS: '10000', ...env,
+        GUARD_GIT_GH_TIMEOUT_MS: '6000', GUARD_GIT_GH_BUDGET_MS: '10000', ...budget?.env, ...env,
       },
     });
+    budget?.active('guard-git');
     assert.deepEqual(r.failures, [], r.stderr);
     assert.notEqual(r.decision, 'deny', `the configured hook must complete: ${r.reason}`);
     return { ...r, gh: lines(`${file}.calls`).map(JSON.parse), git: lines(`${file}.git`), ssh: lines(`${file}.ssh`).map(JSON.parse) };
@@ -201,13 +183,14 @@ describe('guard-git local-work gaps (#72)', () => {
   }
 
   for (const mode of ['other', 'fail', 'hang']) {
-    test(`AC-2 ${mode === 'other' ? 'adds no local-work verdict when the SSH alias resolves to another host' : `asks when SSH alias resolution is ${mode}`}`, () => {
+    test(`AC-2 / AC-2 (#84) ${mode === 'other' ? 'adds no local-work verdict when the SSH alias resolves to another host' : `asks when SSH alias resolution is ${mode}`}`, () => {
       const { dir, head } = clone('git@gh-work:o/r.git');
       extraCommit(dir);
-      const start = performance.now();
-      const r = decide(dir, head, { env: { SSH_MODE: mode } });
+      const budget = hookBudget({ steps: mode === 'hang'
+        ? [{ program: 'ssh', args: ['-G'], occurrence: 1, elapsedMs: 5000 }] : [] });
+      const r = decide(dir, head, { budget, env: { SSH_MODE: mode } });
       assert.ok(r.ssh.some((args) => args.includes('-G') && args.includes('gh-work')), 'the alias must be resolved with ssh -G');
-      assert.ok(performance.now() - start < 13000, 'alias resolution must remain bounded');
+      if (mode === 'hang') assert.equal(budget.charged('guard-git')[0].timedOut, true);
       if (mode === 'other') {
         allowed(r);
         assert.doesNotMatch(r.reason, /local commits missing|could not read the local|uncommitted changes|stash@/i);
@@ -223,12 +206,11 @@ describe('guard-git local-work gaps (#72)', () => {
         extraCommit(dir);
         const file = join(scratch, `scenario-${++scenarios}.json`);
         writeFileSync(file, JSON.stringify({ view: { stdout: green(head) }, user: { stdout: { login: 'me' } }, api: NOT_FOUND }));
-        const start = performance.now();
         const r = runConfigured({ cwd: dir, permission_mode: 'bypassPermissions', tool_name: 'Bash', tool_input: { command: SQUASH } }, {
           env: {
             ...GIT_ENV, PATH: `${bin}${delimiter}${process.env.PATH}`, REAL_GIT,
-            FAKE_GH: file, FAKE_GIT_LOG: `${file}.git`, FAKE_GIT_READ: join(scratch, 'git-read.cjs'),
-            FAKE_SSH_LOG: `${file}.ssh`, SSH_MODE: mode, OLD_GIT: '', SLOW_READ: '', REAL_REMOTE: '',
+            FAKE_GH: file, FAKE_GIT_LOG: `${file}.git`,
+            FAKE_SSH_LOG: `${file}.ssh`, SSH_MODE: mode, OLD_GIT: '', REAL_REMOTE: '',
             GIT_SSH_COMMAND: 'ssh', GIT_SSH_VARIANT: 'ssh',
             GUARD_GIT_GH_TIMEOUT_MS: '6000', GUARD_GIT_GH_BUDGET_MS: '10000',
           },
@@ -236,7 +218,6 @@ describe('guard-git local-work gaps (#72)', () => {
         assert.deepEqual(r.failures, [], r.stderr);
         assert.ok(lines(`${file}.ssh`).map(JSON.parse).some((args) => args.includes('-G') && args.includes('gh-work')),
           'the alias must be resolved with ssh -G');
-        assert.ok(performance.now() - start < 13000, 'alias resolution must remain bounded');
         assert.equal(r.decision, 'deny', r.reason);
         assert.ok(r.reason.includes('gh-work'), r.reason);
         assert.match(r.reason, /could not resolve|ssh -G/i);
@@ -293,24 +274,38 @@ describe('guard-git local-work gaps (#72)', () => {
     });
   }
 
-  test('AC-5 gives the later gh call its limit after a slow local-work read', () => {
+  test('AC-5 / AC-2 (#84) gives the later gh call its limit after a slow local-work read', () => {
     const { dir, head } = clone();
-    const r = decide(dir, head, {
-      env: { SLOW_READ: 'local', GUARD_GIT_GH_BUDGET_MS: '2000', GUARD_GIT_GH_TIMEOUT_MS: '1000' },
-      api: { stdout: 'Human merge: src/\n', sleep: 400 },
+    const budget = hookBudget({ steps: [
+      { program: 'git', args: ['for-each-ref'], occurrence: 1, elapsedMs: 2400 },
+      { program: 'gh', args: ['repos/o/r/contents/CLAUDE.md?ref=main'], occurrence: 1, elapsedMs: 400 },
+    ] });
+    const r = decide(dir, head, { budget,
+      env: { GUARD_GIT_GH_BUDGET_MS: '2000', GUARD_GIT_GH_TIMEOUT_MS: '1000' },
+      api: { stdout: 'Human merge: src/\n' },
     });
-    assert.ok(r.git.includes('slow local read'), 'the local read must spend more than the gh budget');
+    const charges = budget.charged('guard-git', 2);
+    assert.equal(charges[0].appliedMs, 2400, 'local work must spend more than the gh budget');
+    assert.equal(charges[1].timeoutMs, 1000, 'the policy call must retain its full per-call limit');
+    assert.equal(charges[1].timedOut, false);
     asks(r, 'Control-plane files changed: src/app.ts');
     assert.ok(r.gh.some((args) => args.some((arg) => arg.includes('/contents/CLAUDE.md'))), 'gh must read the base policy');
     assert.doesNotMatch(r.reason, /time budget|timed out/i);
   });
 
-  test('AC-5 leaves the remote lookup its budget after slow local oracle discovery', () => {
+  test('AC-5 / AC-2 (#84) leaves the remote lookup its budget after slow local oracle discovery', () => {
     const { dir, head } = clone();
-    const r = decide(dir, head, {
-      env: { SLOW_READ: 'oracle', GUARD_GIT_GH_BUDGET_MS: '2000', GUARD_GIT_GH_TIMEOUT_MS: '1000' },
+    const budget = hookBudget({ steps: [
+      { program: 'git', args: ['remote', '-v'], occurrence: 2, elapsedMs: 2400 },
+      { program: 'git', args: ['ls-remote'], occurrence: 1, elapsedMs: 400 },
+    ] });
+    const r = decide(dir, head, { budget,
+      env: { GUARD_GIT_GH_BUDGET_MS: '2000', GUARD_GIT_GH_TIMEOUT_MS: '1000' },
     });
-    assert.ok(r.git.includes('slow local read'), 'oracle discovery must spend more than the gh budget');
+    const charges = budget.charged('guard-git', 2);
+    assert.equal(charges[0].appliedMs, 2400, 'oracle discovery must spend more than the gh budget');
+    assert.equal(charges[1].timeoutMs, 1000, 'the remote lookup must retain its full per-call limit');
+    assert.equal(charges[1].timedOut, false);
     allowed(r);
     assert.ok(r.git.some((line) => line.startsWith('ls-remote ')), 'the bounded remote lookup must still run');
   });
@@ -335,53 +330,37 @@ describe('guard-git local-work gaps (#72)', () => {
     }
   });
 
-  test('AC-7 kills ssh and its child and grandchild when an oracle forced-push lookup times out', async () => {
+  test('AC-7 / AC-2 (#84) kills ssh and its child and grandchild when an oracle forced-push lookup times out', async () => {
     const { dir, head } = clone('git@gh-work:o/r.git');
     sh(dir, 'tag', 'oracle/feature/x', head);
     const pidsFile = join(scratch, 'ssh-pids.jsonl');
     const sshBin = join(scratch, 'hanging-bin');
     mkdirSync(sshBin);
     writeExecutable(join(sshBin, 'ssh'), HANGING_SSH);
-    const alive = (pid) => {
-      try {
-        process.kill(pid, 0);
-        // Linux can retain a killed orphan as a zombie until PID 1 reaps it.
-        if (existsSync('/proc')) {
-          const status = readFileSync(`/proc/${pid}/status`, 'utf8');
-          if (/^State:\s+Z/m.test(status)) return false;
-        }
-        return true;
-      } catch (error) {
-        if (error.code === 'ESRCH' || error.code === 'ENOENT') return false;
-        throw error;
-      }
-    };
     let pids = [];
     try {
-      const start = performance.now();
-      const r = decide(dir, head, {
+      const readyFile = join(scratch, 'ssh-ready');
+      const budget = hookBudget({ ready: [{ program: 'git', args: ['ls-remote'], readyFile, timeoutMs: 100 }] });
+      const r = decide(dir, head, { budget,
         command: 'git push -f origin oracle/feature/x',
         env: {
           PATH: `${sshBin}${delimiter}${bin}${delimiter}${process.env.PATH}`,
-          REAL_REMOTE: '1', FAKE_SSH_PIDS: pidsFile,
+          REAL_REMOTE: '1', FAKE_SSH_PIDS: pidsFile, FAKE_SSH_READY: readyFile,
           GUARD_GIT_GH_TIMEOUT_MS: '1500', GUARD_GIT_GH_BUDGET_MS: '3000',
         },
       });
       pids = lines(pidsFile).map(JSON.parse);
       asks(r, 'Move oracle/feature/x', 'git ls-remote timed out');
-      assert.ok(performance.now() - start < 6000, 'inherited pipes must not keep the hook alive');
+      assert.ok(!existsSync(readyFile + '.completed'), 'the hook must return before the 60 s hang completes');
+      assert.equal(budget.active('guard-git').filter((event) => event.type === 'ready-timeout').length, 1);
       assert.deepEqual(pids.map(({ role }) => role).sort(), ['child', 'grandchild', 'ssh']);
       const ssh = pids.find(({ role }) => role === 'ssh');
       const child = pids.find(({ role }) => role === 'child');
       assert.equal(child.ppid, ssh.pid);
       assert.equal(pids.find(({ role }) => role === 'grandchild').ppid, child.pid);
-      const deadline = performance.now() + 1500;
-      while (pids.some(({ pid }) => alive(pid)) && performance.now() < deadline) await delay(25);
-      assert.deepEqual(pids.filter(({ pid }) => alive(pid)), [], 'no ssh descendant may survive the timeout');
+      await deadProcesses(pids.map(({ pid }) => pid));
     } finally {
-      for (const { pid } of pids.length ? pids : lines(pidsFile).map(JSON.parse)) {
-        if (alive(pid)) process.kill(pid, 'SIGKILL');
-      }
+      await cleanupProcesses((pids.length ? pids : lines(pidsFile).map(JSON.parse)).map(({ pid }) => pid));
     }
   });
 
