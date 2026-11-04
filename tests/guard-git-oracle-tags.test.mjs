@@ -16,6 +16,7 @@ import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
+import { hookBudget } from './hook-budget.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -56,7 +57,7 @@ const finish = () => {
   if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'string' ? step.stdout : JSON.stringify(step.stdout));
   process.exit(step.exit === undefined ? 0 : step.exit);
 };
-if (step.sleep) setTimeout(finish, step.sleep); else finish();
+finish();
 `;
 
 const OPEN_PR = { number: 12, url: 'https://github.com/o/r/pull/12', headRefName: 'feature/x', state: 'OPEN' };
@@ -114,15 +115,17 @@ describe('guard-git asks before deleting or moving an oracle tag (#55)', () => {
   }
 
   // One Bash call through every entry of global/settings.json that applies to it; none may fail.
-  function decide(dir, command, { extra = {}, gh = NO_PR, env = {}, path } = {}) {
+  function decide(dir, command, { extra = {}, gh = NO_PR, env = {}, path, budget } = {}) {
+    budget?.require('guard-git', { PATH: `${bin}${delimiter}${process.env.PATH}` });
     scenarios += 1;
     const file = join(scratch, `scenario-${scenarios}.json`);
     writeFileSync(file, JSON.stringify(gh));
     const event = { cwd: dir, tool_name: 'Bash', tool_input: { command }, ...extra };
     const options = path
-      ? { path, env: { ...GIT_ENV, FAKE_GH: file, ...env } }
-      : { env: { ...GIT_ENV, PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: file, ...env } };
-    const result = runConfigured(event, options);
+      ? { path, env: { ...GIT_ENV, FAKE_GH: file, ...budget?.env, ...env } }
+      : { env: { ...GIT_ENV, PATH: `${bin}${delimiter}${process.env.PATH}`, FAKE_GH: file, ...budget?.env, ...env } };
+    const result = runConfigured(event, { ...options, timeoutMs: budget ? 120000 : undefined });
+    budget?.active('guard-git');
     assert.deepEqual(result.failures, [], result.stderr);
     const calls = existsSync(`${file}.calls`)
       ? readFileSync(`${file}.calls`, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
@@ -229,12 +232,21 @@ describe('guard-git asks before deleting or moving an oracle tag (#55)', () => {
     }
   });
 
-  test('AC-5 asks and says the pull request state could not be read when gh times out', () => {
+  test('AC-5 (#55) / AC-2 (#84) asks and says the pull request state could not be read when gh times out', () => {
     const { dir } = fixture();
+    const budget = hookBudget({ steps: [
+      { program: 'gh', args: ['pr', 'list', '--head', 'feature/x'], occurrence: 1, elapsedMs: 3000 },
+    ] });
     const r = decide(dir, `git tag -d ${ORACLE}`, {
-      gh: { list: { sleep: 3000, stdout: [OPEN_PR] } },
+      budget, gh: { list: { stdout: [OPEN_PR] } },
       env: { GUARD_GIT_GH_TIMEOUT_MS: '300' },
     });
+    const [charge] = budget.charged('guard-git');
+    assert.equal(charge.timeoutMs, 300);
+    assert.equal(charge.appliedMs, 300);
+    assert.equal(charge.timedOut, true);
+    assert.equal(charge.nativeTimeout, false);
+    assert.ok(r.calls.some((call) => call.args[0] === 'pr' && call.args[1] === 'list'), 'the real gh read must run before its charge');
     assert.equal(r.decision, 'ask', r.reason);
     assert.match(r.reason, /could not read/i);
     assert.match(r.reason, /timed out/i);

@@ -177,6 +177,9 @@ event must therefore be emitted even for an event that needs no external reads.
 - `guard-git-oracle-gate`: AC-4 (#57) scripts a 60000 ms ls-remote charge against
   a 1000 ms limit, preserving the oracle unread ask and absence of explicit allow.
   Actual async group termination is covered by AC-7 above.
+- `guard-git-oracle-tags`: AC-5 (#55) scripts a 3000 ms gh PR-list charge against
+  a 300 ms limit after an immediate fake-gh response. It retains the unread-state
+  warning and ask, and verifies the timeout is synthetic, with no physical wait.
 - `hook-budget.test`: AC-3 (#84) pins all effective default limits (and the
   guard-tests 10000 ms cap) through limits events, without elapsed-time checks.
   AC-4 (#84) pairs rejected activation cases with positive exhaustion controls.
@@ -184,14 +187,12 @@ event must therefore be emitted even for an event that needs no external reads.
   only an 8000000 us CPU check with no read charges, leaving recovery reads intact.
   Copied ~/.claude/hooks cannot accept a checkout's configuration.
 
-Class B cases kept unchanged, per test:
+Class B entry-timeout policy cases kept unchanged, per test:
 
 - `guard-git-entries` AC-1 (#27), gh hangs past the merge entry: only requires
   the configured runner timeout/onFailure verdict, not a child-start marker.
 - `guard-git-entries` AC-1 and AC-2 (#31), hook cannot start or runs past timeout:
   stub entry timeouts test fail-open/fail-closed configuration without a hook budget.
-- `guard-git-oracle-tags` AC-5 (#55), PR lookup times out: a single gh read must
-  produce the existing unread-state warning; no delayed-child marker is required.
 - `guard-subagents` AC-6 (#29), cannot start/crash/timeout: stub entry timeout
   has a 60000 ms hang and no required startup marker.
 
