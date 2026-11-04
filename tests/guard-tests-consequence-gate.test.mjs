@@ -380,7 +380,7 @@ test('AC-20 (G4) resolves each cross-repository target against its own oracle', 
   });
 });
 
-test('AC-17 (H12) / AC-2 (#84) exact lookups fit a CPU budget exhausted by repeated scans of the same inventory', { timeout: 60000 }, async (t) => {
+test('AC-17 (H12) / AC-2 (#84) exact lookups fit a CPU budget exhausted by repeated scans of the same inventory', async (t) => {
   const root = repository('lookup');
   const blob = git(root, 'hash-object', '-w', FILE);
   const paths = Array.from({ length: 20000 }, (_, i) => `tests/scale/${String(i).padStart(5, '0')}.test.mjs`);
@@ -391,21 +391,26 @@ test('AC-17 (H12) / AC-2 (#84) exact lookups fit a CPU budget exhausted by repea
   git(root, 'commit', '-qm', 'test: large indexed inventory');
   git(root, 'checkout', '-qb', 'feature/lookup');
   git(root, 'tag', 'oracle/feature/lookup');
-  const budget = hookBudget({ cpuStepUs: 10000 });
-  const options = { cwd: root, budget, env: { GUARD_TESTS_CPU_BUDGET_MS: '1000' } };
+  const options = { cwd: root, env: { GUARD_TESTS_CPU_BUDGET_MS: '1000' } };
   const evidence = { tag: 'oracle/feature/lookup', hash: git(root, 'rev-parse', 'HEAD') };
-  await t.test('AC-17 exact lookup', async () => {
-    const r = await bounded(`rm ${FILE}`, SESSIONS[1][1], options);
+  await t.test('AC-17 exact lookup fits a quarter of the scan budget', async () => {
+    const budget = hookBudget({ cpuStepUs: 10 });
+    const r = await bounded(`rm ${FILE}`, SESSIONS[1][1], {
+      ...options, budget, env: { GUARD_TESTS_CPU_BUDGET_MS: '250' },
+    });
     verdict(r, 1, evidence);
     assert.equal(r.stderr, '', 'exact lookup must finish without exhausting the budget');
     assert.doesNotMatch(r.reason, /Unread command/);
     assert.equal(budget.active('guard-tests').filter((event) => event.type === 'cpu-exhausted').length, 0);
   });
   await t.test('AC-17 scan exhaustion', async () => {
-    const r = await bounded(`rm ${Array.from({ length: 2000 }, (_, i) => `tests/scale/*${i}*.test.mjs`).join(' ')} ${FILE}`, SESSIONS[1][1], options);
+    const budget = hookBudget({ cpuStepUs: 10 });
+    // Six scans exceed the check budget without making recovery scan thousands of globs.
+    const scans = Array.from({ length: 6 }, (_, i) => `tests/scale/*absent-${i}*.test.mjs`);
+    const r = await bounded(`rm ${scans.join(' ')} ${FILE}`, SESSIONS[1][1], { ...options, budget });
     healthy(r);
     const [exhausted] = budget.active('guard-tests').filter((event) => event.type === 'cpu-exhausted');
-    assert.equal(exhausted?.checks, 100, 'CPU exhaustion must occur at the scripted check count');
+    assert.equal(exhausted?.checks, 100000, 'CPU exhaustion must occur at the scripted check count');
     assert.equal(exhausted?.cpuUs, 1000000);
     assert.equal(r.decision, 'deny', r.reason + r.stderr);
     assert.match(r.stderr + r.reason, /budget.*exhaust|exhaust.*budget/i);

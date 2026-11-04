@@ -150,9 +150,16 @@ event must therefore be emitted even for an event that needs no external reads.
   direct SIGTERM-ignoring child must die, and both forms must return a verdict
   without natural completion. Subagent and bypass variants synthesize 5000 ms
   inventory-read timeouts from ordinary immediate reads, with no hanging child.
-  The exact-lookup/scan case charges 10000 us per
-  deciding check, so exact lookup finishes but scans exhaust at check 100,
-  exactly 1000000 us, independent of CPU speed.
+  The exact-lookup/scan case charges 10 us per deciding check, including the
+  20000-entry inventory construction. Exact lookup must finish quietly within
+  250 ms of virtual CPU (25000 checks), one quarter of the scan's 1000 ms budget.
+  Six distinct nonmatching globs force repeated inventory scans and exhaustion at check
+  100000, exactly 1000000 us, followed by an unread deny naming the oracle.
+  Each subtest has its own trace. Six globs bound recovery work too: the former
+  2000-glob command forced millions of grace-path matches while virtual wall
+  time stayed frozen. There is no parent-level 60 s deadline; the child runner's
+  120 s watchdog remains solely emergency infrastructure. No timing assertion
+  decides the H12 result.
 - `guard-tests-consequence-gate-review`: R1-F2's CPU-exhaustion rule charges
   1000 us per deciding check against 1 ms, keeping unread ask/deny and fail-open
   controls in all sessions.
