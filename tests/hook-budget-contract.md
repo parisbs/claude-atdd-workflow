@@ -172,8 +172,10 @@ event must therefore be emitted even for an event that needs no external reads.
   Actual async group termination is covered by AC-7 above.
 - `hook-budget.test`: AC-3 (#84) pins all effective default limits (and the
   guard-tests 10000 ms cap) through limits events, without elapsed-time checks.
-  AC-4 (#84) pairs rejected activation cases with positive exhaustion controls;
-  copied ~/.claude/hooks cannot accept a checkout's configuration.
+  AC-4 (#84) pairs rejected activation cases with positive exhaustion controls.
+  The guard-git positive control charges its branch read, while guard-tests uses
+  only an 8000000 us CPU check with no read charges, leaving recovery reads intact.
+  Copied ~/.claude/hooks cannot accept a checkout's configuration.
 
 Class B cases kept unchanged, per test:
 

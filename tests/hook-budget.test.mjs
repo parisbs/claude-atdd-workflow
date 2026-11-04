@@ -101,8 +101,9 @@ describe('hook budget seam (#84)', { skip: POSIX }, () => {
       });
     }
     test(`AC-4 (#84) ${hook} accepts only the explicit checkout configuration`, () => {
-      const budget = hookBudget({ cpuStepUs: 8000000,
-        steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 1, elapsedMs: 10000 }] });
+      const budget = hook === 'guard-git'
+        ? hookBudget({ steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 1, elapsedMs: 10000 }] })
+        : hookBudget({ cpuStepUs: 8000000 });
       const r = run(hook, { env: budget.env });
       budget.active(hook);
       assert.match(r.stderr, /budget/i, 'the accepted configuration must exhaust the deciding budget');
