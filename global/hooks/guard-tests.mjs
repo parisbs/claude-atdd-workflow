@@ -18,7 +18,9 @@ import { SUFFIX, fragments, sessionOf, unreadReason, withoutData } from './froze
 import { Verdict, git, readEvent } from './lib.mjs';
 import { globToRegExp, isTest, isTestConfig, oracleTag, testMatchers } from './oracle.mjs';
 import { shellWrites } from './shell-writes.mjs';
+import { hookBudget } from './budget.mjs';
 
+const budget = hookBudget(import.meta.url);
 const report = (error) => process.stderr.write(`guard-tests: could not evaluate, allowing unread remainder (${error?.message ?? error})\n`);
 const exhausted = () => Object.assign(new Error('oracle CPU or read budget exhausted'), { budget: true });
 // Reasons by severity, so the cap of the verdict keeps the most severe first: denies, then
@@ -48,23 +50,24 @@ try {
     // may still read the oracle for 2 s after the budget trips, so the verdict is not lost to it.
     const deadline = Math.min(Number(process.env.GUARD_TESTS_GIT_BUDGET_MS) || 10000, 10000);
     const grace = deadline + 2000;
-    const cpuStarted = process.cpuUsage();
+    const cpuStarted = budget.cpuUsage();
     // CPU spent reading the command and matching the inventory; 8 s leaves room for the 10 s deadline.
     const cpuLimit = (Number(process.env.GUARD_TESTS_CPU_BUDGET_MS) || 8000) * 1000;
+    budget.limits({ gitBudgetMs: deadline, gitTimeoutMs: limit, cpuBudgetMs: cpuLimit / 1000, graceMs: grace - deadline });
     const check = () => {
-      const cpu = process.cpuUsage(cpuStarted);
-      if (performance.now() >= deadline || cpu.user + cpu.system >= cpuLimit) throw exhausted();
+      const cpu = budget.cpuUsage(cpuStarted, cpuLimit);
+      if (budget.now() >= deadline || cpu.user + cpu.system >= cpuLimit) throw exhausted();
     };
     const wall = () => {
-      if (performance.now() >= grace) throw exhausted();
+      if (budget.now() >= grace) throw exhausted();
     };
     const reader = (until) => (dir, args) => {
-      const remaining = Math.floor(until - performance.now());
+      const remaining = Math.floor(until - budget.now());
       if (remaining <= 0) throw exhausted();
       return git(dir, args, {
         timeout: Math.min(limit, remaining), killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024,
         env: { ...process.env, GIT_NO_LAZY_FETCH: '1' }, onError: (error) => { throw error; },
-      });
+      }, budget.spawnSync);
     };
     const read = reader(deadline);
     const readGrace = reader(grace);
