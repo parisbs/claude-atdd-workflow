@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { hookBudget } from './hook-budget.mjs';
 import { HOOKS, SETTINGS, runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 
@@ -37,7 +38,6 @@ before(() => {
   writeExecutable(join(bin, 'git'), `#!/bin/sh
 [ "$#" -gt 0 ] || exit 0
 if [ -n "$REVIEW_GIT_LOG" ]; then printf '%s\\n' "$*" >> "$REVIEW_GIT_LOG"; fi
-if [ -n "$REVIEW_FAIL_DIR" ] && [ "$PWD" = "$REVIEW_FAIL_DIR" ]; then exec sleep 30; fi
 exec '${realGit.stdout.trim().replaceAll("'", "'\\''")}' "$@"
 `);
   dir = join(scratch, 'repo');
@@ -63,10 +63,13 @@ exec '${realGit.stdout.trim().replaceAll("'", "'\\''")}' "$@"
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
-function bash(command, session = SESSIONS[0], env = {}, cwd = dir) {
+function bash(command, session = SESSIONS[0], env = {}, cwd = dir, budget) {
+  budget?.require('guard-tests', { PATH: `${bin}${delimiter}${process.env.PATH}` });
   const result = runConfigured({ cwd, tool_name: 'Bash', tool_input: { command }, ...session }, {
-    settings: GUARD_TESTS, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...env },
+    settings: GUARD_TESTS, timeoutMs: budget ? 120000 : undefined,
+    env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...budget?.env, ...env },
   });
+  budget?.active('guard-tests');
   assert.deepEqual(result.failures, [], result.stderr);
   return result;
 }
@@ -97,11 +100,15 @@ test('AC-2/AC-3 (F1) keeps verdicts before and after a segment error and reports
     assert.match(result.stderr, /guard-tests: could not evaluate.*ENOENT/);
   }
 });
-test('AC-2/AC-3 (F1) keeps an ask or deny when a later git read times out', () => {
+test('AC-2/AC-3 (F1) / AC-2 (#84) keeps an ask or deny when a later git read times out', () => {
   for (const [index, session] of SESSIONS.entries()) {
-    const result = bash(`echo x > ${FROZEN}; git -C stall restore .`, session, {
-      REVIEW_FAIL_DIR: spawnSync('pwd', ['-P'], { cwd: join(dir, 'stall'), encoding: 'utf8' }).stdout.trim(),
-    });
+    const cwd = spawnSync('pwd', ['-P'], { cwd: join(dir, 'stall'), encoding: 'utf8' }).stdout.trim();
+    const budget = hookBudget({ steps: [{ program: 'git', args: ['rev-parse', '--show-toplevel'],
+      cwd, occurrence: 1, elapsedMs: 5000 }] });
+    const result = bash(`echo x > ${FROZEN}; git -C stall restore .`, session, {}, dir, budget);
+    const [charge] = budget.charged('guard-tests');
+    assert.equal(charge.timedOut, true);
+    assert.equal(charge.timeoutMs, 5000);
     assert.equal(result.decision, index === 0 ? 'ask' : 'deny', result.reason);
     assert.ok(result.reason.includes(FROZEN), result.reason);
     assert.match(result.stderr, /guard-tests: could not evaluate.*ETIMEDOUT/);

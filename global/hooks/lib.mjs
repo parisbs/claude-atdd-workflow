@@ -17,15 +17,15 @@ export function readEvent() {
 }
 
 // Runs git without a shell. Returns trimmed stdout, or undefined on failure.
-export function git(cwd, args, options = {}) {
+export function git(cwd, args, options = {}, run = spawnSync) {
   const { onError, ...spawnOptions } = options;
-  const run = spawnSync('git', args, { cwd, encoding: 'utf8', ...spawnOptions });
-  if (run.error) {
-    onError?.(run.error);
+  const result = run('git', args, { cwd, encoding: 'utf8', ...spawnOptions });
+  if (result.error) {
+    onError?.(result.error);
     return undefined;
   }
-  if (run.status !== 0) return undefined;
-  return run.stdout.trim();
+  if (result.status !== 0) return undefined;
+  return result.stdout.trim();
 }
 
 const severity = { allow: 0, ask: 1, deny: 2 };

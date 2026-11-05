@@ -18,6 +18,7 @@
 // The comparison is strict, like `oracle-check`: a branch updated from main after freezing, where main
 // touched a test path, lists that file and asks. That is the accepted behaviour of ADR 0030.
 import assert from 'node:assert/strict';
+import { hookBudget } from './hook-budget.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -179,7 +180,9 @@ describe('guard-git merge decision with the ATDD oracle (#57)', () => {
 
   // The merge decision for the pull request of `fx`, through every entry of global/settings.json.
   // `lsRemote` is what `git ls-remote` answers; `pr` overrides fields of the pull request.
-  function decide(fx, { lsRemote = tagAt(fx), labels = [], pr = {}, extra = {}, env = {}, command = SQUASH, timeoutMs } = {}) {
+  function decide(fx, { lsRemote = tagAt(fx), labels = [], pr = {}, extra = {}, env = {}, command = SQUASH, timeoutMs, budget } = {}) {
+    budget?.require('guard-git', { PATH: `${bin}${delimiter}${process.env.PATH}` });
+    const clock = budget ?? hookBudget();
     counter += 1;
     const gh = join(scratch, `gh-${counter}.json`);
     const git = join(scratch, `git-${counter}.json`);
@@ -188,7 +191,7 @@ describe('guard-git merge decision with the ATDD oracle (#57)', () => {
     writeFileSync(gh, JSON.stringify({ view: { stdout: view }, api: NOT_FOUND, user: { stdout: { login: 'me' } } }));
     writeFileSync(git, JSON.stringify(lsRemote));
     const result = runConfigured({ cwd: fx.dir, tool_name: 'Bash', tool_input: { command }, ...extra }, {
-      timeoutMs,
+      timeoutMs: timeoutMs ?? 120000,
       env: {
         ...GIT_ENV,
         PATH: `${bin}${delimiter}${process.env.PATH}`,
@@ -197,9 +200,10 @@ describe('guard-git merge decision with the ATDD oracle (#57)', () => {
         FAKE_GIT_LOG: log,
         FAKE_LS_REMOTE: join(scratch, 'ls-remote.js'),
         REAL_GIT,
-        ...env,
+        ...clock.env, ...env,
       },
     });
+    budget?.active('guard-git');
     const calls = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
     return { ...result, calls };
   }
@@ -418,18 +422,17 @@ describe('guard-git merge decision with the ATDD oracle (#57)', () => {
     notExplicitAllow(r, 'ls-remote fails');
   });
 
-  test('AC-4 (#57) asks within the time budget, saying the oracle could not be read, when git ls-remote hangs', () => {
+  test('AC-4 (#57) / AC-2 (#84) asks within the time budget, saying the oracle could not be read, when git ls-remote hangs', () => {
     const fx = clone();
     commit(fx.dir, { 'src/app.ts': 'app2\n' }, 'feat: code');
-    const started = Date.now();
-    // The hook shares one budget between gh and ls-remote; the entry itself would wait 30 s. The harness
-    // gives the run 20 s so that a hook that does not stop waiting fails here rather than hanging the suite.
+    const budget = hookBudget({ steps: [{ program: 'git', args: ['ls-remote'], occurrence: 1, elapsedMs: 60000 }] });
     const r = decide(fx, {
-      lsRemote: { sleep: 60000, stdout: `${fx.oracle}\trefs/tags/oracle/${fx.branch}\n` },
+      budget, lsRemote: tagAt(fx),
       env: { GUARD_GIT_GH_BUDGET_MS: '4000', GUARD_GIT_GH_TIMEOUT_MS: '1000' },
-      timeoutMs: 20000,
     });
-    assert.ok(Date.now() - started < 18000, `the merge decision took ${Date.now() - started} ms`);
+    const [charge] = budget.charged('guard-git');
+    assert.equal(charge.timeoutMs, 1000);
+    assert.equal(charge.timedOut, true);
     asks(r, 'ls-remote hangs', /oracle/i, /timed out|time budget|timeout|time out/i);
     notExplicitAllow(r, 'ls-remote hangs');
   });

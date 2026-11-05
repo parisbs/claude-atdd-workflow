@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { hookBudget } from './hook-budget.mjs';
 import { HOOKS, SETTINGS, runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 
@@ -75,10 +76,12 @@ exec '${realGit.stdout.trim().replaceAll("'", "'\\''")}' "$@"
   capped = repository('capped', scalePaths.slice(0, 25), true);
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
-function run(command, session = SESSIONS[0], cwd = dir, env = {}) {
+function run(command, session = SESSIONS[0], cwd = dir, env = {}, budget) {
+  budget?.require('guard-tests', { PATH: `${bin}${delimiter}${process.env.PATH}` });
   const result = runConfigured({ cwd, tool_name: 'Bash', tool_input: { command }, ...session }, {
-    settings: GUARD_TESTS, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...env },
+    settings: GUARD_TESTS, timeoutMs: budget ? 120000 : undefined, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...budget?.env, ...env },
   });
+  budget?.active('guard-tests');
   assert.deepEqual(result.failures, [], result.stderr);
   return result;
 }
@@ -121,7 +124,7 @@ test('AC-1 (G1) retains each session verdict when inventory labels cannot be rea
     }
   }
 });
-test('AC-2 (G2) indexes 5000 find-exec and xargs candidates once and reads inline names by lookup', () => {
+test('AC-2 (G2) / AC-2 (#84) indexes 5000 find-exec and xargs candidates once and reads inline names by lookup', () => {
   for (const [command, cwd] of [
     ["find test -name '*.json' -exec sed -i s/a/b/ {} \\;", scale],
     ["find test -name '*.json' | xargs sed -i s/a/b/", scale],
@@ -129,7 +132,7 @@ test('AC-2 (G2) indexes 5000 find-exec and xargs candidates once and reads inlin
   ]) {
     const log = join(scratch, 'large-git-log');
     writeFileSync(log, '');
-    const result = run(command, SESSIONS[1], cwd, { REVIEW_2_LOG: log });
+    const result = run(command, SESSIONS[1], cwd, { REVIEW_2_LOG: log }, hookBudget());
     assert.equal(result.decision, 'deny', result.reason + result.stderr);
     assert.equal(result.stderr, '');
     const calls = readFileSync(log, 'utf8').trim().split('\n');

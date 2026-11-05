@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { basename, delimiter, isAbsolute, join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
+import { hookBudget } from './hook-budget.mjs';
 import { handlersFor, runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 import { fixtureGit, GIT_ENV } from './git-fixture.mjs';
@@ -35,7 +36,7 @@ const finish = () => {
   if (step.stdout !== undefined) process.stdout.write(typeof step.stdout === 'string' ? step.stdout : JSON.stringify(step.stdout));
   process.exit(step.exit === undefined ? 0 : step.exit);
 };
-if (process.env.GH_DELAY_MS) setTimeout(finish, Number(process.env.GH_DELAY_MS)); else finish();
+finish();
 `;
 
 const FAKE_GIT = String.raw`#!/usr/bin/env node
@@ -53,11 +54,10 @@ if (process.env.OLD_GIT === '1' && args.includes('worktree') && args.includes('l
   process.exit(129);
 }
 const finish = () => {
-  const r = spawnSync(process.env.REAL_GIT, args, { stdio: 'inherit', timeout: 2000 });
+  const r = spawnSync(process.env.REAL_GIT, args, { stdio: 'inherit' });
   process.exit(r.status === null ? 1 : r.status);
 };
-// Every local invocation spends four seconds, including reads through lib.git().
-if (process.env.SLOW_LOCAL === '1') setTimeout(finish, 4000); else finish();
+finish();
 `;
 
 // OpenSSH uses the passwd home; fake -G makes alias resolution independent of the developer's config.
@@ -147,25 +147,27 @@ describe('guard-git local-work review (#72)', { skip: posix }, () => {
     return extra;
   }
 
-  function decide(dir, head, { env = {}, command = SQUASH, entry } = {}) {
+  function decide(dir, head, { env = {}, command = SQUASH, entry, budget = hookBudget() } = {}) {
+    budget.require('guard-git', { PATH: `${bin}${delimiter}${process.env.PATH}` });
     const file = join(scratch, `scenario-${++scenarios}.json`);
     writeFileSync(file, JSON.stringify({ view: { stdout: green(head) }, user: { stdout: { login: 'me' } }, api: NOT_FOUND }));
-    // R1 measures one real configured entry, preserving its timeout and onFailure policy.
+    // R1 checks one configured entry; only the harness watchdog is enlarged for virtual time.
     const settings = entry ? {
       hooks: { PreToolUse: [{ matcher: 'Bash', hooks: handlersFor('Bash').filter((h) =>
         h.command.includes('guard-git.mjs') && h.command.includes(` --${entry}`)) }] },
     } : undefined;
     const started = performance.now();
     const r = runConfigured({ cwd: dir, permission_mode: 'default', tool_name: 'Bash', tool_input: { command } }, {
-      settings,
+      settings, timeoutMs: 120000,
       env: {
         ...GIT_ENV, PATH: `${bin}${delimiter}${process.env.PATH}`, REAL_GIT,
         FAKE_GH: file, FAKE_GIT_LOG: `${file}.git`, FAKE_SSH_LOG: `${file}.ssh`,
         GIT_SSH_COMMAND: 'ssh', GIT_SSH_VARIANT: 'ssh',
-        ORACLE_COMMIT: '', OLD_GIT: '', SLOW_LOCAL: '', GH_DELAY_MS: '',
-        GUARD_GIT_GH_TIMEOUT_MS: '6000', GUARD_GIT_GH_BUDGET_MS: '10000', ...env,
+        ORACLE_COMMIT: '', OLD_GIT: '',
+        GUARD_GIT_GH_TIMEOUT_MS: '6000', GUARD_GIT_GH_BUDGET_MS: '10000', ...budget.env, ...env,
       },
     });
+    budget.active('guard-git');
     return {
       ...r, elapsed: performance.now() - started,
       gh: lines(`${file}.calls`).map(JSON.parse), git: lines(`${file}.git`).map(JSON.parse),
@@ -173,39 +175,44 @@ describe('guard-git local-work review (#72)', { skip: posix }, () => {
     };
   }
 
-  test('R1 F1 two slow merge segments ask within the 30 s merge entry', { timeout: 45000 }, (t) => {
+  test('AC-2 (#84) R1 F1 two slow merge segments ask inside the logical merge deadline', () => {
     const { dir, head } = clone();
     sh(dir, 'tag', 'oracle/feature/x', head);
     const [entry] = handlersFor('Bash').filter((h) => h.command.includes(' --merge-only'));
     assert.equal(entry.timeout, 30);
     assert.equal(entry.onFailure, 'block', 'a timed-out merge decision must still block');
-    const r = decide(dir, head, {
+    const budget = hookBudget({ steps: [
+      ...[1, 2].map((occurrence) => ({ program: 'git', args: ['worktree', 'list'], occurrence, elapsedMs: 5000 })),
+      ...[1, 2].map((occurrence) => ({ program: 'gh', args: ['pr', 'view'], occurrence, elapsedMs: 600 })),
+    ] });
+    const r = decide(dir, head, { budget,
       command: `${SQUASH} && gh pr merge 13 --squash --delete-branch`, entry: 'merge-only',
-      // Six 600 ms gh reads use under four seconds of the ten-second shared gh budget.
-      env: { SLOW_LOCAL: '1', GH_DELAY_MS: '600', ORACLE_COMMIT: head },
+      env: { ORACLE_COMMIT: head },
     });
-    t.diagnostic(`merge entry: ${Math.round(r.elapsed)} ms; ${r.decision}; ${r.reason}`);
+    assert.equal(budget.charged('guard-git', 4).filter((event) => event.timedOut).length, 2);
+    assert.ok(budget.events().filter((event) => event.type === 'charge').every((event) => event.nowMs < 27000));
     assert.equal(r.ran.length, 1, 'measure only the configured merge entry');
     assert.equal(r.gh.filter((args) => args[0] === 'pr').length, 2, 'both merge segments must be evaluated');
     assert.ok(r.git.some(({ args }) => args.includes('ls-remote')), 'the oracle lookup must be exercised');
-    assert.ok(r.elapsed < entry.timeout * 1000 - 1000, `merge entry needs 1 s of margin: ${Math.round(r.elapsed)} ms; ${r.reason}`);
     asks(r);
     assert.doesNotMatch(r.reason, /blocking because|timed out after 30000 ms/);
   });
 
-  test('R1 F10 a slow oracle forced push asks within the 15 s every-Bash entry', { timeout: 30000 }, (t) => {
+  test('AC-2 (#84) R1 F10 a slow oracle forced push asks inside the logical every-Bash deadline', () => {
     const { dir, head } = clone();
     sh(dir, 'tag', 'oracle/feature/x', head);
     const [entry] = handlersFor('Bash').filter((h) => h.command.includes(' --skip-merge'));
     assert.equal(entry.timeout, 15);
-    const r = decide(dir, head, {
+    const budget = hookBudget({ steps: [{ program: 'git', args: ['branch', '--show-current'], occurrence: 1, elapsedMs: 12000 }] });
+    const r = decide(dir, head, { budget,
       command: 'git push -f origin oracle/feature/x', entry: 'skip-merge',
-      env: { SLOW_LOCAL: '1', ORACLE_COMMIT: head },
+      env: { ORACLE_COMMIT: head, GUARD_GIT_DECISION_BUDGET_MS: '20000' },
     });
-    t.diagnostic(`every-Bash entry: ${Math.round(r.elapsed)} ms; ${r.decision}; ${r.failures.join(' ')}`);
+    const [charge] = budget.charged('guard-git');
+    assert.equal(charge.timedOut, true);
+    assert.equal(charge.timeoutMs, 12000, 'the process deadline must cap a larger decision budget');
     assert.equal(r.ran.length, 1, 'measure only the configured every-Bash entry');
     assert.ok(r.git.length > 0, 'slow local git must run');
-    assert.ok(r.elapsed < entry.timeout * 1000 - 1000, `every-Bash entry needs 1 s of margin: ${Math.round(r.elapsed)} ms; ${r.failures.join(' ')}`);
     asks(r);
   });
 

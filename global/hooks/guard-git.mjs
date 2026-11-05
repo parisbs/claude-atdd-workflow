@@ -38,7 +38,7 @@
 // Only a match starts Node. With onFailure "block", a hook failure or timeout blocks
 // a merge and, at worst, a non-merge with merge in that scope. Without a flag the
 // hook applies every rule.
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { controlPlaneFiles, humanMergeMatchers } from './controlplane.mjs';
@@ -47,12 +47,16 @@ import { ghIsRead, gitCommand, gitSubcommand, program } from './commands.mjs';
 import { isTest, testMatchers } from './oracle.mjs';
 import { proposedAdrChange, proposedAdrMessage } from './proposed-adr.mjs';
 import { commandWords, gateCommands, nonliteral, rawGateCommands, shellParts, supabaseIndex, withoutMessages } from './git-shell.mjs';
+import { hookBudget } from './budget.mjs';
 
+const budget = hookBudget(import.meta.url);
 const mode = process.argv[2];
 const mergeOnly = mode === '--merge-only';
 const skipMerge = mode === '--skip-merge';
-const processDeadline = performance.now() + (skipMerge ? 12000 : 27000);
-const remaining = (deadline = processDeadline) => Math.floor(Math.min(deadline, processDeadline) - performance.now());
+const processBudget = skipMerge ? 12000 : 27000;
+const localPhaseMs = 5000;
+const processDeadline = budget.now() + processBudget;
+const remaining = (deadline = processDeadline) => Math.floor(Math.min(deadline, processDeadline) - budget.now());
 
 // main and master, and the branch origin/HEAD names: a repository may make develop
 // or trunk its default. Read once for each repository a command reaches.
@@ -67,9 +71,9 @@ function protectedBranches(dir) {
 
 const decisionBudget = Number(process.env.GUARD_GIT_DECISION_BUDGET_MS) || 10000;
 // The merge entry bounds each phase of its decision and the whole entry with processDeadline.
-const decisionDeadline = mergeOnly ? processDeadline : performance.now() + decisionBudget;
+const decisionDeadline = mergeOnly ? processDeadline : budget.now() + decisionBudget;
 function checkBudget() {
-  if (performance.now() >= decisionDeadline) throw new Error(`decision time budget of ${decisionBudget} ms exhausted`);
+  if (budget.now() >= decisionDeadline) throw new Error(`decision time budget of ${decisionBudget} ms exhausted`);
 }
 
 // Bound required local reads too: an unknown branch is not evidence of a safe push.
@@ -77,9 +81,9 @@ function git(cwd, args, options = {}) {
   checkBudget();
   let timedOut = false;
   const result = readGit(cwd, args, {
-    ...options, timeout: Math.max(1, Math.min(options.timeout ?? Infinity, Math.ceil(decisionDeadline - performance.now()), remaining())),
+    ...options, timeout: Math.max(1, Math.min(options.timeout ?? Infinity, Math.ceil(decisionDeadline - budget.now()), remaining())),
     onError(error) { timedOut = error.code === 'ETIMEDOUT'; options.onError?.(error); },
-  });
+  }, budget.spawnSync);
   if (timedOut) throw new Error(`git read exceeded the decision time budget of ${decisionBudget} ms`);
   checkBudget();
   return result;
@@ -322,8 +326,10 @@ const ghLimit = () => Number(process.env.GUARD_GIT_GH_TIMEOUT_MS) || 6000;
 // all reads at 27 s (12 s for --skip-merge), leaving 3 s of the entry's 30 s
 // (15 s) for startup and the verdict. Local reads never spend the gh budget.
 const ghBudget = () => Number(process.env.GUARD_GIT_GH_BUDGET_MS) || 10000;
+budget.limits({ decisionMs: decisionBudget, ghBudgetMs: ghBudget(), ghTimeoutMs: ghLimit(), processMs: processBudget,
+  localWorkMs: localPhaseMs, oracleDiscoveryMs: localPhaseMs, oracleComparisonMs: localPhaseMs, sshConfigMs: localPhaseMs });
 let ghElapsed = 0;
-const ghRemaining = (started) => Math.min(remaining(), Math.floor(ghBudget() - ghElapsed - (started === undefined ? 0 : performance.now() - started)));
+const ghRemaining = (started) => Math.min(remaining(), Math.floor(ghBudget() - ghElapsed - (started === undefined ? 0 : budget.now() - started)));
 const brief = (text) => (text ?? '').trim().split('\n')[0].slice(0, 200);
 
 // Runs gh without a shell and says why when it could not give an answer. A call
@@ -334,9 +340,9 @@ function gh(args, cwd) {
   // A timeout of 0 would mean no timeout at all, so a spent budget skips the call.
   if (left < 1) return outOfBudget;
   const limit = Math.min(ghLimit(), left);
-  const started = performance.now();
-  const run = spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: limit, killSignal: 'SIGKILL' });
-  ghElapsed += performance.now() - started;
+  const started = budget.now();
+  const run = budget.spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: limit, killSignal: 'SIGKILL' });
+  ghElapsed += budget.now() - started;
   if (run.error?.code === 'ENOENT') return { failure: 'gh is not installed or not on PATH' };
   if (run.error?.code === 'ETIMEDOUT') return limit < ghLimit() ? outOfBudget : { failure: `gh timed out after ${limit} ms` };
   if (run.error) return { failure: `gh could not run (${run.error.message})` };
@@ -367,10 +373,10 @@ async function remoteOracleLookup(dir, remote, ref) {
   let started;
   try {
     const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-    const configLimit = Math.min(5000, remaining());
+    const configLimit = Math.min(localPhaseMs, remaining());
     if (configLimit < 1) return { failure: `could not read ${remote}: time budget exhausted` };
     const config = env.GIT_SSH_COMMAND === undefined
-      ? spawnSync('git', ['config', '--get', 'core.sshCommand'], {
+      ? budget.spawnSync('git', ['config', '--get', 'core.sshCommand'], {
         cwd: dir, encoding: 'utf8', timeout: configLimit, killSignal: 'SIGKILL',
       }) : undefined;
     // Exit 1 with no output means the setting is absent; other failures are unreadable.
@@ -384,9 +390,11 @@ async function remoteOracleLookup(dir, remote, ref) {
     const left = ghRemaining();
     if (left < 1) return { failure: `could not read ${remote}: time budget exhausted` };
     const limit = Math.min(ghLimit(), left);
-    started = performance.now();
-    const run = await new Promise((done) => {
-      const child = spawn('git', ['ls-remote', '--', remote, ref, `${ref}^{}`], {
+    started = budget.now();
+    const args = ['ls-remote', '--', remote, ref, `${ref}^{}`];
+    const call = budget.read('git', args, dir, limit);
+    const run = call.finish(await new Promise((done) => {
+      const child = spawn('git', args, {
         cwd: dir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '';
@@ -399,7 +407,7 @@ async function remoteOracleLookup(dir, remote, ref) {
         child.stderr.destroy();
         child.unref();
         done({ error: { code: 'ETIMEDOUT' } });
-      }, limit);
+      }, call.timeout);
       child.on('error', (error) => {
         clearTimeout(timer);
         done({ error });
@@ -408,7 +416,7 @@ async function remoteOracleLookup(dir, remote, ref) {
         clearTimeout(timer);
         done({ status, stdout, stderr });
       });
-    });
+    }));
     if (run.error || run.status !== 0) {
       const why = run.error?.code === 'ETIMEDOUT' ? `git ls-remote timed out after ${limit} ms`
         : run.error?.message || brief(run.stderr) || `git ls-remote exited with ${run.status}`;
@@ -424,7 +432,7 @@ async function remoteOracleLookup(dir, remote, ref) {
     }
     return { commit: refs.get(`${ref}^{}`) ?? refs.get(ref) };
   } finally {
-    if (started !== undefined) ghElapsed += performance.now() - started;
+    if (started !== undefined) ghElapsed += budget.now() - started;
   }
 }
 
@@ -585,7 +593,7 @@ function remoteRepository(remote, host, cwd, deadline) {
     const key = `${cwd}\0${url.hostname}`;
     if (!remoteAliases.has(key)) {
       const left = remaining(deadline);
-      const run = left < 1 ? undefined : spawnSync('ssh', ['-G', '--', url.hostname], {
+      const run = left < 1 ? undefined : budget.spawnSync('ssh', ['-G', '--', url.hostname], {
         cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
       });
       const hostname = !run?.error && run?.status === 0 ? /^hostname\s+(\S+)\s*$/im.exec(run.stdout)?.[1] : undefined;
@@ -604,7 +612,7 @@ function remoteRepository(remote, host, cwd, deadline) {
 function localGit(cwd, args, deadline) {
   const left = remaining(deadline);
   if (left < 1) throw new Error(`Could not read the local copy in ${cwd}: git exhausted its time budget.`);
-  const run = spawnSync('git', ['--no-optional-locks', ...args], {
+  const run = budget.spawnSync('git', ['--no-optional-locks', ...args], {
     cwd, encoding: 'utf8', timeout: left, killSignal: 'SIGKILL',
     env: { ...process.env, GIT_NO_LAZY_FETCH: '1' }, maxBuffer: 64 * 1024 * 1024,
   });
@@ -704,7 +712,7 @@ function outsideRepository(cwd) {
 // add reasons to ask and never grant permission for a merge.
 function localWorkReasons(pr, where, cwd) {
   if (!where) return { reasons: [] };
-  const deadline = performance.now() + 5000;
+  const deadline = budget.now() + localPhaseMs;
   try {
     try {
       localGit(cwd, ['rev-parse', '--absolute-git-dir'], deadline);
@@ -789,7 +797,7 @@ async function mergeOracle(pr, where, cwd) {
     tag = `oracle/${pr.headRefName}`;
     if (!where) throw new Error('the pull request URL has an unexpected shape');
     const url = `https://${where[1]}/${where[2]}/${where[3]}`;
-    const deadline = performance.now() + 5000;
+    const deadline = budget.now() + localPhaseMs;
     let remotes;
     try {
       remotes = localGit(cwd, ['remote', '-v'], deadline);
@@ -813,7 +821,7 @@ async function mergeOracle(pr, where, cwd) {
     if (typeof pr.headRefOid !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(pr.headRefOid)) {
       throw new Error('gh returned no valid headRefOid');
     }
-    const compareDeadline = performance.now() + 5000;
+    const compareDeadline = budget.now() + localPhaseMs;
     const read = (root, args) => localGit(root, args, compareDeadline);
     read(cwd, ['cat-file', '-e', `${commit}^{commit}`]);
     read(cwd, ['cat-file', '-e', `${pr.headRefOid}^{commit}`]);

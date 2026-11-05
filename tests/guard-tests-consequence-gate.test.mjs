@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { cleanupProcesses, deadProcesses, hookBudget } from './hook-budget.mjs';
 import { SETTINGS, runConfigured } from './claude-hooks.mjs';
 import { writeExecutable } from './executables.mjs';
 
@@ -66,12 +67,11 @@ if (args[0] === 'ls-tree' && args.includes('-rz')) {
   if (process.env.CONSEQUENCE_TREE === 'stall') {
     fs.writeFileSync(process.env.CONSEQUENCE_PID, String(process.pid));
     process.on('SIGTERM', () => {});
-    setTimeout(() => process.exit(0), 18000);
+    setTimeout(() => { fs.writeFileSync(process.env.CONSEQUENCE_PID + '.completed', 'done'); process.exit(0); }, 60000);
     return;
   }
   if (process.env.CONSEQUENCE_TREE === 'grandchild') {
-    const child = cp.spawn(process.execPath, ['-e', 'setTimeout(() => {}, 18000)'], { stdio: ['ignore', 1, 2] });
-    fs.writeFileSync(process.env.CONSEQUENCE_PID, String(child.pid));
+    const child = cp.spawn(process.execPath, ['-e', "const fs = require('node:fs'); fs.writeFileSync(process.env.CONSEQUENCE_PID, String(process.pid)); setTimeout(() => { fs.writeFileSync(process.env.CONSEQUENCE_PID + '.completed', 'done'); }, 60000);"], { stdio: ['ignore', 1, 2] });
     child.unref();
     process.exit(0);
   }
@@ -91,34 +91,40 @@ exec ${quote(realGit)} "$@"
   commit = git(dir, 'rev-parse', TAG);
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
-function run(command, session, { cwd = dir, env = {}, tool = 'Bash', input } = {}) {
-  return runConfigured({ cwd, tool_name: tool, tool_input: input ?? { command }, ...session }, {
-    settings: SETTINGS_TESTS, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...env },
+function run(command, session, { cwd = dir, env = {}, tool = 'Bash', input, budget } = {}) {
+  budget?.require('guard-tests', { PATH: `${bin}${delimiter}${process.env.PATH}` });
+  const result = runConfigured({ cwd, tool_name: tool, tool_input: input ?? { command }, ...session }, {
+    settings: SETTINGS_TESTS, timeoutMs: budget ? 120000 : undefined, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...budget?.env, ...env },
   });
+  budget?.active('guard-tests');
+  return result;
 }
-// Keep the configured hook timeout unchanged. This outer watchdog also owns
-// descendants, since killing /bin/sh alone need not close inherited pipes.
+// Virtual-budget runs use an emergency watchdog, not a deadline assertion. It also
+// owns descendants, since killing /bin/sh alone need not close inherited pipes.
 async function bounded(command, session, options = {}) {
+  options.budget?.require('guard-tests', { PATH: `${bin}${delimiter}${process.env.PATH}` });
   const event = { cwd: options.cwd ?? dir, tool_name: 'Bash', tool_input: { command }, ...session };
-  const settings = { settings: SETTINGS_TESTS, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...options.env } };
+  const settings = { settings: SETTINGS_TESTS, timeoutMs: 120000, env: { PATH: `${bin}${delimiter}${process.env.PATH}`, ...options.budget?.env, ...options.env } };
   const source = `import { runConfigured } from ${JSON.stringify(new URL('./claude-hooks.mjs', import.meta.url).href)};
 process.stdout.write(JSON.stringify(runConfigured(${JSON.stringify(event)}, ${JSON.stringify(settings)})));`;
-  return new Promise((resolve, reject) => {
+  const result = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', source], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '', expired = false;
     child.stdout.on('data', (chunk) => { stdout += chunk; });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch (e) { if (e.code !== 'ESRCH') throw e; } };
-    const timer = setTimeout(() => { expired = true; kill(); }, 14000);
+    const timer = setTimeout(() => { expired = true; kill(); }, 120000);
     child.on('error', reject);
     child.on('close', (code) => {
       clearTimeout(timer);
       kill();
-      if (expired) resolve({ failures: ['no verdict before the 14 s outer watchdog killed the process group'], stderr, ran: [] });
+      if (expired) resolve({ failures: ['no verdict before the 120 s outer watchdog killed the process group'], stderr, ran: [] });
       else if (code !== 0) reject(new Error(`configured runner exited ${code}: ${stderr}`));
       else { try { resolve(JSON.parse(stdout)); } catch (e) { reject(e); } }
     });
   });
+  options.budget?.active('guard-tests');
+  return result;
 }
 function healthy(r) {
   assert.deepEqual(r.failures, [], `hook failed: ${r.failures.join('; ')} ${r.stderr}`);
@@ -143,7 +149,7 @@ function verdict(r, index, { path = FILE, tag = TAG, hash = commit, unread = fal
   }
 }
 function rule(id, label, command, control, options = {}) {
-  test(`${id} ${label}`, { timeout: 120000 }, async (t) => {
+  test(`${id} ${label}`, options.budget ? {} : { timeout: 120000 }, async (t) => {
     for (const [i, [name, session]] of SESSIONS.entries()) {
       await t.test(`${id} ${name} rule`, () => verdict(run(command, session, options), i, { ...options, unread: options.unread ?? true }));
       await t.test(`${id} ${name} control`, () => silent(run(control, session, options), options.visibleFailure));
@@ -198,11 +204,11 @@ for (const command of [
 ]) test(`AC-2/AC-3 excludes proven data after an exception: ${command.split('\n')[0]}`, async (t) => {
   for (const [name, session] of SESSIONS) await t.test(`AC-2 ${name}`, () => silent(run(command, session, { env: { GUARD_TESTS_TEST_THROW: '1' } }), true));
 });
-for (const [label, env] of [
+for (const [label, env, budget] of [
   ['injected deciding exception', { GUARD_TESTS_TEST_THROW: '1' }],
-  ['CPU exhaustion', { GUARD_TESTS_CPU_BUDGET_MS: '1' }],
-  ['read deadline exhaustion', { GUARD_TESTS_GIT_BUDGET_MS: '1' }],
-]) rule('AC-3 (H6/H12)', label, 'echo first; rm tests/a.test.mjs', 'echo first; echo hi > src/out', { env, visibleFailure: true });
+  ['CPU exhaustion / AC-2 (#84)', { GUARD_TESTS_CPU_BUDGET_MS: '1' }, hookBudget({ cpuStepUs: 1000 })],
+  ['read deadline exhaustion / AC-2 (#84)', { GUARD_TESTS_GIT_BUDGET_MS: '1' }, hookBudget({ steps: [{ program: 'git', args: ['rev-parse', '--show-toplevel'], occurrence: 1, elapsedMs: 1 }] })],
+]) rule('AC-3 (H6/H12)', label, 'echo first; rm tests/a.test.mjs', 'echo first; echo hi > src/out', { env, budget, visibleFailure: true });
 for (const mode of ['fail', 'oversized']) {
   // A literal write to package.json is a read form that asks in every session (ADR 0033), so the
   // configuration case uses an unread form.
@@ -277,11 +283,9 @@ test('AC-13 (H7) puts the frozen deny before 22 configuration reasons and counts
   assert.ok(r.reason.indexOf(FILE) < r.reason.indexOf('package.json'), r.reason);
   assert.match(r.reason, /3 more paths/);
 });
-test('AC-14 (H8) six wildcards against a 200-character frozen name finish with a verdict', { timeout: 30000 }, async () => {
+test('AC-14 (H8) / AC-2 (#84) six wildcards against a 200-character frozen name finish with a verdict', async () => {
   const root = repository('glob', [`tests/${'a'.repeat(200)}`, 'tests/aaaaab']);
-  const started = performance.now();
-  const r = await bounded('rm tests/*a*a*a*a*a*b', SESSIONS[0][1], { cwd: root });
-  assert.ok(performance.now() - started < 14000, 'verdict must arrive within the 10 s deadline plus margin');
+  const r = await bounded('rm tests/*a*a*a*a*a*b', SESSIONS[0][1], { cwd: root, budget: hookBudget() });
   verdict(r, 0, { path: 'tests/aaaaab', hash: git(root, 'rev-parse', TAG) });
 });
 known('AC-15 (H9)', 'mkdir -pv tracks missing parents', 'mkdir -pv tests/new/deep && cd tests/new/deep && printf x > c.test.mjs', { path: 'tests/new/deep/c.test.mjs' });
@@ -290,26 +294,39 @@ rule('AC-15 (H9)', 'unknown prior directory is unread', 'cd -; rm tests/a.test.m
 known('AC-15 (H9)', 'subshell pushd leaves the outer stack intact', 'pushd tests; (pushd unit); popd; rm tests/a.test.mjs');
 known('AC-16 (H10)', 'reads ANSI-C quoting and keeps the later rm', "echo $'it\\'s'; rm tests/a.test.mjs");
 for (const mode of ['stall', 'grandchild']) {
-  test(`AC-17 (H8/H12) ${mode} cannot hold the hook past its deadline`, { timeout: 90000 }, async (t) => {
-    for (const [i, [name, session]] of SESSIONS.entries()) await t.test(`AC-17 ${name} ${mode}`, async () => {
+  test(`AC-17 (H8/H12) / AC-2 (#84) ${mode} cannot hold the hook past its deadline`, async (t) => {
+    for (const [i, [name, session]] of SESSIONS.entries()) await t.test(`AC-17 ${name} ${mode} ${i === 0 ? 'native timeout' : 'logical timeout'}`, async () => {
       const pidFile = join(scratch, `pid-${name}-${mode}`);
-      const started = performance.now();
+      const native = i === 0;
+      const budget = hookBudget({ steps: [{ program: 'git', args: ['ls-tree', '-rz'], occurrence: 1,
+        elapsedMs: native ? 0 : 5000, ...(native ? { realTimeoutMs: 15000 } : {}) }] });
       let r;
       try {
-        r = await bounded('rm tests/a.test.mjs', session, { env: { CONSEQUENCE_TREE: mode, CONSEQUENCE_PID: pidFile, GUARD_TESTS_GIT_TIMEOUT_MS: '1000', GUARD_TESTS_GIT_BUDGET_MS: '2000' } });
-        assert.ok(existsSync(pidFile), 'the stalled git fixture was reached');
-        assert.ok(performance.now() - started < 14000, 'hook exceeded deadline plus margin');
-        if (mode === 'stall') assert.throws(() => process.kill(Number(readFileSync(pidFile, 'utf8')), 0), { code: 'ESRCH' }, 'git ignoring SIGTERM must be killed');
+        const started = performance.now();
+        r = await bounded('rm tests/a.test.mjs', session, { budget,
+          env: native ? { CONSEQUENCE_TREE: mode, CONSEQUENCE_PID: pidFile } : {} });
+        const [charge] = budget.charged('guard-tests');
+        assert.equal(charge.timeoutMs, 5000);
+        assert.equal(charge.appliedMs, 5000);
+        assert.equal(charge.timedOut, true);
+        assert.equal(charge.nativeTimeout, native);
+        if (native) {
+          assert.equal(charge.realTimeoutMs, 15000);
+          assert.ok(performance.now() - started >= 15000, 'the native spawnSync timer must elapse');
+          assert.ok(existsSync(pidFile), 'the 15 s native timeout must leave ample time for the fixture to start');
+          assert.ok(!existsSync(pidFile + '.completed'), 'hook must return before the 60 s hang completes');
+          if (mode === 'stall') await deadProcesses([Number(readFileSync(pidFile, 'utf8'))]);
+        }
         verdict(r, i);
       } finally {
         if (existsSync(pidFile)) {
-          try { process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL'); } catch (e) { if (e.code !== 'ESRCH') throw e; }
+          await cleanupProcesses([Number(readFileSync(pidFile, 'utf8'))]);
         }
       }
     });
   });
 }
-test('AC-18 (H14) linked-worktree lookup uses a small constant number of git calls for 1 and 300 tags', { timeout: 60000 }, async (t) => {
+test('AC-18 (H14) / AC-2 (#84) linked-worktree lookup uses a small constant number of git calls for 1 and 300 tags', async (t) => {
   const root = repository('many-tags');
   const linked = join(scratch, 'linked');
   git(root, 'worktree', 'add', '-q', '--detach', linked, 'HEAD');
@@ -323,11 +340,9 @@ test('AC-18 (H14) linked-worktree lookup uses a small constant number of git cal
     await t.test(`AC-18 ${count} tags`, () => {
       const log = join(scratch, `tags-${count}.log`);
       writeFileSync(log, '');
-      const started = performance.now();
-      const r = run('rm tests/a.test.mjs', SESSIONS[0][1], { cwd: linked, env: { CONSEQUENCE_LOG: log } });
+      const r = run('rm tests/a.test.mjs', SESSIONS[0][1], { cwd: linked, budget: hookBudget(), env: { CONSEQUENCE_LOG: log } });
       const calls = readFileSync(log, 'utf8').trim().split('\n');
       assert.ok(calls.length <= 20, `${count} tags caused ${calls.length} git calls; expected <= 20`);
-      assert.ok(performance.now() - started < 14000, 'decision exceeded deadline plus margin');
       verdict(r, 0, { hash });
     });
   }
@@ -365,7 +380,7 @@ test('AC-20 (G4) resolves each cross-repository target against its own oracle', 
   });
 });
 
-test('AC-17 (H12) exact lookups fit a CPU budget exhausted by repeated scans of the same inventory', { timeout: 60000 }, async (t) => {
+test('AC-17 (H12) / AC-2 (#84) exact lookups fit a CPU budget exhausted by repeated scans of the same inventory', async (t) => {
   const root = repository('lookup');
   const blob = git(root, 'hash-object', '-w', FILE);
   const paths = Array.from({ length: 20000 }, (_, i) => `tests/scale/${String(i).padStart(5, '0')}.test.mjs`);
@@ -378,15 +393,25 @@ test('AC-17 (H12) exact lookups fit a CPU budget exhausted by repeated scans of 
   git(root, 'tag', 'oracle/feature/lookup');
   const options = { cwd: root, env: { GUARD_TESTS_CPU_BUDGET_MS: '1000' } };
   const evidence = { tag: 'oracle/feature/lookup', hash: git(root, 'rev-parse', 'HEAD') };
-  await t.test('AC-17 exact lookup', async () => {
-    const r = await bounded(`rm ${FILE}`, SESSIONS[1][1], options);
+  await t.test('AC-17 exact lookup fits a quarter of the scan budget', async () => {
+    const budget = hookBudget({ cpuStepUs: 10 });
+    const r = await bounded(`rm ${FILE}`, SESSIONS[1][1], {
+      ...options, budget, env: { GUARD_TESTS_CPU_BUDGET_MS: '250' },
+    });
     verdict(r, 1, evidence);
     assert.equal(r.stderr, '', 'exact lookup must finish without exhausting the budget');
     assert.doesNotMatch(r.reason, /Unread command/);
+    assert.equal(budget.active('guard-tests').filter((event) => event.type === 'cpu-exhausted').length, 0);
   });
   await t.test('AC-17 scan exhaustion', async () => {
-    const r = await bounded(`rm ${Array.from({ length: 2000 }, (_, i) => `tests/scale/*${i}*.test.mjs`).join(' ')} ${FILE}`, SESSIONS[1][1], options);
+    const budget = hookBudget({ cpuStepUs: 10 });
+    // Six scans exceed the check budget without making recovery scan thousands of globs.
+    const scans = Array.from({ length: 6 }, (_, i) => `tests/scale/*absent-${i}*.test.mjs`);
+    const r = await bounded(`rm ${scans.join(' ')} ${FILE}`, SESSIONS[1][1], { ...options, budget });
     healthy(r);
+    const [exhausted] = budget.active('guard-tests').filter((event) => event.type === 'cpu-exhausted');
+    assert.equal(exhausted?.checks, 100000, 'CPU exhaustion must occur at the scripted check count');
+    assert.equal(exhausted?.cpuUs, 1000000);
     assert.equal(r.decision, 'deny', r.reason + r.stderr);
     assert.match(r.stderr + r.reason, /budget.*exhaust|exhaust.*budget/i);
     assert.match(r.reason, /Unread command at the frozen tests gate:/);
