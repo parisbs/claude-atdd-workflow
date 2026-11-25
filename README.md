@@ -81,7 +81,7 @@ cannot separate the effects of the workflow, developer, project and model.
     the installer removes from an installed `settings.json`.
   - `mcp-servers.json`: the MCP servers the installer registers in the user
     scope through `claude mcp` (ADR 0014): `codex-reviewer` and
-    `codex-implementer`, two registrations pinned to `codex-subagent-mcp@0.6.0`
+    `codex-implementer`, two registrations pinned to `codex-subagent-mcp@0.6.1`
     with `--prefer-offline` and different ceilings (ADR 0028):
 
     - `CODEX_SUBAGENT_DEFAULT_MODEL=gpt-6.1-sol` supplies the model when a call

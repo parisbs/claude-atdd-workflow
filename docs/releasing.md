@@ -45,7 +45,7 @@ From an updated `main`, create `release/X.Y.Z` and:
 2. Align `README.md` and `docs/ROADMAP.md` with what ships. ADR statuses change only when the human has
    accepted or rejected a record.
 3. No file holds the release version: `package.json` has none. Version strings that are not this release's,
-   such as the pinned `codex-subagent-mcp@0.6.0` or the metrics `script_version`, stay as they are.
+   such as the pinned `codex-subagent-mcp@0.6.1` or the metrics `script_version`, stay as they are.
 4. Run `npm test`.
 
 Commit as `chore(release): prepare X.Y.Z`, prepare the pull request with `/pr-prep` and label it `needs-human`:
