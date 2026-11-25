@@ -2,7 +2,7 @@
   "codex-reviewer": {
     "type": "stdio",
     "command": "npx",
-    "args": ["--prefer-offline", "-y", "codex-subagent-mcp@0.6.0"],
+    "args": ["--prefer-offline", "-y", "codex-subagent-mcp@0.6.1"],
     "env": {
       "CODEX_SUBAGENT_DEFAULT_MODEL": "gpt-6.1-sol",
       "CODEX_SUBAGENT_ALLOWED_MODELS": "gpt-6.1-sol,gpt-6-astra",
@@ -19,7 +19,7 @@
   "codex-implementer": {
     "type": "stdio",
     "command": "npx",
-    "args": ["--prefer-offline", "-y", "codex-subagent-mcp@0.6.0"],
+    "args": ["--prefer-offline", "-y", "codex-subagent-mcp@0.6.1"],
     "env": {
       "CODEX_SUBAGENT_DEFAULT_MODEL": "gpt-6.1-sol",
       "CODEX_SUBAGENT_ALLOWED_MODELS": "gpt-6.1-sol,gpt-6-astra",
